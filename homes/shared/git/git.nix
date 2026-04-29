@@ -1,0 +1,2 @@
+{ ... }:
+{ programs.git.enable = true; }

@@ -1,0 +1,41 @@
+The old content of helpers.nix is still there after the partial replacement. Let me check it:  
+
+Read [](file:///work/flake/dendrites/storage/dendrites/git-annex/leaves/helpers.nix#210-210), lines 210 to 260
+
+Read [](file:///work/flake/lib/validation/storage-fabric.nix#20-20), lines 20 to 30
+
+Ran terminal command: wc -l /work/flake/dendrites/storage/dendrites/git-annex/leaves/helpers.nix
+
+Read [](file:///work/flake/dendrites/storage/dendrites/git-annex/leaves/helpers.nix#222-222), lines 222 to 294
+
+I need to remove lines 225–294 (the old duplicated tail). I'll replace the boundary:   
+
+Replacing 74 lines with 5 lines in [](file:///work/flake/dendrites/storage/dendrites/git-annex/leaves/helpers.nix)
+
+
+```
+
+```
+Now also fix the `declaredMetadataRemotes` line still in the validation file — my `replace_string_in_file` earlier didn't pick up the stale version because Nix is reading from the store. Let me check the file again:    
+
+Read [](file:///work/flake/lib/validation/storage-fabric.nix#18-18), lines 18 to 30
+
+The file itself looks correct now — the `declaredMetadataRemotes` line is gone. The error says it's at j3nkjs7rac6fhs6xpmbw11pdmi5mbwl2-source which is from the last git-add (Nix evaluates from the store). Let me re-stage everything and eval:    
+
+Ran terminal command: cd /work/flake && git add dendrites/storage/dendrites/git-annex/leaves/helpers.nix lib/validation/storage-fabric.nix && nix eval .#nixosConfigurations.r640-0.config.environment.systemPackages --apply 'pkgs: builtins.filter (n: builtins.match ".*(annex|fabric|seaweed).*" n != null) (map (p: p.pname or p.name or "?") pkgs)' 2>&1
+
+r640-0 evals cleanly and has `cluster-annex`, `fabric-status`, `seaweedfs`, and `git-annex`. Now check desktoptoodle:    
+
+Ran terminal command: cd /work/flake && nix eval .#nixosConfigurations.desktoptoodle.config.environment.systemPackages --apply 'pkgs: builtins.filter (n: builtins.match ".*(annex|fabric).*" n != null) (map (p: p.pname or p.name or "?") pkgs)' 2>&1
+
+Both hosts eval clean. Let me also verify the systemd services are present:     
+
+Ran terminal command: cd /work/flake && nix eval .#nixosConfigurations.r640-0.config.systemd.services --apply 'svcs: builtins.filter (n: builtins.match ".*(annex|fabric|radicle|seaweed).*" n != null) (builtins.attrNames svcs)' 2>&1
+
+Ran terminal command: cd /work/flake && git add -A && git commit -m "M5/M8/M9/M11/M13: annex init, /hot staging, job workflow, validation, observability; enable annex on desktoptoodle" 2>&1
+
+Completed: *Eval check + stage files* (7/7)
+
+You've used 71% of your weekly rate limit. Your weekly rate limit will reset on May 3 at 7:00 PM. [Learn More](https://aka.ms/github-copilot-rate-limit-error)
+
+Made changes.

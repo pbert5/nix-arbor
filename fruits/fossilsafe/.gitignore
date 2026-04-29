@@ -1,0 +1,12 @@
+# Generated test artifacts outside the main FOSSILSAFE app tree
+.hypothesis/
+.pytest_cache/
+__pycache__/
+
+# Local test databases
+*.db
+*.db-*
+
+# Coverage outputs
+.coverage*
+htmlcov/

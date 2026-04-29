@@ -1,0 +1,12 @@
+- file browsers
+    - superfile
+        - very pretty but has weird hotkeys
+    - ranger
+        - bare bones
+    - yazi
+        - nix-shell -p yazi
+        - pretty clean tho kinda barebones
+        - allot of plugins
+sytem mon
+    - btop
+        - amaizing

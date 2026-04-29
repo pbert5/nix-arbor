@@ -1,0 +1,988 @@
+# Agent Plan: FUSE-Based LTFS Tape Library Overlay
+
+This is the roadmap for the next serious tapelib version. It is intentionally
+separate from current implemented behavior in `README.md`.
+
+## 0. Project goal
+
+Build `tapelib` as a FUSE-backed virtual filesystem for a TL2000 tape library
+with two LTO-5 drives.
+
+Core behavior:
+
+```text
+Browsing/searching:
+  Served from local catalog DB.
+  Must not load tapes.
+
+Opening/copying files:
+  Creates or joins a queued tape-access job.
+  Loads the required tape if needed.
+  Shows progress while the command/file-browser operation waits.
+
+Writing new archive data:
+  Goes to local cache first.
+  Later flushed to LTFS tape in controlled batches.
+
+Tape format:
+  Each tape remains a normal self-contained LTFS volume.
+  The overlay must never make tapes dependent on the custom software.
+```
+
+Do not build this as FossilSafe. The backup planner should be a separate
+consumer of the `tapelib` API.
+
+## 1. Rename the FUSE layout for clarity
+
+Avoid confusing `live` and `staging`.
+
+Use this mount layout:
+
+```text
+/mnt/tapelib/
+  browse/
+    TAPE001/
+    TAPE002/
+
+  readable/
+    TAPE001/
+    TAPE002/
+
+  write/
+    inbox-cached/
+    inbox-direct/
+
+  thumbnails/
+    by-filetype/
+    cached/
+
+  jobs/
+    queued/
+    active/
+    waiting/
+    failed/
+    complete/
+
+  system/
+    inventory.json
+    status.json
+    drives/
+      drive0.json
+      drive1.json
+```
+
+Meaning:
+
+```text
+browse/
+  Metadata-only.
+  Safe for file managers.
+  Never loads tapes.
+
+readable/
+  File contents are accessible.
+  Opening/copying can trigger tape loading.
+
+write/inbox-cached/
+  User writes files here.
+  Files land on /run/media/user1/cache/tapelib first.
+  Later flushed to tape.
+
+write/inbox-direct/
+  For files already on a fast local disk/cache source.
+  Still should not write directly to tape unless explicitly safe.
+
+thumbnails/
+  Local thumbnail or filetype-icon source.
+  Prevent GUI thumbnailers from forcing tape loads.
+
+jobs/
+  Human-readable queue/status interface.
+
+system/
+  Debug/status JSON.
+```
+
+## 2. FUSE behavior rules
+
+### 2.1 Browsing must never move hardware
+
+For paths under:
+
+```text
+/mnt/tapelib/browse/
+```
+
+Implement:
+
+```text
+readdir:
+  DB only
+
+getattr/stat:
+  DB only
+
+find:
+  DB only
+
+du:
+  DB size metadata only
+
+open/read actual archived file:
+  reject with clear metadata-only error
+```
+
+This path is safe for GUI file managers and terminal search.
+
+### 2.2 Readable path can block with progress
+
+For paths under:
+
+```text
+/mnt/tapelib/readable/
+```
+
+Opening a file should:
+
+```text
+1. Look up file in catalog DB.
+2. Create or join a read job.
+3. Hold the caller open while job is queued/running.
+4. Report progress through a side channel.
+5. Once retrieved/cached, serve bytes to the caller.
+```
+
+The user experience should support:
+
+```bash
+cp /mnt/tapelib/readable/TAPE001/foo.zip ~/retrieved/
+```
+
+and:
+
+```text
+File browser double-click or copy:
+  should wait with visible progress if possible
+```
+
+### 2.3 Avoid accidental duplicate jobs
+
+Do not create unlimited duplicate jobs if a user clicks repeatedly.
+
+Implement request coalescing:
+
+```text
+same tape + same path + same destination/cache target:
+  join existing job instead of creating another
+```
+
+Each open file handle gets a lightweight waiter record:
+
+```text
+waiter_id
+job_id
+pid
+path
+created_at
+cancelled
+```
+
+If the user closes the file browser operation or hits Ctrl-C:
+
+```text
+If job is still queued:
+  remove this waiter
+  if no waiters remain, cancel/delete the queued job
+
+If job is already moving tape or reading:
+  remove this waiter
+  continue to safe completion point
+  then either keep result in read cache or mark job complete with no consumers
+```
+
+Never interrupt a physical tape move halfway.
+
+## 3. Progress reporting
+
+FUSE itself is not a great UI channel, so provide multiple progress paths.
+
+### 3.1 Terminal progress
+
+When a command blocks on a read, expose progress in:
+
+```text
+/mnt/tapelib/jobs/active/<job_id>.json
+```
+
+The JSON should include:
+
+```json
+{
+  "state": "loading_tape",
+  "message": "Waiting for changer",
+  "queue_position": 2,
+  "jobs_ahead": ["job-123", "job-124"],
+  "required_tape": "TAPE001",
+  "assigned_drive": "drive0",
+  "progress_percent": 18
+}
+```
+
+Current implemented status slice:
+
+```text
+tapelib job-status <job_id>
+/mnt/tapelib/jobs/<bucket>/<job_id>.json
+```
+
+These derive progress from the durable job journal and never advance the queue
+or touch hardware.
+
+### 3.2 Desktop notification
+
+Add optional notification support:
+
+```text
+notify-send "Tape job queued" "TAPE001/foo.zip is waiting for drive0"
+notify-send "Tape loading" "TAPE001 is being loaded"
+notify-send "Retrieve ready" "foo.zip is available"
+```
+
+Make this optional in Nix config.
+
+### 3.3 WebUI progress
+
+The WebUI should show:
+
+```text
+active jobs
+waiting file handles
+queue position
+assigned drive
+required tape
+current tape movement
+current LTFS mount
+estimated bytes copied
+cancel button for queued jobs
+safe-cancel button for active jobs
+```
+
+## 4. Thumbnail strategy
+
+GUI file managers may try to open files to generate thumbnails. That must not
+trigger tape loads.
+
+Implement thumbnail isolation:
+
+```text
+/mnt/tapelib/thumbnails/by-filetype/
+  zip.png
+  iso.png
+  folder.png
+  unknown.png
+
+/mnt/tapelib/thumbnails/cached/
+  cached thumbnails only
+```
+
+Rules:
+
+```text
+browse/:
+  never allows content reads for thumbnailing
+
+readable/:
+  content reads are allowed, but thumbnailers should be discouraged
+
+xattrs if possible:
+  expose metadata indicating offline/archive-backed file
+
+future:
+  support a local thumbnail cache generated during ingest/indexing
+```
+
+Investigate whether the Linux desktop/file manager can be guided with:
+
+```text
+custom icons
+extended attributes
+MIME hints
+GVFS metadata
+thumbnailer blacklist
+```
+
+Do not let thumbnail generation trigger robot movement by default.
+
+## 5. Queue and two-drive scheduling
+
+Hardware:
+
+```text
+changer:
+  one shared robot
+
+drive0:
+  LTO-5
+
+drive1:
+  LTO-5
+```
+
+Locks:
+
+```text
+changer_lock:
+  only one tape move at a time
+
+drive_lock:drive0:
+  one mounted/active tape per drive
+
+drive_lock:drive1:
+  one mounted/active tape per drive
+
+tape_lock:TAPE001:
+  prevents one tape being assigned to both drives
+
+slot_lock:<slot_id>:
+  prevents bad assumptions during moves
+
+source_cache_lock:<sourceToCache>:
+  prevents oversaturating slow source paths
+```
+
+### 5.1 Prefer already-loaded tapes
+
+Scheduler priority:
+
+```text
+1. Jobs for tapes already mounted in a drive.
+2. Jobs for tapes already loaded but not mounted.
+3. Jobs that use the same tape as current drive workload.
+4. Jobs whose sourceToCache is not currently saturated.
+5. Oldest/highest priority queued job.
+```
+
+For a loaded tape:
+
+```text
+If drive0 has TAPE001 mounted:
+  first do more TAPE001 writes from same source
+  then TAPE001 writes from other sources
+  then TAPE001 reads
+  then unload only when another tape is needed
+```
+
+### 5.2 Two-drive awareness
+
+The scheduler must know:
+
+```text
+drive0 current tape
+drive1 current tape
+drive0 current sourceToCache
+drive1 current sourceToCache
+which tapes are in transit
+which tapes are reserved
+which slots are empty
+```
+
+Never assign a tape to one drive if it is:
+
+```text
+already loaded in the other drive
+being moved
+reserved by an active job
+```
+
+### 5.3 Source throttling
+
+For slow sources like NFS, define:
+
+```text
+sourceToCache
+```
+
+Examples:
+
+```text
+sourceToCache = "nfs:/srv/games"
+sourceToCache = "local:/run/media/user1/cache"
+sourceToCache = "disk:/home/example/games"
+```
+
+Scheduling rule:
+
+```text
+If drive0 is already caching from nfs:/srv/games:
+  drive1 should avoid selecting another job with sourceToCache = nfs:/srv/games
+```
+
+This avoids two tape drives fighting over a source that cannot feed even one
+drive fast enough.
+
+## 6. Tape retention in drives
+
+When a read finishes:
+
+```text
+Keep tape mounted/in drive for a grace period.
+```
+
+Suggested config:
+
+```text
+keepMountedAfterRead = "10m"
+keepMountedAfterWrite = "5m"
+```
+
+Unload only when:
+
+```text
+another job needs that drive
+another tape must be loaded
+operator requests unload
+shutdown/pause mode begins
+idle timeout expires
+```
+
+This improves multi-file reads from the same tape.
+
+## 7. Slot conflict and hot-seat handling
+
+The robot may fail if the expected source/destination slot is not actually
+empty or contains another tape.
+
+Implement a slot solver:
+
+```text
+When unloading a tape:
+  prefer original slot
+  if original slot unavailable:
+    find known empty slot
+  if no empty slot:
+    enter needs_operator or hot-seat mode
+```
+
+With two drives and limited empty slots:
+
+```text
+If both drives contain tapes and only one open slot exists:
+  system may need operator intervention
+  do not fail jobs
+  pause as needs_operator
+  show clear message in WebUI and /mnt/tapelib/system/status.json
+```
+
+State:
+
+```text
+needs_operator:
+  reason = "No empty slot available for unload"
+  loaded_tapes = ["TAPE001", "TAPE002"]
+  required_action = "Free one slot or select a tape to export"
+```
+
+## 8. Cache-backed writes
+
+Cache root:
+
+```text
+/run/media/user1/cache/tapelib/
+```
+
+Suggested layout:
+
+```text
+/run/media/user1/cache/tapelib/
+  writes/
+    open/
+    ready/
+    active/
+    complete/
+    failed/
+
+  reads/
+    active/
+    complete/
+
+  manifests/
+  locks/
+  temp/
+```
+
+### 8.1 inbox-cached
+
+Path:
+
+```text
+/mnt/tapelib/write/inbox-cached/
+```
+
+Behavior:
+
+```text
+1. User copies files here.
+2. FUSE writes to local cache.
+3. On file close, calculate checksum.
+4. Mark cache entry as ready.
+5. Planner assigns ready entries to tape jobs.
+```
+
+### 8.2 inbox-direct
+
+Path:
+
+```text
+/mnt/tapelib/write/inbox-direct/
+```
+
+Use for files that are already in a safe fast source.
+
+But still require:
+
+```text
+preflight size check
+checksum
+planned tape target
+queue ownership
+capacity check
+```
+
+Do not let arbitrary direct writes stream from slow NFS to LTFS.
+
+## 9. Capacity protection
+
+Before accepting a write into an inbox, check:
+
+```text
+cache free space
+configured cache max
+reserved cache free space
+target tape free space
+queued bytes already assigned to target tape
+currently staged bytes
+```
+
+Reject early if impossible.
+
+Example rule:
+
+```text
+available_tape_bytes =
+  tape.free_bytes
+  - queued_bytes_for_tape
+  - safety_margin_bytes
+```
+
+If incoming file or folder is too large:
+
+```text
+Reject with ENOSPC
+Create clear error in jobs/failed or system/status.json
+Notify WebUI
+```
+
+For folder copies, estimate as files arrive and stop before overflowing cache.
+
+## 10. Read cache
+
+Reads may also use cache:
+
+```text
+/mnt/tapelib/readable/TAPE001/foo.zip
+  -> retrieve to /run/media/user1/cache/tapelib/reads/complete/<cache_key>
+  -> serve from cache
+```
+
+Benefits:
+
+```text
+same file can be copied multiple times without reloading tape
+FUSE read calls do not hold tape forever
+cancelled reads can complete safely and remain cached
+```
+
+Cache policy:
+
+```text
+max read cache size
+LRU cleanup
+pin active jobs
+do not delete open files
+```
+
+## 11. NixOS rebuild and service safety
+
+The machine may be rebuilt at any time. Protect active tape operations.
+
+Add a clean pause mode:
+
+```bash
+tapelibctl pause --safe
+```
+
+Behavior:
+
+```text
+1. Stop accepting new hardware jobs.
+2. Let active risky operations reach safe point.
+3. Finish current tape movement.
+4. Finish current LTFS write or stop before next file.
+5. Flush DB journal.
+6. Mark daemon as paused.
+7. Allow system rebuild/restart.
+```
+
+Systemd integration:
+
+```text
+ExecStopPre = tapelibctl pause --safe --timeout 300
+```
+
+On service start:
+
+```text
+1. Inspect DB active jobs.
+2. Inspect actual changer state.
+3. Inspect actual drive state.
+4. Inspect mounted LTFS paths.
+5. Reconcile before running queue.
+```
+
+Do not unload tapes blindly on restart.
+
+## 12. Backup system separation
+
+Keep `tapelib` generic.
+
+`tapelib` provides:
+
+```text
+inventory
+catalog
+mount/read/write jobs
+cache
+queue
+drive/changer control
+FUSE filesystem
+WebUI status
+```
+
+The game backup planner is separate:
+
+```text
+game-archive-backup
+  scans game source paths
+  creates backup units
+  asks tapelib for tape capacity
+  creates tapelib write jobs
+```
+
+The backup tool must interact through stable interfaces:
+
+```text
+tapelib API
+tapelib CLI
+tapelib job DB API, if intentionally exposed
+```
+
+Do not bake game-specific backup logic into low-level FUSE or hardware code.
+
+## 13. Game archive backup requirements
+
+Sources:
+
+```text
+/home/example/games/incoming
+/home/example/games/_source-archives
+```
+
+or `/srv` equivalents.
+
+Do not use:
+
+```text
+/home/example/games/roms
+```
+
+as the main archive source.
+
+Goal:
+
+```text
+Archive individually zipped game files.
+Collapse incoming and _source-archives into one logical archive namespace.
+```
+
+Atomic units:
+
+```text
+wishlist shared search folders
+best-50-by-console subfolders
+```
+
+Example:
+
+```text
+/home/example/games/_source-archives/wishlist/shared/rabbids
+  -> /games/wishlist/shared/rabbids
+```
+
+Packing behavior:
+
+```text
+fill current tape until next atomic unit does not fit
+move to next selected tape
+only split an atomic unit if it is larger than one tape
+```
+
+Need support for:
+
+```text
+ordered multi-tape selection
+backup larger than one tape
+piecemeal retrieve
+bulk retrieve
+per-tape manifest
+job-level manifest copied to every participating tape
+```
+
+## 14. WebUI fixes and validation
+
+Observed issues to test/fix:
+
+```text
+/api/auth/me returns 401 before login
+Sources tab takes forever to load
+Create-new-job step two freezes
+backup planner cannot yet handle jobs larger than one tape
+current data source model does not match the desired game archive source model
+```
+
+Manual tests:
+
+```text
+login
+direct navigation to /settings?tab=Sources
+Sources tab load time
+create-new-job step one
+create-new-job step two
+large multi-tape backup planning
+WebSocket reconnect
+job progress display
+cancel queued job
+safe-cancel active job
+```
+
+Automated tests:
+
+```text
+unit tests:
+  capacity calculation
+  tape packing
+  sourceToCache scheduling
+  duplicate job coalescing
+  cancellation behavior
+  slot solver
+
+integration tests:
+  fake TL2000 inventory
+  fake two-drive scheduling
+  fake LTFS mount paths
+  interrupted daemon restart
+  Nix service restart safety
+
+WebUI tests:
+  Sources tab loads
+  create-job wizard does not freeze
+  multi-tape job preview renders
+```
+
+## 15. Implementation phases
+
+### Phase 1: lock down current read-only FUSE
+
+Deliver:
+
+```text
+/mnt/tapelib/browse works
+/mnt/tapelib/system works
+/mnt/tapelib/jobs works
+no browsing operation loads tapes
+```
+
+Acceptance:
+
+```text
+find /mnt/tapelib/browse -name "*.zip"
+```
+
+must not touch the changer or drives.
+
+### Phase 2: add durable queue runner
+
+Deliver:
+
+```text
+background worker consumes jobs
+jobs are journaled
+jobs survive restart
+jobs can be cancelled if not active
+mounted-only retrieve execution can copy from already-mounted LTFS paths
+job-status snapshots expose retrieve progress from the journal
+```
+
+Acceptance:
+
+```text
+tapelib retrieve --manifest wanted.json --dest /home/example/retrieved
+tapelib run-queue --once
+tapelib job-status <job_id>
+tapelib status
+tapelib cancel <job_id>
+```
+
+### Phase 3: implement readable path
+
+Deliver:
+
+```text
+/mnt/tapelib/readable/TAPE001/foo.zip
+```
+
+Opening it should create/join a read job.
+
+Acceptance:
+
+```bash
+cp /mnt/tapelib/readable/TAPE001/foo.zip /tmp/foo.zip
+```
+
+should block, show job progress, load tape, retrieve/cache file, then complete.
+
+### Phase 4: add read cache
+
+Deliver:
+
+```text
+retrieved files served from cache
+duplicate reads join or reuse cache
+cache cleanup respects active handles
+```
+
+### Phase 5: add writable inbox-cached
+
+Deliver:
+
+```text
+/mnt/tapelib/write/inbox-cached/
+```
+
+Acceptance:
+
+```bash
+cp foo.zip /mnt/tapelib/write/inbox-cached/
+```
+
+must write to local cache, checksum on close, and create a ready cache entry.
+
+### Phase 6: implement capacity checks
+
+Deliver:
+
+```text
+reject too-large writes early
+track queued bytes per tape
+track cache space
+track safety margins
+```
+
+### Phase 7: implement two-drive scheduler
+
+Deliver:
+
+```text
+prefer already loaded tapes
+support two concurrent drive operations
+serialize changer movements
+avoid sourceToCache conflicts
+handle slot conflicts
+```
+
+### Phase 8: implement cache-to-LTFS writer
+
+Deliver:
+
+```text
+write ready cached batches to selected LTFS tape
+verify checksums
+update catalog
+write manifests
+```
+
+### Phase 9: implement game archive backup tool
+
+Deliver:
+
+```text
+scan incoming + _source-archives
+collapse logical namespace
+detect atomic search units
+plan across ordered selected tapes
+submit tapelib write jobs
+```
+
+### Phase 10: WebUI integration
+
+Deliver:
+
+```text
+queue view
+progress view
+operator intervention view
+source scanner
+multi-tape planner
+cancel/safe-cancel controls
+thumbnail/file-browser guidance
+```
+
+## 16. Acceptance checklist
+
+The first serious version is done when:
+
+```text
+1. /mnt/tapelib/browse can be searched without loading tapes.
+2. /mnt/tapelib/readable supports cp from an offline tape path.
+3. Read operations show queue/progress state.
+4. Ctrl-C cancels queued jobs safely.
+5. Active tape moves are never interrupted unsafely.
+6. Tapes remain mounted briefly for more reads.
+7. Two LTO-5 drives are scheduled intelligently.
+8. Changer operations are serialized.
+9. Slot conflicts enter needs_operator instead of hard failing.
+10. /mnt/tapelib/write/inbox-cached writes to local cache.
+11. Cache capacity is respected.
+12. Tape capacity plus queued bytes is checked before writes.
+13. Slow NFS sources are not streamed directly to tape.
+14. Nix rebuild/service restart cannot corrupt active tape work.
+15. Game archive backup can span multiple selected tapes.
+16. Each tape remains valid standalone LTFS media.
+17. WebUI Sources and create-job flow are manually tested and fixed.
+```
+
+## Core rule
+
+Build the illusion carefully:
+
+```text
+The user sees one nice filesystem.
+
+Internally:
+  browsing is DB-only
+  reading is queue-backed
+  writing is cache-backed
+  tape movement is serialized
+  drives are scheduled independently
+  every risky action is journaled
+  every tape stays self-contained
+```

@@ -1,0 +1,35 @@
+- programs to add:
+    - [ ] GNS3
+        - network simulator so we can test new configs\
+        - good for the desktops/workstatiosn
+    - [ ] containerlab
+        - better headless network tester for design validation
+
+    - [x] yggdrasil
+        - decentralized ipv6 self healing network that would make accessing any of my machines a peice of cake without needing to mess with tailscales  exit nodes stuff, basiclay masivly improve internal traffic
+        - tailscale could just be depracted to allowing traffic to cross disconencted networks
+        - would need to be kept on most recent
+        - notes in /work/flake/plans/yggdrasil.md
+        - would want a private, and then public one on desktops/ certain devices
+    - [ ] Radicle
+        - accessed over ygdrasil, decentralized code host
+        - 
+    - [ ] nostr - strfry
+        - simple distributed note transfer
+    - [ ] Briar
+        - Offline / crisis messaging
+    - Federated chat: Matrix, XMPP
+    - [ ] opencanary
+        - network honey pot
+
+
+
+- reinforce cyber sec and firewalls
+- get easy way to push all other machines to update to most recent or specific commit of config
+
+
+
+- more network approaches:
+    - [ ] cdjns
+    - [ ] libremesh
+    - [ ] I2P
