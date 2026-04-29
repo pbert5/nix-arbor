@@ -150,3 +150,37 @@ def test_waiting_job_has_progress_snapshot_file(tmp_path):
     assert payload["job_id"] == job["id"]
     assert payload["bucket"] == "waiting"
     assert payload["blocked_tapes"] == ["TAPE001L5"]
+
+
+def test_bundled_members_are_previewed_in_browse_and_readable(tmp_path):
+    config = _config(tmp_path)
+    _seed_catalog(config)
+    with closing(db.connect(config)) as connection:
+        with connection:
+            tape_id = connection.execute(
+                "SELECT id FROM tapes WHERE barcode = 'TAPE001L5'"
+            ).fetchone()["id"]
+            db.upsert_bundle_members_with_connection(
+                connection,
+                tape_id,
+                "games/_tapelib-bundles/bundle-0001.tar",
+                [
+                    {
+                        "member_path": "games/bundled/foo.txt",
+                        "size_bytes": 42,
+                        "checksum_sha256": "abc123",
+                    }
+                ],
+                indexed_at="2026-04-29T00:00:00Z",
+            )
+
+    fs = fuse_fs.TapelibFuse(config)
+
+    assert "foo.txt" in fs.readdir("/browse/TAPE001L5/games/bundled", None)
+    assert fs.getattr("/browse/TAPE001L5/games/bundled/foo.txt")["st_size"] == 42
+
+    readable = json.loads(
+        fs.read("/readable/TAPE001L5/games/bundled/foo.txt", 65536, 0, None).decode("utf-8")
+    )
+    assert readable["error"] == "bundled_retrieve_not_implemented"
+    assert readable["bundle_path"] == "games/_tapelib-bundles/bundle-0001.tar"

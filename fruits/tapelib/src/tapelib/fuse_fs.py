@@ -208,6 +208,13 @@ class TapelibFuse(Operations):
             _add_parent_dirs(tree, browse_path)
             _add_parent_dirs(tree, readable_path)
 
+        for bundle_row in db.list_bundle_members(self.config):
+            tape = bundle_row["tape_barcode"]
+            browse_path = f"/browse/{tape}/{_clean_catalog_path(bundle_row['member_path'])}"
+            readable_path = f"/readable/{tape}/{_clean_catalog_path(bundle_row['member_path'])}"
+            _add_parent_dirs(tree, browse_path)
+            _add_parent_dirs(tree, readable_path)
+
         for drive in db.list_drives(self.config):
             tree["/system/drives"].add(f"{drive['id']}.json")
 
@@ -289,6 +296,24 @@ class TapelibFuse(Operations):
                     "message": "Opening this readable file will become a queued retrieve job in a later milestone.",
                     "tape": tape,
                     "path": clean_path,
+                    "size_bytes": size,
+                }
+            )
+
+        for bundle_row in db.list_bundle_members(self.config):
+            tape = bundle_row["tape_barcode"]
+            clean_path = _clean_catalog_path(bundle_row["member_path"])
+            size = int(bundle_row["size_bytes"] or 0)
+            files[f"/browse/{tape}/{clean_path}"] = CatalogFile(
+                tape=tape, path=clean_path, size=size
+            )
+            files[f"/readable/{tape}/{clean_path}"] = _json_file(
+                {
+                    "error": "bundled_retrieve_not_implemented",
+                    "message": "This catalog entry is previewed from a tar bundle on tape; direct queued extraction is not implemented yet.",
+                    "tape": tape,
+                    "path": clean_path,
+                    "bundle_path": bundle_row["bundle_path"],
                     "size_bytes": size,
                 }
             )

@@ -1,256 +1,140 @@
-# nix-arbor Flake
+# Easy Dendritic NixOS Flake
 
-An **inventory-driven NixOS flake architecture** for assembling multi-host systems from reusable modules, scoped facts, validation, and generated deployment outputs.
+A public, sanitized version of my **dendritic NixOS flake** for building real multi-machine systems without turning `flake.nix` into a giant hand-wired control file.
 
-This started as an attempt to organize my NixOS systems around reusable feature branches. It turned into something more useful: a small assembly system where the root flake stays tiny, inventory is the source of truth, reusable modules stay reusable, and the library layer builds the final machines.
+The basic idea is simple:
 
-The basic idea:
+- hosts describe what they are
+- reusable capability branches describe what they provide
+- metadata describes what each branch needs or conflicts with
+- the library resolves the final system composition
+- validation catches bad combinations early
+- deployment surfaces are generated from the same inventory
 
-```text
-inventory = what exists and what each host wants
-dendrites = reusable NixOS behavior
-fruits    = named deployable outcomes
-homes     = reusable Home Manager behavior
-hosts     = machine-specific exceptions
-lib       = assembly, validation, dependency resolution, and output generation
-```
+So instead of every host manually importing every module, the host says something closer to:
 
-A host does not need to manually import every piece it depends on.
+> I am this kind of machine.  
+> I need these capabilities.  
+> I have these facts.  
+> I belong to these networks.  
+> I expose these services.
 
-Instead, a host says:
+Then the flake assembles the actual NixOS and Home Manager outputs.
 
-```text
-I am this kind of machine.
-I have these users.
-I belong to these networks.
-I need these capabilities.
-Here are my hardware facts.
-Here are my deployment hints.
-```
-
-Then the flake assembles the final NixOS and Home Manager outputs from that model.
-
-This is not a polished framework. It is a real architecture extracted from my own homelab / workstation setup, cleaned up into a public mirror.
+This is not meant to be a perfect toy template. It is a real architecture extracted from my own homelab / workstation setup, with private details removed.
 
 ## Why This Exists
 
-A lot of multi-machine NixOS flakes start clean, then slowly collapse into a junk drawer.
+A lot of NixOS flakes start clean and then slowly become a pile of manual imports.
 
-At first, the root `flake.nix` is readable. Then you add:
+You add one workstation, then a server, then a storage machine, then a weird laptop, then a few shared users, then Home Manager, then deployment tooling, then overlay networking, and suddenly the root flake is where everything goes to die.
 
-- another host
-- Home Manager
-- shared users
-- roles
-- storage
-- private networking
-- deployment tooling
-- host-specific hardware weirdness
-- one-off service exceptions
+I wanted a structure where the repo could keep growing without everything becoming one giant config blob.
 
-Eventually the root flake starts carrying too much meaning.
+This repo is my answer to that problem.
 
-This repo tries to avoid that by separating the parts that usually get mixed together.
+## The Core Shape
 
-## The Main Separation
-
-nix-arbor separates four things:
-
-### 1. Facts
-
-Facts are things that are true about the world.
-
-Examples:
-
-- hostnames
-- users
-- roles
-- networks
-- ports
-- storage devices
-- ZFS pool names
-- tape device paths
-- deployment targets
-- bootstrap hints
-
-These live in `inventory/`.
-
-### 2. Behavior
-
-Behavior is reusable NixOS or Home Manager code.
-
-Examples:
-
-- base system setup
-- desktop behavior
-- ZFS support
-- tape support
-- private overlay networking
-- gaming/workstation setup
-- service configuration
-
-These live in `dendrites/`, `homes/`, and `fruits/`.
-
-### 3. Assembly
-
-Assembly is the logic that turns facts plus behavior into final systems.
-
-This lives in `lib/`.
-
-The assembly layer handles things like:
-
-- registry discovery
-- inventory normalization
-- dependency resolution
-- host module assembly
-- Home Manager assembly
-- validation
-- generated deployment outputs
-
-### 4. Overrides
-
-Overrides are the weird machine-specific exceptions that should not pollute reusable modules.
-
-These live in `hosts/`.
-
-A reusable feature should become a dendrite. A weird one-machine fix should become a host override.
-
-## Repository Shape
+The repo is organized around a few main ideas.
 
 ```text
-.
-├── flake.nix
-├── inventory/
-│   ├── hosts.nix
-│   ├── users.nix
-│   ├── roles.nix
-│   ├── networks.nix
-│   └── ...
-├── lib/
-│   ├── assembly.nix
-│   ├── registries.nix
-│   ├── validation.nix
-│   ├── deployments.nix
-│   └── ...
-├── modules/
-│   └── flake-parts/
-├── dendrites/
-├── fruits/
-├── homes/
-├── hosts/
-├── checks/
-└── docs/
+inventory/  = what exists
+dendrites/  = reusable NixOS capability branches
+leaves/     = small internal modules owned by dendrites
+fruits/     = named deployable outcomes or services
+homes/      = reusable Home Manager branches
+hosts/      = machine-specific escape hatches
+lib/        = the resolver, validator, and assembly layer
 ```
 
-## Core Concepts
+The important part is `lib/`.
 
-### Inventory
+The folder layout is not the whole trick. The trick is that the flake has an assembly layer that can read inventory, resolve required pieces, validate the combination, and generate the final outputs.
 
-`inventory/` is the source of truth.
+## What Makes It Different
 
-It describes what exists, what hosts want, what networks exist, which users exist, which facts are true, and what deployment hints are available.
+### Tiny root flake
 
-The point is not to make inventory tiny. The point is to put information where it belongs.
+The root `flake.nix` stays intentionally small.
 
-A host can be data-heavy as long as it stays behavior-light.
+It defines inputs, then routes into `flake-parts` and the module tree. It is not where every host, user, service, and deployment target gets manually wired together.
+
+That means the root stays readable even as the system grows.
+
+### Passive registries
+
+The flake builds registries for:
+
+- `dendrites/`
+- `fruits/`
+- `homes/`
+- `hosts/`
+
+These registries make first-class components discoverable without making every file automatically active.
+
+That distinction matters.
+
+A thing can exist in the tree without being selected by a host. Discovery is not the same thing as activation.
 
 ### Dendrites
 
-`dendrites/` are reusable NixOS capability branches.
+A dendrite is a reusable capability branch.
 
-They are intentionally close to normal NixOS modules. The difference is that they follow a small convention so they can be discovered, described, selected, validated, and assembled.
+Examples might be:
 
-Examples:
+- `base`
+- `desktop`
+- `storage`
+- `storage/zfs`
+- `storage/tape`
+- `network/yggdrasil-private`
+- `system/workstation/gaming`
 
-```text
-dendrites/base/
-dendrites/desktop/
-dendrites/storage/
-dendrites/storage/dendrites/zfs/
-dendrites/storage/dendrites/tape/
-dendrites/network/dendrites/yggdrasil-private/
-```
+A host can select dendrites directly. A dendrite can also require other dendrites.
 
-A dendrite should define reusable behavior. It should not need to know every host that may use it.
+This lets you build systems from capability names instead of repeatedly remembering the full internal module stack.
 
 ### Leaves
 
-Leaves are small internal modules owned by a dendrite.
+Leaves are smaller implementation modules inside a dendrite.
 
-They are implementation details, not global selections.
+They are usually not selected directly by hosts. They are the branch's internal pieces.
 
-This keeps a branch organized without making every helper file part of the public assembly surface.
+This keeps reusable branches organized without turning every tiny file into a global component.
 
 ### Fruits
 
-`fruits/` are named deployable outcomes.
+A fruit is a named deployable outcome.
 
-A fruit is a service, appliance, persistent app, or higher-level thing that a host can run.
+That can be a service, appliance, persistent app, or something that represents an actual thing you want a machine to run.
 
-A fruit can require dendrites. For example, a tape-management fruit can require tape-related storage behavior.
+The distinction is useful:
 
-### Homes
+- dendrite: capability
+- leaf: implementation detail
+- fruit: deployed outcome
 
-`homes/` contains reusable Home Manager behavior.
+### Metadata-aware composition
 
-This lets users and roles select Home Manager pieces through inventory instead of wiring everything by hand.
+Dendrites and fruits have `meta.nix`.
 
-### Hosts
+Metadata can describe:
 
-`hosts/` contains host-specific overrides.
+- what a component provides
+- what it requires
+- what it conflicts with
+- what host classes it supports
+- what dendrites a fruit needs
 
-This is where machine-specific weirdness goes when it should not become a reusable module.
+The metadata does not replace the real module body. It describes the component so the assembly layer can reason about it.
 
-## What Makes This Useful
+That is where the "self-assembling" part comes from.
 
-### The root flake stays small
+### Validation before deployment
 
-The root `flake.nix` is not the brain of the system.
+The flake validates the composition instead of letting mistakes show up later as confusing build or deployment failures.
 
-It mainly defines inputs and routes into `flake-parts`.
-
-The actual meaning of the system lives in inventory, reusable behavior, and the library layer.
-
-### Information has controlled scope
-
-The repo tries hard to avoid redundant or misplaced information.
-
-A service module should not need to know every host IP.
-
-A host should not need to manually import every transitive dependency.
-
-Network facts should live with network inventory.
-
-Host facts should live with host inventory.
-
-Reusable behavior should live in reusable modules.
-
-The library stitches the pieces together.
-
-### Adding behavior is straightforward
-
-The usual flow is:
-
-```text
-1. add a new dendrite
-2. describe it with metadata
-3. select it in inventory for the hosts that need it
-4. build
-```
-
-You do not need to edit the root flake every time you add a new reusable capability.
-
-### The library resolves composition
-
-The library layer can resolve selected dendrites, fruits, required dependencies, users, Home Manager modules, host overrides, and generated outputs.
-
-That means host definitions can stay focused on intent and facts instead of implementation details.
-
-### Validation catches structural mistakes
-
-The flake validates the model before deployment.
-
-Current validation checks include things like:
+Current validation covers things like:
 
 - unknown users
 - unknown roles
@@ -258,17 +142,15 @@ Current validation checks include things like:
 - duplicate ports
 - invalid tape managers
 - conflicting dendrites
-- missing ZFS facts
-- missing tape device facts
+- missing required ZFS facts
+- missing required tape device facts
 - missing required fruits
-- invalid private overlay network references
+- invalid private Yggdrasil peer references
 - invalid deployment/bootstrap references
 
-This is one of the most important parts of the architecture.
+This is one of the parts I care about most. I want the flake to fail early and explain what is structurally wrong.
 
-The point is to fail early with a useful error instead of letting mistakes turn into confusing deployment failures.
-
-### Deployment outputs come from the same model
+### Inventory-generated deployment surfaces
 
 The same inventory can generate:
 
@@ -277,53 +159,66 @@ The same inventory can generate:
 - Colmena output
 - deploy-rs output
 
-That keeps deployment metadata close to the host model instead of creating a second hand-maintained source of truth.
+So deployment information does not need to live in a totally separate hand-written config that slowly drifts away from the actual host model.
+
+## Mental Model
+
+This repo is trying to make a NixOS config act less like a pile of files and more like a small system model.
+
+A host definition should mostly answer questions like:
+
+```text
+What kind of host is this?
+What users exist on it?
+What networks is it part of?
+What reusable capabilities does it need?
+What physical facts does it have?
+What services or deployable outcomes should exist?
+What host-specific weirdness still needs an override?
+```
+
+Then the library turns that into a real machine configuration.
+
+## Example Build Flow
+
+When a host is built, the flow is roughly:
+
+1. `flake.nix` loads the flake-parts modules
+2. registries are built from `dendrites/`, `fruits/`, `homes/`, and `hosts/`
+3. inventory is normalized
+4. selected fruits are resolved
+5. required dendrites are added
+6. conflicts and missing facts are checked
+7. users and Home Manager modules are attached
+8. host-specific overrides are applied
+9. the final module list is passed to `nixosSystem`
+
+The host does not need to manually know every internal module it depends on.
 
 ## What This Is Good For
 
-This pattern is useful for:
+This pattern is useful if you are managing:
 
-- multi-host NixOS setups
-- homelabs
+- multiple NixOS machines
+- a homelab
 - workstations plus servers
-- storage-heavy systems
+- reusable machine roles
+- shared Home Manager configs
 - private overlay networks
 - generated deployment targets
-- shared Home Manager setups
-- systems with a lot of hardware-specific facts
-- configs that need to grow without becoming unreadable
+- storage-heavy systems
+- weird hardware that still needs clean structure
+- systems where facts, policy, and behavior should not all be mixed together
 
-It is especially useful when you want many hosts to share behavior without copying the same information everywhere.
+It is especially useful when the config is expected to keep growing.
 
 ## What This Is Not
 
-This is not a beginner NixOS template.
+This is not a beginner NixOS starter template.
 
-It is not a polished framework.
+It is also not a framework that hides Nix from you.
 
-It is not a secrets-management solution.
-
-The private repo this came from currently has ugly secret handling because I was focused first on the hardware, tape integration, deployment surfaces, and assembly model. That part needs to be cleaned up properly with a real secrets system.
-
-This public repo is mainly about the architecture.
-
-## Naming Note
-
-This repo still uses the word `dendrites` for reusable capability branches because that language fits the tree model well.
-
-It should not be treated as a strict implementation of any existing public “dendritic NixOS” pattern.
-
-A better description is:
-
-```text
-inventory-driven NixOS host assembly
-```
-
-or:
-
-```text
-a tree-shaped NixOS flake architecture with scoped inventory and reusable behavior branches
-```
+It is a pattern for people who already want a serious multi-machine flake and do not want the root file to become the dumping ground for every decision.
 
 ## Public Mirror Notes
 
@@ -335,18 +230,30 @@ That means:
 - sensitive deployment details are removed or replaced
 - some example values are synthetic
 - private-only experiments may be omitted
-- some rough edges are still visible because this comes from a real working setup
+- the public repo is meant to show the architecture, not expose my actual infrastructure
 
-It is currently running on my own hardware across two machines, and I am expanding it further.
+Some pieces are polished. Some pieces are experimental. Some pieces exist because real hardware needed them.
+
+The main thing worth sharing is the shape.
+
+```text
+small root
+structured inventory
+passive registries
+metadata-described capabilities
+library-driven assembly
+early validation
+generated deployment surfaces
+```
 
 ## Start Here
 
-Read these first:
+Good entry points:
 
 - [`docs/architecture.md`](docs/architecture.md)
 - [`docs/dendritic-guide.md`](docs/dendritic-guide.md)
 - [`docs/authoring-guide.md`](docs/authoring-guide.md)
-- [`examples/demo-inventory/README.md`](examples/demo-inventory/README.md)
+- [`inventory/README.md`](inventory/README.md)
 
 Quick commands:
 
@@ -357,20 +264,6 @@ nix flake check
 
 ## Status
 
-Active, practical, and still evolving.
+This is active and practical, not frozen and pristine.
 
-Some of it is clean. Some of it is experimental. Some of it is there because real machines needed it.
-
-The main value is the structure:
-
-```text
-tiny root flake
-inventory as source of truth
-reusable behavior branches
-assembly logic in lib
-early validation
-generated deployment surfaces
-controlled information scope
-```
-
-That is the part worth sharing.
+It is built around a real multi-machine setup and then cleaned up for public viewing. The architecture is the main product here: a way to let a NixOS flake grow without losing track of what each piece is supposed to mean.

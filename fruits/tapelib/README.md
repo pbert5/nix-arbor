@@ -43,6 +43,8 @@ Implemented in this repo change:
   `needs_operator`
 - a read-only FUSE browser surface at `/mnt/tapelib` with `browse`,
   `readable`, `write`, `thumbnails`, `jobs`, and `system` top-level folders
+- opt-in small-file tar bundling for archive writes, with bundled-member preview
+  metadata exposed back through the catalog and FUSE browse surface
 - manifest-driven `tapelib retrieve` job creation for copy-out planning into a
   chosen local destination
 - explicit mounted-only retrieve execution through `tapelib run-queue --once`
@@ -93,6 +95,12 @@ file-manager browsing: `browse` listings come from SQLite/configured tape names,
 and opening archived data files from `browse` is rejected instead of loading a
 tape. `readable` paths currently return placeholder metadata until the retrieve
 queue runner exists.
+
+When small-file bundling is enabled, tapelib writes a tar archive plus a bundle
+member manifest onto LTFS and stores the bundled member list in SQLite. The
+FUSE `browse` tree then previews those member paths as synthetic catalog
+entries, while `readable` returns a structured note pointing at the backing tar
+bundle until queued extraction support exists.
 
 `tapelib retrieve --manifest wanted.json --dest /some/local/path` creates or
 joins a queued `retrieve_files` job. This is a copy-out operation: it preserves
@@ -177,6 +185,22 @@ writable, committing closed files into cache entries, and then letting the job
 runner write complete batches to LTFS. That keeps the file-browser experience
 simple while avoiding direct slow-source-to-tape streaming and half-written tape
 state.
+
+## Small-file tar bundling
+
+Archive writes can optionally bundle many tiny files into tar archives before
+they are flushed to LTFS. This reduces small-file write churn on the tape while
+keeping a preview of the bundled members available through the tapelib catalog.
+
+Enable it through the NixOS module:
+
+```nix
+services.tapelib.archive.smallFileBundleMaxBytes = "8M";
+services.tapelib.archive.smallFileBundleTargetBytes = "256M";
+```
+
+With the default `smallFileBundleMaxBytes = "0"`, bundling is disabled and
+tapelib keeps writing files directly to LTFS as before.
 
 ## Library Inventory Manifests
 

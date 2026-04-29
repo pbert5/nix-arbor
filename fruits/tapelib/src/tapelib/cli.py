@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import posixpath
@@ -37,6 +38,15 @@ def _default_config_path() -> Path:
     return Path(os.environ.get("TAPELIB_CONFIG_PATH", "/etc/tapelib/config.json"))
 
 
+def _parse_size_string(s: str) -> int:
+    """Parse a size string like '50G', '900G', '1T' into bytes."""
+    s = str(s).strip()
+    suffixes = {"K": 1024, "M": 1024**2, "G": 1024**3, "T": 1024**4}
+    if s[-1].upper() in suffixes:
+        return int(float(s[:-1]) * suffixes[s[-1].upper()])
+    return int(s)
+
+
 def _load_config(path: Path) -> dict[str, Any]:
     with path.open("r", encoding="utf-8") as handle:
         return json.load(handle)
@@ -59,6 +69,14 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
         path.chmod(0o660)
     except PermissionError:
         pass
+
+
+def _checksum_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(65536), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _json_arg(value: str | None) -> Any:
@@ -1033,13 +1051,254 @@ def _command_plan_games_backup(args: argparse.Namespace) -> int:
     return 0
 
 
-def _command_cleanup_cache(args: argparse.Namespace) -> int:
+def _command_index_tape(args: argparse.Namespace) -> int:
+    """Walk a mounted LTFS tape and update the file catalog."""
     config = _load_config(Path(args.config))
+    resolved_barcode, resolved_mount, _resolved_drive = _resolve_tape_target(
+        config,
+        args.barcode_or_drive,
+        require_mounted=True,
+    )
+
+    try:
+        result = db.index_tape(config, resolved_barcode, resolved_mount)
+    except ValueError as exc:
+        raise executor.ExecutionError(str(exc)) from exc
+
+    print(json.dumps(result, indent=2, sort_keys=True))
+    return 0
+
+
+def _command_stage_games_backup(args: argparse.Namespace) -> int:
+    """Stage game archive files to the local cache, creating write_archive jobs."""
+    from . import archive as _archive
+
+    config = _load_config(Path(args.config))
+
+    if args.plan_file:
+        plan_path = Path(args.plan_file)
+        if not plan_path.exists():
+            raise executor.ExecutionError(
+                f"Plan file not found: {plan_path}"
+            )
+        try:
+            plan = json.loads(plan_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise executor.ExecutionError(
+                f"Plan file is not valid JSON: {exc}"
+            ) from exc
+    else:
+        plan = _plan_game_backup(config)
+
+    # Optional tape filter — stage only one tape's worth at a time.
+    if getattr(args, "tape", None):
+        tape_filter = args.tape.upper()
+        filtered = [a for a in plan.get("assignments", []) if a["tape"] == tape_filter]
+        if not filtered:
+            raise executor.ExecutionError(
+                f"No assignments found for tape '{tape_filter}' in the plan. "
+                f"Available tapes: {sorted({a['tape'] for a in plan.get('assignments', [])})}"
+            )
+        plan = dict(plan, assignments=filtered)
+
+    # Warn if the plan is likely to exceed available cache space.
+    cache_cfg = config.get("cache", {})
+    cache_path = Path(cache_cfg.get("path", "/run/media/ash/cache/tapelib"))
+    reserved_raw = cache_cfg.get("reservedFreeBytes", 0)
+    reserved = _parse_size_string(reserved_raw) if isinstance(reserved_raw, str) else int(reserved_raw)
+    try:
+        st = os.statvfs(cache_path)
+        free_bytes = st.f_bavail * st.f_frsize - reserved
+        plan_bytes = sum(a.get("size_bytes", 0) for a in plan.get("assignments", []))
+        if plan_bytes > free_bytes:
+            needed_gb = plan_bytes / 1e9
+            free_gb = free_bytes / 1e9
+            import sys as _sys
+            print(
+                f"WARNING: plan needs {needed_gb:.1f} GB but only {free_gb:.1f} GB "
+                f"cache space is available. Use --tape BARCODE to stage one tape at a time.",
+                file=_sys.stderr,
+            )
+    except OSError:
+        pass
+
+    max_staged_bytes = None
+    if getattr(args, "max_staged_bytes", None):
+        max_staged_bytes = _parse_size_string(args.max_staged_bytes)
+
+    try:
+        jobs = _archive.stage_games_archive(
+            config,
+            plan,
+            max_staged_bytes=max_staged_bytes,
+        )
+    except _archive.ArchiveError as exc:
+        raise executor.ExecutionError(str(exc)) from exc
+
+    staged_bytes = sum(
+        int(job.get("required_bytes") or 0)
+        for job in jobs
+    )
     payload = {
-        "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "cache": config.get("cache", {}),
-        "status": "planned-only",
+        "staged_jobs": jobs,
+        "job_count": len(jobs),
+        "staged_bytes": staged_bytes,
+        "message": (
+            "Files staged to cache. Run 'tapelib write-archive --job-id <id>' "
+            "after mounting each target tape read-write. By default this fills the "
+            "currently available cache budget, and write-archive now drains staged "
+            "files incrementally so later stage-games-backup runs can refill the "
+            "next wave without duplicating queued or already written files."
+        ),
     }
+    print(json.dumps(payload, indent=2, sort_keys=True))
+    return 0
+
+
+def _command_write_archive(args: argparse.Namespace) -> int:
+    """Write a staged write_archive job's files to the mounted LTFS tape."""
+    from . import archive as _archive
+
+    config = _load_config(Path(args.config))
+
+    try:
+        job = db.get_job_by_id(config, args.job_id)
+    except KeyError as exc:
+        raise executor.ExecutionError(
+            f"Unknown job id: {args.job_id}"
+        ) from exc
+
+    try:
+        result = _archive.write_staged_archive(config, job, resume=args.resume)
+    except _archive.ArchiveError as exc:
+        raise executor.ExecutionError(str(exc)) from exc
+
+    print(json.dumps(result, indent=2, sort_keys=True))
+    return 0
+
+
+def _command_doctor(args: argparse.Namespace) -> int:
+    """Print a diagnostic report: drives, mounts, locks, active jobs, cache."""
+    config = _load_config(Path(args.config))
+
+    report: dict[str, Any] = {
+        "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "drives": [],
+        "locks": [],
+        "active_jobs": [],
+        "needs_operator_jobs": [],
+        "queued_write_archive_jobs": [],
+        "cache": {},
+        "warnings": [],
+    }
+
+    # Drive and mount state.
+    try:
+        drives = db.list_drives(config)
+        tape_by_id = {
+            t["id"]: t["barcode"]
+            for t in db.list_tapes(config, include_ignored=True)
+            if t.get("id") is not None
+        }
+        for drive in drives:
+            mount_path = drive.get("mount_path")
+            mounted = _is_mounted(mount_path) if mount_path else False
+            loaded_barcode = tape_by_id.get(drive.get("loaded_tape_id"))
+            entry = {
+                "id": drive["id"],
+                "db_state": drive.get("state"),
+                "loaded_tape": loaded_barcode,
+                "mount_path": mount_path,
+                "ltfs_mounted": mounted,
+            }
+            report["drives"].append(entry)
+            if drive.get("state") == "full" and not mounted:
+                report["warnings"].append(
+                    f"Drive {drive['id']!r} has a tape loaded but LTFS is not mounted."
+                )
+    except Exception as exc:
+        report["warnings"].append(f"Could not read drive state from DB: {exc}")
+
+    # Lock files.
+    state_dir = _state_dir(config)
+    lock_dir = state_dir / "locks"
+    try:
+        if lock_dir.exists():
+            for lock_file in sorted(lock_dir.glob("*.lock")):
+                st = lock_file.stat()
+                report["locks"].append(
+                    {
+                        "name": lock_file.stem,
+                        "path": str(lock_file),
+                        "mtime": time.strftime(
+                            "%Y-%m-%dT%H:%M:%SZ", time.gmtime(st.st_mtime)
+                        ),
+                    }
+                )
+    except PermissionError:
+        report["locks"] = [
+            {"warning": f"Cannot read lock directory (permission denied): {lock_dir}"}
+        ]
+
+    # Active and needs_operator jobs.
+    try:
+        for state_key, field in [
+            ("running", "active_jobs"),
+            ("needs_operator", "needs_operator_jobs"),
+        ]:
+            jobs = db.list_jobs(config, state=state_key, limit=20)
+            report[field] = jobs
+        if report["needs_operator_jobs"]:
+            count = len(report["needs_operator_jobs"])
+            report["warnings"].append(
+                f"{count} job(s) in 'needs_operator' state require manual reconciliation."
+            )
+
+        # Queued write_archive jobs (ready to run once tape is mounted).
+        wa_jobs = [
+            j
+            for j in db.list_jobs(config, limit=100)
+            if j["type"] == "write_archive"
+            and j["state"] in ("queued", "waiting_for_mount")
+        ]
+        report["queued_write_archive_jobs"] = wa_jobs
+        if wa_jobs:
+            report["warnings"].append(
+                f"{len(wa_jobs)} write_archive job(s) are queued. "
+                "Mount the target tape(s) and run 'tapelib write-archive --job-id <id>'."
+            )
+    except Exception as exc:
+        report["warnings"].append(f"Could not read jobs: {exc}")
+
+    # Cache space.
+    cache_path = Path(
+        config.get("cache", {}).get("path", "/run/media/ash/cache/tapelib")
+    )
+    if cache_path.exists():
+        try:
+            sv = os.statvfs(cache_path)
+            report["cache"] = {
+                "path": str(cache_path),
+                "free_bytes": sv.f_frsize * sv.f_bavail,
+                "total_bytes": sv.f_frsize * sv.f_blocks,
+            }
+        except OSError as exc:
+            report["cache"] = {"path": str(cache_path), "error": str(exc)}
+    else:
+        report["cache"] = {
+            "path": str(cache_path),
+            "warning": "Cache path does not exist.",
+        }
+
+    print(json.dumps(report, indent=2, sort_keys=True))
+    return 0
+
+
+def _command_cleanup_cache(args: argparse.Namespace) -> int:
+    from . import archive as _archive
+
+    config = _load_config(Path(args.config))
+    payload = _archive.cleanup_cache(config)
     _write_json(_state_dir(config) / "status" / "cache-cleanup.json", payload)
     print(json.dumps(payload, indent=2, sort_keys=True))
     return 0
@@ -1047,14 +1306,189 @@ def _command_cleanup_cache(args: argparse.Namespace) -> int:
 
 def _command_verify(args: argparse.Namespace) -> int:
     config = _load_config(Path(args.config))
+    barcode, mount_path, _drive_id = _resolve_tape_target(
+        config,
+        args.tape,
+        require_mounted=True,
+    )
+    mode = args.mode
+    checked = 0
+    verified = 0
+    missing = 0
+    checksum_mismatches = 0
+    results: list[dict[str, Any]] = []
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+    with closing(db.connect(config)) as connection:
+        files = connection.execute(
+            """
+            SELECT files.*, tapes.barcode AS tape_barcode
+            FROM files
+            JOIN tapes ON tapes.id = files.tape_id
+            WHERE tapes.barcode = ?
+            ORDER BY files.path
+            """,
+            (barcode,),
+        ).fetchall()
+
+        with connection:
+            for row in files:
+                checked += 1
+                tape_path = Path(mount_path) / row["path"]
+                entry = {"path": row["path"], "state": "verified"}
+                if not tape_path.is_file():
+                    missing += 1
+                    entry["state"] = "read_error"
+                    entry["error"] = "missing_on_tape"
+                    connection.execute(
+                        "UPDATE files SET state = 'read_error' WHERE id = ?",
+                        (row["id"],),
+                    )
+                    results.append(entry)
+                    continue
+
+                if mode == "checksums" and row["checksum_sha256"]:
+                    actual_checksum = _checksum_sha256(tape_path)
+                    entry["actual_checksum_sha256"] = actual_checksum
+                    if actual_checksum != row["checksum_sha256"]:
+                        checksum_mismatches += 1
+                        entry["state"] = "read_error"
+                        entry["error"] = "checksum_mismatch"
+                        connection.execute(
+                            "UPDATE files SET state = 'read_error' WHERE id = ?",
+                            (row["id"],),
+                        )
+                        results.append(entry)
+                        continue
+
+                verified += 1
+                connection.execute(
+                    "UPDATE files SET state = 'verified', verified_at = ? WHERE id = ?",
+                    (now, row["id"]),
+                )
+                results.append(entry)
+
+            connection.execute(
+                "UPDATE tapes SET last_verified_at = ? WHERE barcode = ?",
+                (now, barcode),
+            )
+
     payload = {
-        "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "status": "planned-only",
-        "library": _readable_inventory(config),
+        "generated_at": now,
+        "tape_barcode": barcode,
+        "mount_path": mount_path,
+        "mode": mode,
+        "checked_files": checked,
+        "verified_files": verified,
+        "missing_files": missing,
+        "checksum_mismatches": checksum_mismatches,
+        "results": results,
     }
     _write_json(_state_dir(config) / "status" / "verify.json", payload)
     print(json.dumps(payload, indent=2, sort_keys=True))
     return 0
+
+
+def _command_import_inventory(args: argparse.Namespace) -> int:
+    config = _load_config(Path(args.config))
+    target = Path(args.source)
+    source_barcode: str | None = None
+
+    if target.exists():
+        if target.is_dir():
+            target = target / "TAPELIB-INVENTORY.json"
+    else:
+        source_barcode, mount_path, _drive_id = _resolve_tape_target(
+            config,
+            args.source,
+            require_mounted=True,
+        )
+        target = Path(mount_path) / "TAPELIB-INVENTORY.json"
+
+    if not target.is_file():
+        raise executor.ExecutionError(
+            f"Inventory manifest not found: {target}"
+        )
+
+    try:
+        manifest = json.loads(target.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise executor.ExecutionError(
+            f"Inventory manifest is not valid JSON: {exc}"
+        ) from exc
+
+    payload = db.import_inventory_manifest(
+        config,
+        manifest,
+        source_barcode=source_barcode,
+        source_path=str(target),
+    )
+    print(json.dumps(payload, indent=2, sort_keys=True))
+    return 0
+
+
+def _resolve_tape_target(
+    config: dict[str, Any],
+    target: str,
+    *,
+    require_mounted: bool = False,
+) -> tuple[str, str, str | None]:
+    drives_cfg = config.get("library", {}).get("drives", [])
+    resolved_barcode: str | None = None
+    resolved_mount: str | None = None
+    resolved_drive: str | None = None
+
+    for drive_cfg in drives_cfg:
+        if drive_cfg["name"] != target:
+            continue
+        drive_record = db.get_drive(config, drive_cfg["name"])
+        if drive_record is None or drive_record.get("loaded_tape_id") is None:
+            raise executor.ExecutionError(
+                f"Drive {target!r} has no loaded tape according to the catalog. "
+                "Run 'tapelib inventory' first to refresh drive state."
+            )
+        tape_by_id = {
+            t["id"]: t["barcode"]
+            for t in db.list_tapes(config, include_ignored=True)
+            if t.get("id") is not None
+        }
+        resolved_barcode = tape_by_id.get(drive_record["loaded_tape_id"])
+        if resolved_barcode is None:
+            raise executor.ExecutionError(
+                f"Drive {target!r} has no recognized loaded tape barcode."
+            )
+        resolved_mount = drive_cfg.get("mountPath")
+        resolved_drive = drive_cfg["name"]
+        break
+
+    if resolved_barcode is None:
+        resolved_barcode = target
+        tape_by_id = {
+            t["id"]: t["barcode"]
+            for t in db.list_tapes(config, include_ignored=True)
+            if t.get("id") is not None
+        }
+        for drive_rec in db.list_drives(config):
+            if tape_by_id.get(drive_rec.get("loaded_tape_id")) == resolved_barcode:
+                resolved_drive = drive_rec["id"]
+                for drive_cfg in drives_cfg:
+                    if drive_cfg["name"] == drive_rec["id"]:
+                        resolved_mount = drive_cfg.get("mountPath")
+                        break
+                break
+
+    if resolved_mount is None:
+        raise executor.ExecutionError(
+            f"Tape {resolved_barcode!r} is not loaded in any configured drive. "
+            "Load and mount it first."
+        )
+    if require_mounted and not _is_mounted(resolved_mount):
+        raise executor.ExecutionError(
+            f"Tape {resolved_barcode!r} is loaded in a drive but LTFS is not "
+            f"mounted at {resolved_mount}. Run 'tapelib mount-ltfs <drive>' first."
+        )
+
+    return resolved_barcode, resolved_mount, resolved_drive
 
 
 def _command_daemon(args: argparse.Namespace) -> int:
@@ -1338,6 +1772,17 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     inventory_manifest.set_defaults(func=_command_inventory_manifest)
 
+    import_inventory = subparsers.add_parser(
+        "import-inventory",
+        help="Import TAPELIB-INVENTORY.json from a mounted tape, mount path, or JSON file",
+    )
+    add_config_arg(import_inventory)
+    import_inventory.add_argument(
+        "source",
+        help="Drive name, loaded tape barcode, mount path, or manifest JSON file path",
+    )
+    import_inventory.set_defaults(func=_command_import_inventory)
+
     plan_games = subparsers.add_parser(
         "plan-games-backup", help="Build a multi-tape plan for the games archive roots"
     )
@@ -1347,14 +1792,91 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     plan_games.set_defaults(func=_command_plan_games_backup)
 
+    index_tape = subparsers.add_parser(
+        "index-tape",
+        help="Walk a mounted LTFS tape and update the file catalog",
+    )
+    add_config_arg(index_tape)
+    index_tape.add_argument(
+        "barcode_or_drive",
+        help="Tape barcode (e.g. 385182L5) or configured drive name (e.g. drive0)",
+    )
+    index_tape.set_defaults(func=_command_index_tape)
+
+    stage_games = subparsers.add_parser(
+        "stage-games-backup",
+        help=(
+            "Stage game archive files to the local cache and queue write_archive jobs. "
+            "Uses the configured games.sourceRoots and games.selectedTapes."
+        ),
+    )
+    add_config_arg(stage_games)
+    stage_games.add_argument(
+        "--plan-file",
+        help="Path to a JSON plan file from 'plan-games-backup --write-status'. "
+        "If omitted, a fresh plan is generated.",
+    )
+    stage_games.add_argument(
+        "--tape",
+        metavar="BARCODE",
+        help="Only stage files assigned to this tape barcode. "
+        "Use this to stage one tape at a time when cache space is limited.",
+    )
+    stage_games.add_argument(
+        "--max-staged-bytes",
+        metavar="SIZE",
+        help="Optional staging budget for this run, such as 500G. Defaults to the currently available cache budget.",
+    )
+    stage_games.set_defaults(func=_command_stage_games_backup)
+
+    write_archive = subparsers.add_parser(
+        "write-archive",
+        help=(
+            "Write a staged write_archive job to the loaded and mounted LTFS tape. "
+            "The target tape must be mounted read-write before running this command."
+        ),
+    )
+    add_config_arg(write_archive)
+    write_archive.add_argument("--job-id", required=True, help="write_archive job UUID")
+    write_archive.add_argument(
+        "--resume",
+        action="store_true",
+        help=(
+            "Allow retrying a failed or needs_operator write_archive job. "
+            "Already written files are detected by checksum and skipped safely."
+        ),
+    )
+    write_archive.set_defaults(func=_command_write_archive)
+
+    doctor = subparsers.add_parser(
+        "doctor",
+        help="Print a diagnostic report: drives, mounts, locks, active jobs, cache usage",
+    )
+    add_config_arg(doctor)
+    doctor.set_defaults(func=_command_doctor)
+
     cleanup_cache = subparsers.add_parser(
         "cleanup-cache", help="Run the cache cleanup scaffold"
     )
     add_config_arg(cleanup_cache)
     cleanup_cache.set_defaults(func=_command_cleanup_cache)
 
-    verify = subparsers.add_parser("verify", help="Run the verification scaffold")
+    verify = subparsers.add_parser(
+        "verify",
+        help="Verify cataloged files on a mounted LTFS tape by existence or checksum",
+    )
     add_config_arg(verify)
+    verify.add_argument(
+        "--tape",
+        required=True,
+        help="Tape barcode or configured drive name for the mounted LTFS tape",
+    )
+    verify.add_argument(
+        "--mode",
+        choices=["metadata", "checksums"],
+        default="metadata",
+        help="Verification mode. 'metadata' checks existence; 'checksums' also hashes files with known checksums.",
+    )
     verify.set_defaults(func=_command_verify)
 
     daemon = subparsers.add_parser("daemon", help="Run the lightweight state daemon")

@@ -8,7 +8,7 @@ from contextlib import closing
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 ACTIVE_JOB_STATES = {
     "waiting_for_cache",
@@ -140,6 +140,19 @@ SCHEMA_STATEMENTS = [
       FOREIGN KEY(snapshot_id) REFERENCES inventory_snapshots(id)
     )
     """,
+        """
+        CREATE TABLE IF NOT EXISTS bundle_members (
+            id INTEGER PRIMARY KEY,
+            tape_id INTEGER NOT NULL,
+            bundle_path TEXT NOT NULL,
+            member_path TEXT NOT NULL,
+            size_bytes INTEGER,
+            checksum_sha256 TEXT,
+            indexed_at TEXT NOT NULL,
+            UNIQUE(tape_id, member_path),
+            FOREIGN KEY(tape_id) REFERENCES tapes(id)
+        )
+        """,
     "CREATE INDEX IF NOT EXISTS idx_files_path ON files(path)",
     "CREATE INDEX IF NOT EXISTS idx_files_logical_group ON files(logical_group)",
     "CREATE INDEX IF NOT EXISTS idx_jobs_state_priority ON jobs(state, priority, created_at)",
@@ -147,6 +160,7 @@ SCHEMA_STATEMENTS = [
     "CREATE INDEX IF NOT EXISTS idx_cache_entries_job ON cache_entries(job_id)",
     "CREATE INDEX IF NOT EXISTS idx_inventory_snapshots_barcode_generated ON inventory_snapshots(source_barcode, generated_at)",
     "CREATE INDEX IF NOT EXISTS idx_inventory_observations_barcode_path ON inventory_observations(observed_barcode, observed_path)",
+        "CREATE INDEX IF NOT EXISTS idx_bundle_members_tape_member ON bundle_members(tape_id, member_path)",
 ]
 
 
@@ -217,6 +231,7 @@ def database_summary(connection: sqlite3.Connection) -> dict[str, Any]:
         "cache_entries",
         "inventory_snapshots",
         "inventory_observations",
+        "bundle_members",
     ]:
         counts[table] = connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[
             0
@@ -311,6 +326,66 @@ def get_file(
             (tape_barcode, clean_path),
         ).fetchone()
         return None if row is None else dict(row)
+
+
+def list_bundle_members(
+    config: dict[str, Any], *, tape_barcode: str | None = None
+) -> list[dict[str, Any]]:
+    initialize_database(config)
+    with closing(connect(config)) as connection:
+        if tape_barcode is None:
+            rows = connection.execute(
+                """
+                SELECT bundle_members.*, tapes.barcode AS tape_barcode
+                FROM bundle_members
+                JOIN tapes ON tapes.id = bundle_members.tape_id
+                ORDER BY tapes.barcode, bundle_members.member_path
+                """
+            ).fetchall()
+        else:
+            rows = connection.execute(
+                """
+                SELECT bundle_members.*, tapes.barcode AS tape_barcode
+                FROM bundle_members
+                JOIN tapes ON tapes.id = bundle_members.tape_id
+                WHERE tapes.barcode = ?
+                ORDER BY bundle_members.member_path
+                """,
+                (tape_barcode,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def upsert_bundle_members_with_connection(
+    connection: sqlite3.Connection,
+    tape_id: int,
+    bundle_path: str,
+    members: list[dict[str, Any]],
+    *,
+    indexed_at: str,
+) -> None:
+    for member in members:
+        connection.execute(
+            """
+            INSERT INTO bundle_members (
+              tape_id, bundle_path, member_path, size_bytes,
+              checksum_sha256, indexed_at
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(tape_id, member_path) DO UPDATE SET
+              bundle_path = excluded.bundle_path,
+              size_bytes = excluded.size_bytes,
+              checksum_sha256 = excluded.checksum_sha256,
+              indexed_at = excluded.indexed_at
+            """,
+            (
+                tape_id,
+                _clean_catalog_path(bundle_path),
+                _clean_catalog_path(member["member_path"]),
+                member.get("size_bytes"),
+                member.get("checksum_sha256"),
+                indexed_at,
+            ),
+        )
 
 
 def apply_changer_inventory(
@@ -678,8 +753,385 @@ def _json_from_text(value: str | None) -> Any:
     return json.loads(value)
 
 
+def index_tape(
+    config: dict[str, Any],
+    barcode: str,
+    mount_path: str,
+) -> dict[str, Any]:
+    """Walk a mounted LTFS tape and upsert file records into the catalog.
+
+    Files that were previously indexed but are no longer present on the tape
+    are marked ``missing_after_reindex`` rather than deleted, so history is
+    preserved and anomalies are surfaced explicitly.
+    """
+    initialize_database(config)
+    now = utc_now()
+    mount_root = Path(mount_path)
+
+    # File/directory names at the tape root that belong to tapelib housekeeping
+    # and should not be indexed as content.
+    skip_names = {
+        "TAPELIB-INVENTORY.json",
+        "TAPE-MANIFEST.json",
+        "TAPE-MANIFEST.csv",
+        "TAPE-CHECKSUMS.sha256",
+        "README-THIS-TAPE.txt",
+    }
+    # Path prefixes (first component) that are always internal
+    skip_prefixes = {".tapelib-writing"}
+
+    if not mount_root.is_dir():
+        raise ValueError(f"Mount path not found or not a directory: {mount_path}")
+
+    with closing(connect(config)) as connection:
+        with connection:
+            # Ensure tape record exists; update last_indexed_at.
+            connection.execute(
+                """
+                INSERT INTO tapes (barcode, current_location, state, last_indexed_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(barcode) DO UPDATE SET
+                  last_indexed_at = excluded.last_indexed_at
+                """,
+                (barcode, f"indexed_at:{mount_path}", "indexed", now),
+            )
+            tape_id = connection.execute(
+                "SELECT id FROM tapes WHERE barcode = ?", (barcode,)
+            ).fetchone()["id"]
+
+            # Paths already in the catalog for this tape.
+            existing_paths: set[str] = {
+                row[0]
+                for row in connection.execute(
+                    "SELECT path FROM files WHERE tape_id = ?", (tape_id,)
+                ).fetchall()
+            }
+            discovered_bundle_members: list[dict[str, Any]] = []
+
+            seen_paths: set[str] = set()
+            indexed_count = 0
+
+            for file_path in sorted(mount_root.rglob("*")):
+                if not file_path.is_file():
+                    continue
+                relative = str(file_path.relative_to(mount_root))
+                first_component = relative.split("/")[0]
+                if first_component in skip_names or first_component in skip_prefixes:
+                    continue
+                if first_component.startswith("."):
+                    continue
+
+                seen_paths.add(relative)
+                st = file_path.stat()
+                mtime = time.strftime(
+                    "%Y-%m-%dT%H:%M:%SZ", time.gmtime(st.st_mtime)
+                )
+
+                connection.execute(
+                    """
+                    INSERT INTO files (tape_id, path, size_bytes, mtime, state, indexed_at)
+                    VALUES (?, ?, ?, ?, 'indexed', ?)
+                    ON CONFLICT(tape_id, path) DO UPDATE SET
+                      size_bytes = excluded.size_bytes,
+                      mtime     = excluded.mtime,
+                      state     = 'indexed',
+                      indexed_at = excluded.indexed_at
+                    """,
+                    (tape_id, relative, st.st_size, mtime, now),
+                )
+                indexed_count += 1
+
+                discovered_bundle_members.extend(
+                    _bundle_members_from_manifest(file_path, relative, now)
+                )
+
+            # Mark files that vanished since the last index.
+            missing_count = 0
+            for path in existing_paths:
+                if path not in seen_paths:
+                    connection.execute(
+                        """
+                        UPDATE files SET state = 'missing_after_reindex'
+                        WHERE tape_id = ? AND path = ?
+                        """,
+                        (tape_id, path),
+                    )
+                    missing_count += 1
+
+            connection.execute(
+                "DELETE FROM bundle_members WHERE tape_id = ?",
+                (tape_id,),
+            )
+            bundle_members_by_bundle: dict[str, list[dict[str, Any]]] = {}
+            for member in discovered_bundle_members:
+                bundle_members_by_bundle.setdefault(member["bundle_path"], []).append(member)
+            for bundle_path, members in bundle_members_by_bundle.items():
+                upsert_bundle_members_with_connection(
+                    connection,
+                    tape_id,
+                    bundle_path,
+                    members,
+                    indexed_at=now,
+                )
+
+            connection.execute(
+                "UPDATE tapes SET last_indexed_at = ? WHERE id = ?",
+                (now, tape_id),
+            )
+
+    return {
+        "tape_barcode": barcode,
+        "mount_path": mount_path,
+        "indexed_at": now,
+        "indexed_count": indexed_count,
+        "missing_count": missing_count,
+    }
+
+
+def get_or_create_tape(
+    connection: sqlite3.Connection,
+    barcode: str,
+    *,
+    state: str = "in_library",
+) -> int:
+    """Return the ``id`` for a tape row, inserting a minimal record if absent."""
+    connection.execute(
+        """
+        INSERT INTO tapes (barcode, current_location, state, last_inventory_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(barcode) DO NOTHING
+        """,
+        (barcode, "unknown", state, utc_now()),
+    )
+    return connection.execute(
+        "SELECT id FROM tapes WHERE barcode = ?", (barcode,)
+    ).fetchone()["id"]
+
+
+def import_inventory_manifest(
+        config: dict[str, Any],
+        manifest: dict[str, Any],
+        *,
+        source_barcode: str | None = None,
+        source_path: str | None = None,
+        job_id: str | None = None,
+) -> dict[str, Any]:
+        """Import a tape-carried inventory manifest additively.
+
+        The import is intentionally conservative:
+        - direct indexed / verified catalog rows are never downgraded
+        - advisory imported rows are inserted when absent
+        - advisory imported rows are refreshed when the imported snapshot is newer
+        """
+        initialize_database(config)
+        imported_at = utc_now()
+        generated_at = manifest.get("generated_at") or imported_at
+        tapes = manifest.get("tapes", [])
+        files = manifest.get("files", [])
+
+        with closing(connect(config)) as connection:
+                with connection:
+                        source_tape_id = (
+                                get_or_create_tape(connection, source_barcode)
+                                if isinstance(source_barcode, str) and source_barcode
+                                else None
+                        )
+                        cursor = connection.execute(
+                                """
+                                INSERT INTO inventory_snapshots (
+                                    source_tape_id, source_barcode, job_id, generated_at, imported_at, data_json
+                                ) VALUES (?, ?, ?, ?, ?, ?)
+                                """,
+                                (
+                                        source_tape_id,
+                                        source_barcode,
+                                        job_id,
+                                        generated_at,
+                                        imported_at,
+                                        json.dumps(manifest, sort_keys=True),
+                                ),
+                        )
+                        snapshot_id = cursor.lastrowid
+
+                        imported_tapes = 0
+                        imported_files = 0
+
+                        for tape in tapes:
+                                barcode = tape.get("barcode")
+                                if not isinstance(barcode, str) or not barcode:
+                                        continue
+                                connection.execute(
+                                        """
+                                        INSERT INTO inventory_observations (
+                                            snapshot_id, observed_barcode, observed_path, observed_state,
+                                            observed_size_bytes, observed_mtime, observed_checksum_sha256, observed_at
+                                        ) VALUES (?, ?, NULL, ?, NULL, NULL, NULL, ?)
+                                        """,
+                                        (
+                                                snapshot_id,
+                                                barcode,
+                                                tape.get("state"),
+                                                generated_at,
+                                        ),
+                                )
+                                connection.execute(
+                                        """
+                                        INSERT INTO tapes (
+                                            barcode, generation, slot, current_location, state,
+                                            capacity_bytes, used_bytes, free_bytes, last_inventory_at
+                                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                        ON CONFLICT(barcode) DO UPDATE SET
+                                            generation = COALESCE(tapes.generation, excluded.generation),
+                                            capacity_bytes = COALESCE(tapes.capacity_bytes, excluded.capacity_bytes),
+                                            used_bytes = COALESCE(tapes.used_bytes, excluded.used_bytes),
+                                            free_bytes = COALESCE(tapes.free_bytes, excluded.free_bytes),
+                                            last_inventory_at = CASE
+                                                WHEN tapes.last_inventory_at IS NULL OR tapes.last_inventory_at <= excluded.last_inventory_at
+                                                    THEN excluded.last_inventory_at
+                                                ELSE tapes.last_inventory_at
+                                            END,
+                                            slot = COALESCE(tapes.slot, excluded.slot),
+                                            current_location = COALESCE(tapes.current_location, excluded.current_location),
+                                            state = CASE
+                                                WHEN tapes.state IN ('indexed', 'verified', 'loaded') THEN tapes.state
+                                                WHEN tapes.last_inventory_at IS NULL OR tapes.last_inventory_at <= excluded.last_inventory_at
+                                                    THEN COALESCE(excluded.state, tapes.state)
+                                                ELSE tapes.state
+                                            END
+                                        """,
+                                        (
+                                                barcode,
+                                                tape.get("generation"),
+                                                tape.get("slot"),
+                                                tape.get("current_location"),
+                                                tape.get("state") or "inventory_imported",
+                                                tape.get("capacity_bytes"),
+                                                tape.get("used_bytes"),
+                                                tape.get("free_bytes"),
+                                                generated_at,
+                                        ),
+                                )
+                                imported_tapes += 1
+
+                        for file_row in files:
+                                barcode = file_row.get("tape_barcode") or file_row.get("barcode")
+                                path = file_row.get("path")
+                                if not isinstance(barcode, str) or not barcode or not isinstance(path, str) or not path:
+                                        continue
+                                tape_id = get_or_create_tape(connection, barcode)
+                                connection.execute(
+                                        """
+                                        INSERT INTO inventory_observations (
+                                            snapshot_id, observed_barcode, observed_path, observed_state,
+                                            observed_size_bytes, observed_mtime, observed_checksum_sha256, observed_at
+                                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                                        """,
+                                        (
+                                                snapshot_id,
+                                                barcode,
+                                                path,
+                                                file_row.get("state") or "inventory_imported",
+                                                file_row.get("size_bytes"),
+                                                file_row.get("mtime"),
+                                                file_row.get("checksum_sha256"),
+                                                generated_at,
+                                        ),
+                                )
+                                connection.execute(
+                                        """
+                                        INSERT INTO files (
+                                            tape_id, path, logical_group, size_bytes, mtime,
+                                            checksum_sha256, state, indexed_at
+                                        ) VALUES (?, ?, ?, ?, ?, ?, 'inventory_imported', ?)
+                                        ON CONFLICT(tape_id, path) DO UPDATE SET
+                                            size_bytes = CASE
+                                                WHEN files.state = 'inventory_imported' AND (files.indexed_at IS NULL OR files.indexed_at <= excluded.indexed_at)
+                                                    THEN excluded.size_bytes
+                                                ELSE files.size_bytes
+                                            END,
+                                            mtime = CASE
+                                                WHEN files.state = 'inventory_imported' AND (files.indexed_at IS NULL OR files.indexed_at <= excluded.indexed_at)
+                                                    THEN excluded.mtime
+                                                ELSE files.mtime
+                                            END,
+                                            checksum_sha256 = CASE
+                                                WHEN files.state = 'inventory_imported' AND (files.indexed_at IS NULL OR files.indexed_at <= excluded.indexed_at)
+                                                    THEN excluded.checksum_sha256
+                                                ELSE files.checksum_sha256
+                                            END,
+                                            indexed_at = CASE
+                                                WHEN files.state = 'inventory_imported' AND (files.indexed_at IS NULL OR files.indexed_at <= excluded.indexed_at)
+                                                    THEN excluded.indexed_at
+                                                ELSE files.indexed_at
+                                            END,
+                                            state = CASE
+                                                WHEN files.state IN ('indexed', 'verified') THEN files.state
+                                                WHEN files.state = 'inventory_imported' AND (files.indexed_at IS NULL OR files.indexed_at <= excluded.indexed_at)
+                                                    THEN 'inventory_imported'
+                                                ELSE files.state
+                                            END
+                                        """,
+                                        (
+                                                tape_id,
+                                                _clean_catalog_path(path),
+                                                file_row.get("logical_group"),
+                                                file_row.get("size_bytes"),
+                                                file_row.get("mtime"),
+                                                file_row.get("checksum_sha256"),
+                                                generated_at,
+                                        ),
+                                )
+                                imported_files += 1
+
+        return {
+                "imported_at": imported_at,
+                "generated_at": generated_at,
+                "source_barcode": source_barcode,
+                "source_path": source_path,
+                "snapshot_id": snapshot_id,
+                "tape_count": imported_tapes,
+                "file_count": imported_files,
+        }
+
+
 def _clean_catalog_path(path: str) -> str:
     return str(Path("/") / path.lstrip("/")).lstrip("/")
+
+
+def _bundle_members_from_manifest(
+    manifest_path: Path,
+    relative_path: str,
+    indexed_at: str,
+) -> list[dict[str, Any]]:
+    if not relative_path.endswith(".members.json"):
+        return []
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+
+    if manifest.get("format") != "tapelib-tar-bundle-v1":
+        return []
+
+    bundle_path = manifest.get("bundle_path")
+    if not isinstance(bundle_path, str) or bundle_path == "":
+        bundle_path = relative_path.removesuffix(".members.json") + ".tar"
+
+    members = []
+    for member in manifest.get("members", []):
+        member_path = member.get("member_path") or member.get("path")
+        if not isinstance(member_path, str) or member_path == "":
+            continue
+        members.append(
+            {
+                "bundle_path": _clean_catalog_path(bundle_path),
+                "member_path": _clean_catalog_path(member_path),
+                "size_bytes": member.get("size_bytes"),
+                "checksum_sha256": member.get("checksum_sha256"),
+                "indexed_at": indexed_at,
+            }
+        )
+    return members
 
 
 def _barcode_generation(barcode: str) -> str | None:

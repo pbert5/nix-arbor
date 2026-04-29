@@ -182,6 +182,116 @@ The current `ltfs` build on this host reports the default mount behavior as
 5 minutes while writes are active. A clean `umount` also writes the current
 metadata before the session ends.
 
+## tapelib rolling LTFS archive workflow
+
+`tapelib` now supports a rolling cache-backed archive workflow for the game
+library on `desktoptoodle`.
+
+Use this when the planned contents for a tape are larger than the available
+cache space:
+
+1. Build or refresh the plan:
+
+```bash
+tapelib plan-games-backup --write-status
+```
+
+2. Stage a full cache "bucket" for one tape (or cap it explicitly if you want a
+smaller wave):
+
+```bash
+tapelib stage-games-backup --tape 385182L5
+```
+
+Optional: cap a run explicitly instead of using the automatically detected
+cache budget:
+
+```bash
+tapelib stage-games-backup --tape 385182L5 --max-staged-bytes 500G
+```
+
+3. Make sure the target tape is mounted **read-write**:
+
+```bash
+tapelib unmount-ltfs drive0
+tapelib mount-ltfs drive0 --read-write
+findmnt -no OPTIONS /var/lib/tapelib/mounts/drive0
+```
+
+Look for `rw` in the reported mount options.
+
+4. Write the staged wave:
+
+```bash
+tapelib jobs --state queued
+tapelib write-archive --job-id <uuid>
+```
+
+During `write-archive`, tapelib now commits each finished file into the
+catalog and deletes that staged cache file immediately. That means you can let
+the writer keep draining the current wave while a later `stage-games-backup`
+run refills newly freed cache space for the next wave. Running stage again is
+duplicate-safe because tapelib skips files that are already written, already
+queued, or already part of the active write.
+
+If a write is interrupted after some files land on tape, resume the same job
+instead of starting over:
+
+```bash
+tapelib write-archive --job-id <uuid> --resume
+```
+
+Resume mode verifies any already-present LTFS files by checksum and cross-checks
+them against the current tapelib catalog before skipping them, so partial jobs
+do not spray duplicates onto the tape or silently drift from library state.
+
+5. Refill and repeat until the tape is complete:
+
+```bash
+tapelib stage-games-backup --tape 385182L5
+tapelib write-archive --job-id <next-uuid>
+```
+
+If you want the most "giant water-park bucket" behavior, omit
+`--max-staged-bytes` and let the initial stage run fill the whole available
+cache budget. Then keep refilling opportunistically while the current wave is
+being drained to tape.
+
+Useful follow-ups:
+
+```bash
+tapelib cleanup-cache
+tapelib index-tape 385182L5
+tapelib verify --tape 385182L5 --mode metadata
+tapelib import-inventory 385182L5
+```
+
+Optional small-file bundling is available when you want to reduce metadata-heavy
+LTFS writes for lots of tiny files. Enable it via the NixOS module and tapelib
+will stage tar bundles for files at or below the configured threshold, while the
+FUSE `browse` tree still previews the bundled member paths from catalog
+metadata:
+
+```nix
+services.tapelib.archive.smallFileBundleMaxBytes = "8M";
+services.tapelib.archive.smallFileBundleTargetBytes = "256M";
+```
+
+Bundled members currently preview cleanly in `/mnt/tapelib/browse/...`, but
+their `/mnt/tapelib/readable/...` entries remain metadata placeholders until
+queued tar extraction is implemented.
+
+Each written LTFS tape now carries:
+
+- `TAPE-MANIFEST.json`
+- `TAPE-MANIFEST.csv`
+- `TAPE-CHECKSUMS.sha256`
+- `README-THIS-TAPE.txt`
+- `TAPELIB-INVENTORY.json`
+
+Those manifests are rewritten cumulatively after each write batch, so a tape
+written in multiple refill cycles stays self-describing outside tapelib.
+
 Use `ltfs-default` first if you want to confirm which exact device LTFS is
 about to open. `tape-default` is still the right helper for `mt` and `tar`.
 If you need an explicit `by-id` path or recovery tools such as `ltfsck`, the

@@ -68,6 +68,10 @@ def snapshot(
 def _required_tapes(job: dict[str, Any]) -> list[str]:
     seen: set[str] = set()
     tapes = []
+    target_tape = (job.get("target") or {}).get("tape_barcode")
+    if isinstance(target_tape, str) and target_tape not in seen:
+        seen.add(target_tape)
+        tapes.append(target_tape)
     for group in (job.get("target") or {}).get("groups", []):
         tape = group.get("tape_barcode")
         if isinstance(tape, str) and tape not in seen:
@@ -79,7 +83,11 @@ def _required_tapes(job: dict[str, Any]) -> list[str]:
 def _copied_files(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     copied = []
     for event in events:
-        if event["event_type"] != "retrieve_file_complete":
+        if event["event_type"] not in {
+            "retrieve_file_complete",
+            "file_written",
+            "file_already_present",
+        }:
             continue
         data = event.get("data")
         if isinstance(data, dict):
@@ -117,6 +125,8 @@ def _current_file(events: list[dict[str, Any]]) -> dict[str, Any] | None:
 
 def _total_files(job: dict[str, Any]) -> int:
     groups = (job.get("target") or {}).get("groups", [])
+    if groups == []:
+        return len((job.get("source") or {}).get("files", []))
     total = 0
     for group in groups:
         total += len(group.get("files", []))

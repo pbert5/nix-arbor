@@ -1,7 +1,28 @@
 I checked the `distribuited-file-store` branch and the current `fruits/tapelib` state. The old pasted plan is still the right “north star” for the system: catalog-backed FUSE overlay, queue-owned hardware work, dual LTO-5 drives, shared changer lock, LTFS tapes remaining self-contained, staged writes, and multi-tape archive planning. 
 
 The repo has already moved past pure planning. Current implementation includes the `tapelib` fruit, NixOS module, SQLite catalog/job schema, read-only FUSE browser, TL2000 inventory through `mtx status`, manual load/unload/mount/unmount commands, retrieve job creation, mounted-only retrieve execution, job-status snapshots, web/status scaffold, and a game-backup planner.  The docs also explicitly list the main remaining gaps: staged cache-to-tape execution, automatic retrieve loading/mounting, readable-path queued reads, writable staged ingest, and tape-carried manifest import. 
+## Implementation Status
 
+Last updated: 2026-04-29
+
+| Milestone | Status | Notes |
+|-----------|--------|-------|
+| 0. Stabilize baseline | ✅ Done | tests pass, nix build clean |
+| 1. Catalog indexing | ✅ Done | `tapelib index-tape` + `db.index_tape()` |
+| 2. Safe manual workflow | ✅ Done | `tapelib doctor` + hardened preflight checks |
+| 3. Mounted-only retrieve MVP | ✅ Done (prior) | `tapelib retrieve` + `run-queue` |
+| 4. Automatic retrieve scheduler | ❌ Not started | |
+| 5. Cache/staging manager | ✅ Done | rolling cache-budget staging, reservation checks, real `cleanup-cache` |
+| 6. Archive/write planning | ✅ Done | `tapelib stage-games-backup` fills cache-budget waves and skips already-written / queued files for safe refill |
+| 7. LTFS write runner | ✅ Done | `tapelib write-archive`, incremental cache drain + per-file catalog commits, aggregated tape manifests, tape-carried inventory export |
+| 8. Writable FUSE ingest | ❌ Not started | |
+| 9. Readable FUSE retrieve | ❌ Not started | |
+| 10. Tape-carried inventory import | ✅ Done | `tapelib import-inventory` stores snapshots + advisory observations |
+| 11. Verification and scrubbing | 🔄 Partial | `tapelib verify --tape <barcode|drive> [--mode metadata|checksums]` |
+| 12. Web/API operator console | 🔄 Scaffold only | JSON status endpoint exists |
+| 13. Dual-drive queue optimization | ❌ Not started | |
+
+---
 ## Milestones to “fully functional”
 
 ### 0. Stabilize the current baseline

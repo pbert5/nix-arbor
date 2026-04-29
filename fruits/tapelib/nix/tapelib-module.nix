@@ -20,6 +20,7 @@ let
     database = cfg.database;
     webui = cfg.webui;
     games = cfg.games;
+    archive = cfg.archive;
   };
 
   configFile = jsonFormat.generate "tapelib-config.json" renderedConfig;
@@ -129,6 +130,19 @@ in
       };
     };
 
+    archive = {
+      smallFileBundleMaxBytes = lib.mkOption {
+        type = lib.types.str;
+        default = "0";
+        description = "Bundle files at or below this size into tar archives before writing to LTFS. Set to 0 to disable bundling.";
+      };
+      smallFileBundleTargetBytes = lib.mkOption {
+        type = lib.types.str;
+        default = "256M";
+        description = "Target tar bundle size used when grouping small archive files together.";
+      };
+    };
+
     fuse = {
       enable = lib.mkOption {
         type = lib.types.bool;
@@ -227,8 +241,11 @@ in
 
     systemd.tmpfiles.rules = [
       "d ${cfg.stateDir} 2770 ${cfg.user} ${cfg.group} - -"
+      "z ${cfg.stateDir} 2770 ${cfg.user} ${cfg.group} - -"
       "d ${cfg.stateDir}/jobs 2770 ${cfg.user} ${cfg.group} - -"
+      "z ${cfg.stateDir}/jobs 2770 ${cfg.user} ${cfg.group} - -"
       "d ${cfg.stateDir}/locks 2770 ${cfg.user} ${cfg.group} - -"
+      "z ${cfg.stateDir}/locks 2770 ${cfg.user} ${cfg.group} - -"
       "d ${cfg.stateDir}/manifests 2770 ${cfg.user} ${cfg.group} - -"
       "d ${cfg.stateDir}/mounts 2770 ${cfg.user} ${cfg.group} - -"
       "d ${cfg.stateDir}/spool 2770 ${cfg.user} ${cfg.group} - -"
@@ -250,7 +267,7 @@ in
     users.groups.${cfg.group} = { };
 
     users.users.${cfg.user} = {
-      createHome = true;
+      createHome = false;
       extraGroups = [ "tape" ];
       group = cfg.group;
       home = cfg.stateDir;
