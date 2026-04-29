@@ -1,47 +1,39 @@
 {
-  ash = {
+  user1 = {
     roles = [ "workstation" ];
     system = "x86_64-linux";
     home = {
-      directory = "/home/example";
+      directory = "/home/user1";
       homeModule = "ash";
       stateVersion = "25.11";
-      username = "ash";
+      username = "user1";
     };
     nixos = {
-      
       extraGroups = [
-        "docker"
         "wheel"
         "networkmanager"
       ];
-      hashedPassword = null;
       shellPackage = "fish";
     };
-    org = {
-      flakeTarget.path = "/work/flake";
-    };
+    org.flakeTarget.path = "/work/flake";
   };
 
-  madeline = {
+  user2 = {
     roles = [ "workstation" ];
     system = "x86_64-linux";
     home = {
-      directory = "/home/example";
+      directory = "/home/user2";
       homeModule = "madeline";
       stateVersion = "25.11";
-      username = "madeline";
+      username = "user2";
     };
     nixos = {
       extraGroups = [
-        "docker"
         "wheel"
         "networkmanager"
       ];
       shellPackage = "bashInteractive";
     };
-    org = {
-      flakeTarget.path = "/work/flake";
-    };
+    org.flakeTarget.path = "/work/flake";
   };
 }

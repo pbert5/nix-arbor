@@ -37,7 +37,10 @@
       workstation-1 = {
         endpointHost = "workstation-1";
         listen = true;
-        peers = [ "storage-1" ];
+        peers = [
+          "storage-1"
+          "library-1"
+        ];
         aliases = [ "workstation-1-ygg" ];
         address = "200:db8::101";
         publicKey = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -46,10 +49,25 @@
       storage-1 = {
         endpointHost = "storage-1";
         listen = true;
-        peers = [ "workstation-1" ];
+        peers = [
+          "workstation-1"
+          "library-1"
+        ];
         aliases = [ "storage-1-ygg" ];
         address = "200:db8::102";
         publicKey = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+      };
+
+      library-1 = {
+        endpointHost = "library-1";
+        listen = true;
+        peers = [
+          "workstation-1"
+          "storage-1"
+        ];
+        aliases = [ "library-1-ygg" ];
+        address = "200:db8::103";
+        publicKey = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
       };
     };
   };

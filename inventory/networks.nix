@@ -19,21 +19,6 @@ in
       openFirewall = true;
     };
 
-    firewall = {
-      enforce = true;
-      checkReversePath = true;
-
-      transport = {
-        openListener = true;
-      };
-
-      overlay = {
-        allowedTCPPorts = [ ];
-        allowedUDPPorts = [ ];
-        restrictToPeerSources = false;
-      };
-    };
-
     defaults = {
       ifName = "ygg0";
       multicastInterfaces = [ ];
@@ -42,42 +27,30 @@ in
       persistentKeys = true;
     };
 
+    firewall = {
+      enforce = true;
+      checkReversePath = true;
+      transport.openListener = true;
+      overlay = {
+        allowedTCPPorts = [ ];
+        allowedUDPPorts = [ ];
+        restrictToPeerSources = false;
+      };
+    };
+
     nodes = {
-      dev-machine = withIdentity "dev-machine" {
-        endpointHost = "dev-machine";
+      workstation-1 = withIdentity "workstation-1" {
+        endpointHost = "workstation-1";
         listen = true;
-        peers = [
-          "r640-0"
-          "desktoptoodle"
-        ];
-        aliases = [ "dev-machine-ygg" ];
+        peers = [ "storage-1" ];
+        aliases = [ "workstation-1-ygg" ];
       };
 
-      "r640-0" = withIdentity "r640-0" {
-        endpointHost = "r640-0";
+      storage-1 = withIdentity "storage-1" {
+        endpointHost = "storage-1";
         listen = true;
-        peers = [
-          "dev-machine"
-          "desktoptoodle"
-        ];
-        aliases = [ "r640-0-ygg" ];
-      };
-
-      desktoptoodle = withIdentity "desktoptoodle" {
-        endpointHost = "desktoptoodle";
-        listen = true;
-        peers = [
-          "dev-machine"
-          "r640-0"
-        ];
-        aliases = [ "desktoptoodle-ygg" ];
-      };
-
-      compute-worker = withIdentity "compute-worker" {
-        endpointHost = "compute-worker";
-        listen = false;
-        peers = [ "dev-machine" ];
-        aliases = [ "compute-worker-ygg" ];
+        peers = [ "workstation-1" ];
+        aliases = [ "storage-1-ygg" ];
       };
     };
   };

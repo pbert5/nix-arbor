@@ -78,7 +78,7 @@ public mirror, such as:
 - empty Yggdrasil identity data
 - bootstrap metadata with no real target hosts or deploy keys
 - a public-facing top-level `README.md`
-- a small `examples/demo-inventory/` reference tree
+- a simplified public `inventory/` plus `inventory/complex/` for advanced examples
 
 ## Review Flow
 

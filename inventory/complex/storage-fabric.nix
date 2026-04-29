@@ -14,6 +14,7 @@
       defaultNumCopies = 2;
       metadataRemotes = [
         "github"
+        "radicle"
       ];
       groups.archive = {
         wanted = "standard";
@@ -36,7 +37,10 @@
 
     archive = {
       remotes.nas.enable = false;
+      remotes.tape.enable = true;
       minArchiveCopies = 1;
     };
+
+    radicle.enable = true;
   };
 }
