@@ -49,6 +49,9 @@ let
   peerAddresses = lib.filter (address: address != null) (builtins.map (peerHost: (peerNode peerHost).address or null) peerHosts);
   missingPeerAddresses = builtins.filter (peerHost: ((peerNode peerHost).address or null) == null) peerHosts;
   missingPeerPublicKeys = builtins.filter (peerHost: ((peerNode peerHost).publicKey or null) == null) peerHosts;
+  guestAccess = lib.attrByPath [ "guestAccess" "yggdrasil" "byHost" hostName ] { } site;
+  guestPeerKeys = guestAccess.publicKeys or [ ];
+  guestPeerAddresses = guestAccess.sourceAddresses or [ ];
 
   hostListenScheme = if hostNode == null then defaultScheme else hostNode.listenScheme or defaultScheme;
   hostListenPort = if hostNode == null then defaultPort else hostNode.listenPort or defaultPort;
@@ -59,12 +62,16 @@ let
   hostPersistentKeys = if hostNode == null then defaultPersistentKeys else hostNode.persistentKeys or defaultPersistentKeys;
   hostOpenMulticastPort = if hostNode == null then defaultOpenMulticastPort else hostNode.openMulticastPort or defaultOpenMulticastPort;
   hostListenEnabled = if hostNode == null then false else hostNode.listen or false;
-  hostAllowlist = lib.unique (peerKeys ++ (if hostNode == null then [ ] else hostNode.extraAllowedPublicKeys or [ ]));
+  hostAllowlist = lib.unique (
+    peerKeys ++ guestPeerKeys ++ (if hostNode == null then [ ] else hostNode.extraAllowedPublicKeys or [ ])
+  );
   hostOverlayAllowedTCPPorts = firewallOverlay.allowedTCPPorts or [ ];
   hostOverlayAllowedUDPPorts = firewallOverlay.allowedUDPPorts or [ ];
   hostOverlayRestrictToPeerSources = firewallOverlay.restrictToPeerSources or false;
   hostOverlayExtraAllowedSourceAddresses = firewallOverlay.extraAllowedSourceAddresses or [ ];
-  hostOverlayAllowedSourceAddresses = lib.unique (peerAddresses ++ hostOverlayExtraAllowedSourceAddresses);
+  hostOverlayAllowedSourceAddresses = lib.unique (
+    peerAddresses ++ guestPeerAddresses ++ hostOverlayExtraAllowedSourceAddresses
+  );
   firewallBackend = config.networking.firewall.backend or "iptables";
 
   listenerProtocol =

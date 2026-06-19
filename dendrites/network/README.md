@@ -9,6 +9,7 @@ Parent branch for the repo's overlay and underlay networking surfaces.
 ## Current Children
 
 - `network/tailscale`
+- `network/warpinator`
 - `network/yggdrasil-private`
 
 ## Selection

@@ -50,6 +50,11 @@ in
             inherit pkgs;
           };
 
+          identity-policy = import ../../checks/identity-policy.nix {
+            inherit pkgs;
+            inventory = config.dendritic.inventory;
+          };
+
           deployment-targets-eval =
             assert deploymentTargetsHold;
             pkgs.runCommand "deployment-targets-eval" { } ''
@@ -58,6 +63,18 @@ in
 
           yggdrasil-bootstrap-help = pkgs.runCommand "yggdrasil-bootstrap-help" { nativeBuildInputs = [ repoPackages.yggdrasil-bootstrap ]; } ''
             yggdrasil-bootstrap --help > "$out"
+          '';
+
+          bootstrap-validate-help = pkgs.runCommand "bootstrap-validate-help" { nativeBuildInputs = [ repoPackages.bootstrap-validate ]; } ''
+            bootstrap-validate --help > "$out"
+          '';
+
+          live-installer-help = pkgs.runCommand "live-installer-help" { nativeBuildInputs = [ repoPackages.live-installer ]; } ''
+            live-installer --help > "$out"
+          '';
+
+          nbootstrap-help = pkgs.runCommand "nbootstrap-help" { nativeBuildInputs = [ repoPackages.nbootstrap ]; } ''
+            nbootstrap --help > "$out"
           '';
 
           public-export-help = pkgs.runCommand "public-export-help" { nativeBuildInputs = [ repoPackages.public-export ]; } ''

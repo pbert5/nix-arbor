@@ -14,11 +14,70 @@ let
   hotPool = lib.attrByPath [ "seaweedfs" "hotPool" ] { } fabric;
   replication = hotPool.replication or "000";
   hotPoolEnabled = hotPool.enable or false;
-  masterHosts = lib.filter (h: hostHasRole h "seaweed-master") (builtins.attrNames hosts);
-  filerHosts = lib.filter (h: hostHasRole h "seaweed-filer") (builtins.attrNames hosts);
+  masterHosts = lib.filter (h: hostHasCapability h "seaweed-master") (builtins.attrNames hosts);
+  filerHosts = lib.filter (h: hostHasCapability h "seaweed-filer") (builtins.attrNames hosts);
 
   # Helpers
-  hostHasRole = hostName: role: builtins.elem role ((hosts.${hostName} or { }).roles or [ ]);
+  hostCapabilities =
+    hostName:
+    let
+      host = hosts.${hostName} or { };
+      annex = lib.attrByPath [ "org" "storage" "annex" "fabric" ] { } host;
+      seaweedfs = lib.attrByPath [ "org" "storage" "seaweedfs" ] { } host;
+      observability = lib.attrByPath [ "org" "storage" "observability" "enable" ] false host;
+      radicleSeed = lib.attrByPath [ "org" "network" "radicle" "seed" ] false host;
+      capabilitySet = [
+        {
+          name = "archive-node";
+          enabled = annex.archive or false;
+        }
+        {
+          name = "annex-storage";
+          enabled = annex.storage or false;
+        }
+        {
+          name = "annex-client";
+          enabled = annex.client or false;
+        }
+        {
+          name = "annex-workstation";
+          enabled = annex.workstation or false;
+        }
+        {
+          name = "annex-compute-cache";
+          enabled = annex.computeCache or false;
+        }
+        {
+          name = "seaweed-master";
+          enabled = seaweedfs.master or false;
+        }
+        {
+          name = "seaweed-volume";
+          enabled = seaweedfs.volume or false;
+        }
+        {
+          name = "seaweed-filer";
+          enabled = seaweedfs.filer or false;
+        }
+        {
+          name = "seaweed-s3";
+          enabled = seaweedfs.s3 or false;
+        }
+        {
+          name = "radicle-seed";
+          enabled = radicleSeed;
+        }
+        {
+          name = "storage-fabric-observer";
+          enabled = observability;
+        }
+      ];
+    in
+    builtins.map (capability: capability.name) (
+      builtins.filter (capability: capability.enabled) capabilitySet
+    );
+
+  hostHasCapability = hostName: capability: builtins.elem capability (hostCapabilities hostName);
 
   hostOnPrivateYgg = hostName: builtins.hasAttr hostName privateYggNodes;
 
@@ -39,7 +98,7 @@ let
     "radicle-seed"
     "storage-fabric-observer"
   ];
-  allFabricHosts = lib.filter (h: lib.any (r: hostHasRole h r) archiveFabricRoles) (
+  allFabricHosts = lib.filter (h: lib.any (r: hostHasCapability h r) archiveFabricRoles) (
     builtins.attrNames hosts
   );
   seaweedRoles = [
@@ -48,8 +107,12 @@ let
     "seaweed-filer"
     "seaweed-s3"
   ];
-  seaweedHosts = lib.filter (h: lib.any (r: hostHasRole h r) seaweedRoles) (builtins.attrNames hosts);
-  seaweedVolumeHosts = lib.filter (h: hostHasRole h "seaweed-volume") (builtins.attrNames hosts);
+  seaweedHosts = lib.filter (h: lib.any (r: hostHasCapability h r) seaweedRoles) (
+    builtins.attrNames hosts
+  );
+  seaweedVolumeHosts = lib.filter (h: hostHasCapability h "seaweed-volume") (
+    builtins.attrNames hosts
+  );
   isAbsolutePath = path: builtins.isString path && lib.hasPrefix "/" path;
 
   # M11: A URL is considered a disallowed content remote if it starts with a
@@ -143,16 +206,16 @@ else
         "storageFabric.seaweedfs.hotPool.volumePath must be an absolute path."
       ]
   ++ lib.optionals (hotPoolEnabled && masterHosts == [ ]) [
-    "storageFabric.seaweedfs.hotPool.enable is true but no host claims the 'seaweed-master' role."
+    "storageFabric.seaweedfs.hotPool.enable is true but no host enables org.storage.seaweedfs.master."
   ]
   ++ lib.optionals (hotPoolEnabled && builtins.length masterHosts > 1) [
     "storageFabric.seaweedfs.hotPool currently supports exactly one declared 'seaweed-master' host; found: ${helpers.formatNames masterHosts}."
   ]
   ++ lib.optionals (hotPoolEnabled && seaweedVolumeHosts == [ ]) [
-    "storageFabric.seaweedfs.hotPool.enable is true but no host claims the 'seaweed-volume' role."
+    "storageFabric.seaweedfs.hotPool.enable is true but no host enables org.storage.seaweedfs.volume."
   ]
   ++ lib.optionals (hotPoolEnabled && filerHosts == [ ]) [
-    "storageFabric.seaweedfs.hotPool.enable is true but no host claims the 'seaweed-filer' role."
+    "storageFabric.seaweedfs.hotPool.enable is true but no host enables org.storage.seaweedfs.filer."
   ]
   ++ lib.optionals (replicationDigits == null) [
     "storageFabric.seaweedfs.hotPool.replication must be a three-digit SeaweedFS replication string such as '000' or '001'."
@@ -171,22 +234,22 @@ else
     lib.optionals
       (
         (lib.attrByPath [ "s3" "enable" ] false hotPool)
-        && !(lib.any (h: hostHasRole h "seaweed-s3") (builtins.attrNames hosts))
+        && !(lib.any (h: hostHasCapability h "seaweed-s3") (builtins.attrNames hosts))
       )
       [
-        "storageFabric.seaweedfs.hotPool.s3.enable is true but no host claims the 'seaweed-s3' role."
+        "storageFabric.seaweedfs.hotPool.s3.enable is true but no host enables org.storage.seaweedfs.s3."
       ]
   ++ lib.optionals ((lib.attrByPath [ "s3" "enable" ] false hotPool) && filerHosts == [ ]) [
-    "storageFabric.seaweedfs.hotPool.s3.enable is true but no host claims the 'seaweed-filer' role for the S3 gateway to use."
+    "storageFabric.seaweedfs.hotPool.s3.enable is true but no host enables org.storage.seaweedfs.filer for the S3 gateway to use."
   ]
   ++ lib.concatMap (
     hostName:
     let
       host = hosts.${hostName};
-      isAnnexStorage = hostHasRole hostName "annex-storage";
+      isAnnexStorage = hostHasCapability hostName "annex-storage";
       isSeaweedHost = builtins.elem hostName seaweedHosts;
-      isArchiveNode = hostHasRole hostName "archive-node";
-      isRadicleSeed = hostHasRole hostName "radicle-seed";
+      isArchiveNode = hostHasCapability hostName "archive-node";
+      isRadicleSeed = hostHasCapability hostName "radicle-seed";
       onYgg = hostOnPrivateYgg hostName;
       archiveOrg = lib.attrByPath [ "org" "storage" "annex" "archive" ] { } host;
       nasOrg = archiveOrg.nas or { };
@@ -200,13 +263,13 @@ else
         || (removableOrg.enable or false);
     in
     lib.optionals (isAnnexStorage && !onYgg) [
-      "Host '${hostName}' claims role 'annex-storage' but is not enrolled in ${privateNetwork}.  Annex storage hosts must be on the private overlay."
+      "Host '${hostName}' enables org.storage.annex.fabric.storage but is not enrolled in ${privateNetwork}.  Annex storage hosts must be on the private overlay."
     ]
     ++ lib.optionals (isSeaweedHost && !onYgg) [
-      "Host '${hostName}' claims a seaweedfs role but is not enrolled in ${privateNetwork}.  SeaweedFS hosts must be on the private overlay."
+      "Host '${hostName}' enables SeaweedFS fabric capability but is not enrolled in ${privateNetwork}.  SeaweedFS hosts must be on the private overlay."
     ]
     ++ lib.optionals (isArchiveNode && !onYgg) [
-      "Host '${hostName}' claims role 'archive-node' but is not enrolled in ${privateNetwork}.  Archive nodes must be reachable over the private overlay."
+      "Host '${hostName}' enables org.storage.annex.fabric.archive but is not enrolled in ${privateNetwork}.  Archive nodes must be reachable over the private overlay."
     ]
     ++
       lib.optionals
@@ -216,10 +279,10 @@ else
           && hostPrivateYggAddress hostName == null
         )
         [
-          "Host '${hostName}' claims a storage-fabric service role but ${privateNetwork}.nodes.${hostName}.address is not set."
+          "Host '${hostName}' enables a storage-fabric service capability but ${privateNetwork}.nodes.${hostName}.address is not set."
         ]
     ++ lib.optionals (isArchiveNode && !hasArchiveBackend) [
-      "Host '${hostName}' claims role 'archive-node' but no archive backend is configured in org.storage.annex.archive.  Enable at least one of: nas, tape, object, removableDisk."
+      "Host '${hostName}' enables org.storage.annex.fabric.archive but no archive backend is configured in org.storage.annex.archive.  Enable at least one of: nas, tape, object, removableDisk."
     ]
     ++ lib.optionals ((nasOrg.enable or false) && !(nasOrg ? path) && !(nasOrg ? mountPoint)) [
       "Host '${hostName}' enables archive NAS backend but does not set org.storage.annex.archive.nas.path or mountPoint."
@@ -240,10 +303,10 @@ else
       "Host '${hostName}' enables removable-disk archive backend but does not set org.storage.annex.archive.removableDisk.path."
     ]
     ++ lib.optionals (isRadicleSeed && !onYgg) [
-      "Host '${hostName}' claims role 'radicle-seed' but is not enrolled in ${privateNetwork}.  Radicle seed nodes must be on the private overlay."
+      "Host '${hostName}' enables org.network.radicle.seed but is not enrolled in ${privateNetwork}.  Radicle seed nodes must be on the private overlay."
     ]
     ++ lib.optionals (isRadicleSeed && onYgg && hostPrivateYggPublicKey hostName == null) [
-      "Host '${hostName}' claims role 'radicle-seed' but ${privateNetwork}.nodes.${hostName}.publicKey is not set."
+      "Host '${hostName}' enables org.network.radicle.seed but ${privateNetwork}.nodes.${hostName}.publicKey is not set."
     ]
     # M11: per-host annex remote URL validation.
     ++ checkAnnexRemoteUrls hostName

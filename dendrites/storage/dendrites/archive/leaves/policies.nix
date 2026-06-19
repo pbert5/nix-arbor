@@ -1,11 +1,16 @@
-{ lib, site, hostInventory, ... }:
+{
+  lib,
+  site,
+  hostInventory,
+  ...
+}:
 let
   fabric = site.storageFabric or { };
   annexCfg = fabric.annex or { };
   archiveCfg = fabric.archive or { };
   numCopies = annexCfg.defaultNumCopies or 2;
   minArchiveCopies = archiveCfg.minArchiveCopies or 2;
-  isArchiveNode = builtins.elem "archive-node" (hostInventory.roles or [ ]);
+  isArchiveNode = lib.attrByPath [ "org" "storage" "annex" "fabric" "archive" ] false hostInventory;
 in
 lib.mkIf isArchiveNode {
   # Policy notes (enforced via git-annex configuration, not NixOS options):

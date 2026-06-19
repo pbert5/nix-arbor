@@ -8,5 +8,4 @@
   ];
   requires = [ "network" ];
   conflicts = [ ];
-  hostClasses = [ ];
 }

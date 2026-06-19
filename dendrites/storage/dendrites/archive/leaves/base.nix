@@ -1,4 +1,9 @@
-{ lib, site, hostInventory, ... }:
+{
+  lib,
+  site,
+  hostInventory,
+  ...
+}:
 let
   fabric = site.storageFabric or { };
   annexCfg = fabric.annex or { };
@@ -6,7 +11,7 @@ let
   minCopies = archiveCfg.minArchiveCopies or 2;
   annexUser = annexCfg.user or "annex";
   annexGroup = annexCfg.group or "annex";
-  isArchiveNode = builtins.elem "archive-node" (hostInventory.roles or [ ]);
+  isArchiveNode = lib.attrByPath [ "org" "storage" "annex" "fabric" "archive" ] false hostInventory;
   archiveOrg = lib.attrByPath [ "org" "storage" "annex" "archive" ] { } hostInventory;
   hasNas = archiveOrg.nas.enable or false;
   hasTape = archiveOrg.tape.enable or false;
@@ -18,7 +23,7 @@ lib.mkIf isArchiveNode {
     {
       assertion = hasNas || hasTape || hasObject || hasRemovable;
       message = ''
-        Host claims role "archive-node" but no archive backend is enabled.
+        Host enables org.storage.annex.fabric.archive but no archive backend is enabled.
         Set at least one of:
           org.storage.annex.archive.nas.enable = true;
           org.storage.annex.archive.tape.enable = true;

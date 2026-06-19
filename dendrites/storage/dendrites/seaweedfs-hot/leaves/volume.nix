@@ -20,9 +20,9 @@ let
   ] null site;
   bindAddr = if yggAddress != null then yggAddress else "127.0.0.1";
   # Master addresses for this volume node to register with.
-  # Populated from all hosts that carry the seaweed-master role.
+  # Populated from all hosts that enable the SeaweedFS master capability.
   masterHosts = lib.filter (
-    h: builtins.elem "seaweed-master" ((site.hosts or { }).${h}.roles or [ ])
+    h: lib.attrByPath [ "org" "storage" "seaweedfs" "master" ] false ((site.hosts or { }).${h} or { })
   ) (builtins.attrNames (site.hosts or { }));
   masterPort = hotPool.masterPort or 9333;
   masterAddrs = lib.concatMapStringsSep "," (
@@ -32,7 +32,7 @@ let
     in
     "${addr}:${toString masterPort}"
   ) masterHosts;
-  isVolume = builtins.elem "seaweed-volume" (hostInventory.roles or [ ]);
+  isVolume = lib.attrByPath [ "org" "storage" "seaweedfs" "volume" ] false hostInventory;
 in
 lib.mkIf isVolume {
   systemd.services.seaweedfs-volume = {

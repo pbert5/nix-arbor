@@ -3,12 +3,6 @@ let
   lib = pkgs.lib;
   system = pkgs.stdenv.hostPlatform.system;
   evalConfig = import "${pkgs.path}/nixos/lib/eval-config.nix";
-  helpers = import ../lib/helpers.nix { inherit lib; };
-  inventoryLib = import ../lib/inventory.nix {
-    inherit helpers lib;
-  };
-
-  inventory = inventoryLib.normalizeInventory (import ../inventory/inventory.nix { });
 
   site = {
     networks.privateYggdrasil = {
@@ -127,10 +121,6 @@ let
   );
 
   assertionsHold =
-    assert builtins.elem "network/yggdrasil-private" inventory.hosts.dev-machine.dendrites;
-    assert builtins.elem "network/tailscale" inventory.hosts.dev-machine.dendrites;
-    assert builtins.elem "network/yggdrasil-private" inventory.hosts.compute-worker.dendrites;
-    assert !(builtins.elem "network/tailscale" inventory.hosts.compute-worker.dendrites);
     assert alphaEval.config.networking.firewall.enable;
     assert alphaEval.config.networking.firewall.checkReversePath == true;
     assert alphaEval.config.services.tailscale.enable;

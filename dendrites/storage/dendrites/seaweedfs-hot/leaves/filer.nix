@@ -26,7 +26,7 @@ let
     else
       "${bindAddr}:${toString filerPort}";
   masterHosts = lib.filter (
-    h: builtins.elem "seaweed-master" ((site.hosts or { }).${h}.roles or [ ])
+    h: lib.attrByPath [ "org" "storage" "seaweedfs" "master" ] false ((site.hosts or { }).${h} or { })
   ) (builtins.attrNames (site.hosts or { }));
   masterPort = hotPool.masterPort or 9333;
   masterAddrs = lib.concatMapStringsSep "," (
@@ -36,7 +36,7 @@ let
     in
     "${addr}:${toString masterPort}"
   ) masterHosts;
-  isFiler = builtins.elem "seaweed-filer" (hostInventory.roles or [ ]);
+  isFiler = lib.attrByPath [ "org" "storage" "seaweedfs" "filer" ] false hostInventory;
 in
 lib.mkIf isFiler {
   systemd.services.seaweedfs-filer = {

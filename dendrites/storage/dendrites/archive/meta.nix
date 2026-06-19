@@ -10,5 +10,4 @@
   ];
   requires = [ "storage" ];
   conflicts = [ ];
-  hostClasses = [ "archive-node" ];
 }

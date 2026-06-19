@@ -19,9 +19,9 @@ let
     "address"
   ] null site;
   bindAddr = if yggAddress != null then yggAddress else "127.0.0.1";
-  filerHosts = lib.filter (h: builtins.elem "seaweed-filer" ((site.hosts or { }).${h}.roles or [ ])) (
-    builtins.attrNames (site.hosts or { })
-  );
+  filerHosts = lib.filter (
+    h: lib.attrByPath [ "org" "storage" "seaweedfs" "filer" ] false ((site.hosts or { }).${h} or { })
+  ) (builtins.attrNames (site.hosts or { }));
   filerPort = hotPool.filerPort or 8888;
   filerAddr = lib.optionalString (filerHosts != [ ]) (
     let
@@ -30,7 +30,7 @@ let
     in
     "${addr}:${toString filerPort}"
   );
-  isS3 = builtins.elem "seaweed-s3" (hostInventory.roles or [ ]);
+  isS3 = lib.attrByPath [ "org" "storage" "seaweedfs" "s3" ] false hostInventory;
 in
 lib.mkIf (isS3 && s3Enable) {
   systemd.services.seaweedfs-s3 = {

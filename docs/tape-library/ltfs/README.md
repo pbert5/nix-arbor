@@ -1,5 +1,17 @@
 # LTFS
 
+This is part of the modern tape backup plan for this repo.
+
+Read [Modern Tape Backup Plan](../modern-backup-plan.md) first if you are
+confirming the current intended workflow.
+
+The modern game-library LTFS workflow is driven by
+[`backupper`](../backupper.md), not by the older raw `game-backuper` path.
+
+In the active `game_backup` plan, LTFS payloads come from the archive roots.
+Loose unzipped `roms` files are checked for coverage against the zip archive
+set and reported separately.
+
 Local package: `ltfs-open`
 
 Companion helpers:
@@ -23,18 +35,27 @@ Companion helpers:
   non-rewinding tape node used by `mt` and `tar`.
 - `ltfs-default` resolves the current default tape drive to the matching
   `/dev/sg*` path.
+- `ltfs-default-2` resolves the second configured tape drive to its matching
+  `/dev/sg*` path.
 - The tested Linux path for the HH5 drive here is the open LTFS build, not the
   HPE build that rejected `ULT3580-HH5`.
 - For the current TL2000 + HH5 setup:
   - `tape-default` resolves to the non-rewinding stream device.
+  - `tape-default-2` resolves the second configured non-rewinding stream
+    device.
   - `ltfs-default` resolves to the LTFS device for `mkltfs`, `ltfs`, and
     `ltfsck`.
+  - `ltfs-default-2` resolves the LTFS SG device for the second configured
+    drive.
 
 ## Quick Start
 
 ```bash
+backupper start game_backup
+backupper status game_backup
 ltfs -o device_list
 ltfs-default
+ltfs-default-2
 mkltfs -d "$(ltfs-default)" -n LTFS001
 mkdir -p ~/mnt/ltfs
 ltfs ~/mnt/ltfs -o devname="$(ltfs-default)"
@@ -43,7 +64,7 @@ umount ~/mnt/ltfs
 
 ## Index Sync Behavior
 
-- Verified on `desktoptoodle` on April 20, 2026 with the live `ltfs --help`
+- Verified on `t320-0` on May 19, 2026 with the live `ltfs --help`
   output from `/run/current-system/sw/bin/ltfs`.
 - The current default mount behavior is `-o sync_type=time@5`.
 - That means LTFS attempts to write the index to tape every 5 minutes while
@@ -69,8 +90,10 @@ umount ~/mnt/ltfs
 
 - Use `ltfsck -d "$(ltfs-default)"` when you need LTFS metadata repair or
   validation.
+- `backupper` indexes a loaded LTFS tape before writing, so files already
+  present on that tape are skipped instead of rewritten.
 - Do not run `mt`, `tar`, or other raw tape commands against the same drive
   while LTFS has the tape mounted.
 - Use
-  [`docs/tape-library-coding-guide.md`](/work/flake/docs/tape-library-coding-guide.md)
+  [`docs/tape-library/hardware/coding/README.md`](/work/flake/docs/tape-library/hardware/coding/README.md)
   for explicit device mappings and longer command forms.

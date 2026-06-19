@@ -5,5 +5,4 @@
   provides = [ "media-base" ];
   requires = [ ];
   conflicts = [ ];
-  hostClasses = [ ];
 }

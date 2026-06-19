@@ -11,10 +11,4 @@
   ];
   requires = [ "storage" ];
   conflicts = [ ];
-  hostClasses = [
-    "seaweed-master"
-    "seaweed-volume"
-    "seaweed-filer"
-    "seaweed-s3"
-  ];
 }

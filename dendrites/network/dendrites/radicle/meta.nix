@@ -9,5 +9,4 @@
   ];
   requires = [ "network" ];
   conflicts = [ ];
-  hostClasses = [ "radicle-seed" ];
 }

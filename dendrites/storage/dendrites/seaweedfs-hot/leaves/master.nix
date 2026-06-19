@@ -20,7 +20,7 @@ let
     "address"
   ] null site;
   bindAddr = if yggAddress != null then yggAddress else "127.0.0.1";
-  isMaster = builtins.elem "seaweed-master" (hostInventory.roles or [ ]);
+  isMaster = lib.attrByPath [ "org" "storage" "seaweedfs" "master" ] false hostInventory;
 in
 lib.mkIf isMaster {
   systemd.services.seaweedfs-master = {

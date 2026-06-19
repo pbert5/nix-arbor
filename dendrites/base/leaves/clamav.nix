@@ -1,5 +1,9 @@
 { ... }:
 {
+  systemd.tmpfiles.rules = [
+    "d /var/lib/download-staging 0755 root root - -"
+  ];
+
   services.clamav = {
     daemon.enable = true;
 
@@ -12,6 +16,12 @@
     scanner = {
       enable = true;
       interval = "*-*-* 03:30:00";
+      scanDirectories = [
+        "/home"
+        "/etc"
+        "/var/lib/download-staging"
+        "/var/tmp"
+      ];
     };
 
     clamonacc.enable = true;

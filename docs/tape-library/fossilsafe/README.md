@@ -2,6 +2,9 @@
 
 Local package: `fossilsafe`
 
+Status: packaged as a fruit and available for experiment-local runs, but not
+currently selected by any active host in `inventory/hosts.nix`.
+
 Companion commands:
 
 - `fossilsafe`
@@ -28,6 +31,9 @@ Companion commands:
   feature-flake import path. The service only enables when
   `org.storage.tape.manager` is set to `fossilsafe`; omitting the manager keeps
   the inventory data in place while leaving the systemd service off.
+- No active host currently selects `storage/tape`, sets
+  `org.storage.tape.manager = "fossilsafe"`, or attaches the `fossilsafe`
+  fruit.
 - When the service is enabled, `/etc/fossilsafe/config.json` is rendered from
   Nix instead of being treated as installer-owned mutable state.
 - The package still falls back to XDG-backed config and state for ad-hoc
@@ -65,8 +71,8 @@ Companion commands:
   by `mtx status`.
 - The service now returns a real backend error screen instead of staying on a
   black `Initializing...` overlay if startup checks fail repeatedly.
-- Current live status on `desktoptoodle` reports
-  `/api/healthz = healthy` and `/api/auth/setup-status = {"setup_required": false, "setup_mode": "relaxed"}`.
+- Live service status is not currently tracked for `t320-0` because the host
+  does not select the `fossilsafe` fruit.
 
 ## Quick Start
 
@@ -81,7 +87,7 @@ fossilsafe-cli system status
 For detached iteration against host inventory data:
 
 ```bash
-nix run ./experiments/fossilsafe -- --flake /work/flake --host desktoptoodle
+nix run ./experiments/fossilsafe -- --flake /work/flake --host t320-0
 ```
 
 If you want the base tape paths first, check:

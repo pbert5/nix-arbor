@@ -7,6 +7,9 @@ This repository prefers declarative Nix workflows.
 - Default to declarative configuration over ad-hoc imperative scripts.
 - Keep system behavior encoded in Nix whenever practical.
 - Favor small, composable modules with clear ownership.
+- Beyond the core host age encryption key installed during enrollment, manage
+  machine setup and cluster behavior declaratively through the flake. Use the
+  live USB installer and NixOS modules for initial setup whenever practical.
 
 ## Documentation Hygiene
 
@@ -23,11 +26,14 @@ This repository prefers declarative Nix workflows.
 ## Agent Skill Usage
 
 - For Nix, NixOS, Home Manager, flakes, overlays, derivations, dev shells, or
-  repo-layout work, consult `.github/skills/nixos/SKILL.md` first.
+  repo-layout work, invoke the `nixos` skill (`$nixos` in Codex, `/nixos` in
+  Claude).
 - For flake architecture, module-boundary decisions, cross-class composition, or
   the preferred design theory for the primary system flake and `experiments/`,
-  also consult `.github/skills/dendritic/SKILL.md` as an appendix to the
-  `nixos` skill.
+  invoke the `dendritic` skill (`$dendritic` in Codex, `/dendritic` in Claude)
+  as an appendix to the `nixos` skill.
+- Both skills are authored under `.github/skills/` and exposed through
+  `.agents/skills/` for Codex and `.claude/skills/` for Claude.
 - Load only the reference files needed for the current task from
   `.github/skills/nixos/references/` to keep context focused.
 - Keep the discoverable skill under `.github/skills/nixos/` aligned with the
@@ -36,6 +42,23 @@ This repository prefers declarative Nix workflows.
 - Prefer the `dendritic` skill's aspect-oriented design theory when shaping the
   main flake or experiment-local flakes: thin entry points, feature-first
   modules, and composition across NixOS/Home Manager/Darwin where it helps.
+
+## Inventory and Lib Boundaries
+
+- `inventory/` is **data only**. Files there must not contain assembly code:
+  no derivations across multiple sources, no `builtins.readFile` for keys, no
+  dynamic URL construction, no filtering/mapping that joins inventory files.
+- Assembly logic belongs in `lib/`. The entry point for all inventory-level
+  derivations is `lib/inventory.nix`'s `normalizeInventory`, which is called
+  once by the flake and receives the entire raw inventory.
+- Extend `lib/inventory.nix` (or add a focused helper under `lib/`) for new
+  derivations, then wire them into `normalizeInventory`.
+- Typical things that belong in lib, not inventory:
+  - Deriving leaders/remotes from host roles and network data
+  - Merging identity service records (e.g. yggdrasil addresses) into network
+    node definitions
+  - Reading and normalizing key files
+  - Any cross-file join or transformation
 
 ## File Naming
 
@@ -80,3 +103,17 @@ This repository prefers declarative Nix workflows.
 - If nested Git repos exist, determine which repo owns the file instead of
   blindly staging from the current directory.
 - Do not stage unrelated files just to make evaluation pass.
+
+## Live Cluster Validation
+
+- Leader hosts such as `desktoptoodle` and `r640-0` have root SSH access to
+  all devices defined in the flake. When working from one of those leaders,
+  you may use `clusterctl deploy` for the host or hosts currently being
+  changed.
+- When validating changes intended for the live cluster, deploy to each managed
+  machine with `clusterctl deploy r640-0 desktoptoodle t320-0` unless the user
+  explicitly asks for a dry run or a narrower host set.
+- Long-running deploys can burn excessive agent tokens while producing little
+  useful signal. After starting a deploy that is expected to run for a while,
+  do not keep polling it to completion by default; report that it is running
+  and let the user reprompt when it finishes or needs attention.

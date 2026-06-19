@@ -5,5 +5,4 @@
   provides = [ "network-overlays" ];
   requires = [ ];
   conflicts = [ ];
-  hostClasses = [ ];
 }

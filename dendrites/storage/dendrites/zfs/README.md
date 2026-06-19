@@ -21,4 +21,4 @@ Adds the baseline host configuration required for a ZFS-managed system.
 ## Requirements
 
 - requires `storage`
-- intended for `workstation` hosts
+- intended for `workstation` and `compute-worker` hosts

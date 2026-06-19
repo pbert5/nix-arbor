@@ -18,5 +18,6 @@ in
     ruff
     uv
     unstablePkgs.vscode
+    nmap
   ];
 }

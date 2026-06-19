@@ -1,7 +1,12 @@
-{ lib, pkgs, tapeDefault }:
+{
+  lib,
+  pkgs,
+  tapeDefault,
+  name ? "ltfs-default",
+}:
 
 pkgs.writeShellApplication {
-  name = "ltfs-default";
+  inherit name;
   runtimeInputs = [
     pkgs.coreutils
     pkgs.gawk

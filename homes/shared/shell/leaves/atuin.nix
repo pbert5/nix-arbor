@@ -5,7 +5,7 @@ in
 {
   programs.atuin = {
     enable = true;
-    enableFishIntegration = true;
+    enableZshIntegration = true;
     package = unstablePkgs.atuin;
     settings = {
       auto_sync = false;

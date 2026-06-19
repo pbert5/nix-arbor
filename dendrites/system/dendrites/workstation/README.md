@@ -10,7 +10,11 @@ repo's workstation hosts.
 ## Main Effects
 
 - enables NetworkManager
-- enables Docker
+- enables Docker and pins the maintained `docker_29` package line
+- enables QMK keyboard support
+- installs VIA udev rules so compatible keyboards are accessible without manual
+	permissions hacks
+- installs the flake-pinned `nixard` package explorer
 
 ## Current Children
 

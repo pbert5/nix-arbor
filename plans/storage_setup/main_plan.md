@@ -332,8 +332,8 @@ radicle seed nodes must be on the private overlay
 ## 8. Suggested repo files to add
 
 ```text
-docs/storage-fabric.md
-docs/storage-fabric-runbook.md
+docs/deprecated/storage-fabric/overview.md
+docs/deprecated/storage-fabric/runbook.md
 
 inventory/storage-fabric.nix
 

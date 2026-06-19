@@ -9,5 +9,4 @@
   ];
   requires = [ "storage" ];
   conflicts = [ ];
-  hostClasses = [ "workstation" ];
 }

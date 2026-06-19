@@ -3,7 +3,7 @@
 Local package: `yatm`
 
 Status: packaged and configured through Nix, but not the selected LTFS manager
-for `desktoptoodle` right now.
+for `t320-0` right now.
 
 Companion commands:
 

@@ -6,13 +6,8 @@
     "git-annex"
     "annex-repo-root"
     "annex-ssh-transfers"
+    "annex-p2p-transfers"
   ];
   requires = [ "storage" ];
   conflicts = [ ];
-  hostClasses = [
-    "workstation"
-    "compute-worker"
-    "annex-client"
-    "annex-storage"
-  ];
 }

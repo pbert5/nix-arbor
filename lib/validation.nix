@@ -14,29 +14,35 @@ let
       ...
     }:
     let
-      availableRoles = builtins.attrNames inventory.roles;
       availableUsers = builtins.attrNames inventory.users;
       availableHosts = builtins.attrNames inventory.hosts;
       availableNetworks = builtins.attrNames (inventory.networks or { });
       availableBootstrapHosts = builtins.attrNames (inventory.hostBootstrap or { });
+      leaderKeysDir = ../inventory/keys/leaders;
+      leaderKeyFiles = builtins.attrNames (
+        lib.filterAttrs (
+          name: type: type == "regular" && lib.hasSuffix ".txt" name
+        ) (builtins.readDir leaderKeysDir)
+      );
+      parseLeaderKeyHost =
+        fileName:
+        let
+          matches = builtins.match "(.*)-root-deployer\\.txt" fileName;
+        in
+        if matches == null then null else builtins.elemAt matches 0;
+      leaderKeyHosts = helpers.removeNulls (builtins.map parseLeaderKeyHost leaderKeyFiles);
       privateYggNodes = lib.attrByPath [ "networks" "privateYggdrasil" "nodes" ] { } inventory;
       privateYggNetwork = lib.attrByPath [ "networks" "privateYggdrasil" ] { } inventory;
-      networkValidationFailures = lib.concatMap (
-        networkName:
-        let
-          network = inventory.networks.${networkName};
-          dendrite = network.dendrite or null;
-        in
-        lib.optionals (dendrite == null) [
-          "inventory.networks.${networkName} is missing a dendrite declaration."
-        ]
-      ) availableNetworks;
+      guestAccess = inventory.guestAccess or { };
+      guestNames = builtins.attrNames (guestAccess.guests or { });
+      sshGuestGrants = lib.attrByPath [ "ssh" "grants" ] { } guestAccess;
+      yggGuestGrants = lib.attrByPath [ "yggdrasil" "trustedGuests" ] { } guestAccess;
+      networkValidationFailures = [ ];
       claimedPorts =
         builtins.map (endpoints.portOf 0) (builtins.attrValues (inventory.ports or { }))
         ++ builtins.map (endpoints.portOf 0) (builtins.attrValues (inventory.reservedPorts or { }));
       allowedTapeManagers = [
         "fossilsafe"
-        "tapelib"
         "yatm"
       ];
 
@@ -72,6 +78,8 @@ let
           ] null inventory;
           identityFile = bootstrap.identityFile or null;
           hasDatedKeyName = identityFile != null && builtins.match ".*_[0-9]{8}([^/]*)" identityFile != null;
+          leaderKeyFile = "${hostName}-root-deployer.txt";
+          operatorCapable = bootstrap.operatorCapable or false;
         in
         lib.optionals (!(builtins.elem hostName availableHosts)) [
           "inventory.hostBootstrap defines unknown host '${hostName}'."
@@ -82,27 +90,99 @@ let
         ++ lib.optionals hasDatedKeyName [
           "inventory.hostBootstrap.${hostName}.identityFile '${identityFile}' contains a date-stamped filename. Use a stable key name so deployments survive machine transfers."
         ]
+        ++ lib.optionals (operatorCapable && !(builtins.elem leaderKeyFile leaderKeyFiles)) [
+          "inventory.hostBootstrap.${hostName}.operatorCapable is true but inventory/keys/leaders/${leaderKeyFile} is missing."
+        ]
       ) availableBootstrapHosts;
+      leaderKeyValidationFailures = lib.concatMap (
+        fileName:
+        let
+          keyHost = parseLeaderKeyHost fileName;
+          bootstrap = inventory.hostBootstrap.${keyHost} or { };
+        in
+        lib.optionals (keyHost == null) [
+          "inventory/keys/leaders/${fileName} does not follow the '<host>-root-deployer.txt' naming convention."
+        ]
+        ++ lib.optionals (keyHost != null && !(builtins.elem keyHost availableHosts)) [
+          "inventory/keys/leaders/${fileName} references unknown host '${keyHost}'."
+        ]
+        ++ lib.optionals (keyHost != null && (bootstrap.operatorCapable or false) == false) [
+          "inventory/keys/leaders/${fileName} exists but inventory.hostBootstrap.${keyHost}.operatorCapable is not true."
+        ]
+      ) leaderKeyFiles;
+      guestAccessValidationFailures =
+        let
+          formatHostUsers =
+            missingUsersByHost:
+            lib.concatStringsSep "; " (
+              lib.mapAttrsToList (hostName: users: "${hostName}: ${helpers.formatNames users}") (
+                lib.filterAttrs (_hostName: users: users != [ ]) missingUsersByHost
+              )
+            );
+        in
+        lib.concatMap (
+          grantName:
+          let
+            grant = sshGuestGrants.${grantName};
+            missingHosts = helpers.missingFrom availableHosts (grant.hosts or [ ]);
+            missingGuests = grant.missingGuestNames or helpers.missingFrom guestNames (grant.guests or [ ]);
+            missingUsersByHost = grant.missingUsersByHost or { };
+            hasMissingUsers = builtins.any (users: users != [ ]) (builtins.attrValues missingUsersByHost);
+          in
+          lib.optionals (missingHosts != [ ]) [
+            "inventory.guestAccess.ssh.grants.${grantName} references unknown hosts: ${helpers.formatNames missingHosts}."
+          ]
+          ++ lib.optionals (missingGuests != [ ]) [
+            "inventory.guestAccess.ssh.grants.${grantName} references unknown guests: ${helpers.formatNames missingGuests}."
+          ]
+          ++ lib.optionals ((grant.keys or [ ]) == [ ]) [
+            "inventory.guestAccess.ssh.grants.${grantName} does not resolve to any SSH authorized keys."
+          ]
+          ++ lib.optionals hasMissingUsers [
+            "inventory.guestAccess.ssh.grants.${grantName} references users that are not active on target hosts: ${formatHostUsers missingUsersByHost}."
+          ]
+        ) (builtins.attrNames sshGuestGrants)
+        ++ lib.concatMap (
+          grantName:
+          let
+            grant = yggGuestGrants.${grantName};
+            missingHosts = helpers.missingFrom availableHosts (grant.hosts or [ ]);
+            missingGuests = grant.missingGuestNames or helpers.missingFrom guestNames (grant.guests or [ ]);
+            targetsWithPeerSourceFiltering = builtins.filter (
+              hostName:
+              lib.attrByPath [
+                "networks"
+                "privateYggdrasil"
+                "nodes"
+                hostName
+                "firewall"
+                "overlay"
+                "restrictToPeerSources"
+              ] false inventory
+            ) (grant.hosts or [ ]);
+          in
+          lib.optionals (missingHosts != [ ]) [
+            "inventory.guestAccess.yggdrasil.trustedGuests.${grantName} references unknown hosts: ${helpers.formatNames missingHosts}."
+          ]
+          ++ lib.optionals (missingGuests != [ ]) [
+            "inventory.guestAccess.yggdrasil.trustedGuests.${grantName} references unknown guests: ${helpers.formatNames missingGuests}."
+          ]
+          ++ lib.optionals ((grant.publicKey or null) == null) [
+            "inventory.guestAccess.yggdrasil.trustedGuests.${grantName} does not resolve to a Yggdrasil publicKey."
+          ]
+          ++ lib.optionals (targetsWithPeerSourceFiltering != [ ] && (grant.address or null) == null) [
+            "inventory.guestAccess.yggdrasil.trustedGuests.${grantName} targets hosts with private Ygg peer-source filtering but does not resolve to an address: ${helpers.formatNames targetsWithPeerSourceFiltering}."
+          ]
+        ) (builtins.attrNames yggGuestGrants);
     in
     lib.optionals (!(builtins.length claimedPorts == builtins.length (lib.unique claimedPorts))) [
       "Duplicate port found in inventory.ports or inventory.reservedPorts."
     ]
     ++ lib.concatMap (
-      userName:
-      let
-        user = inventory.users.${userName};
-        missingRoles = helpers.missingFrom availableRoles (user.roles or [ ]);
-      in
-      lib.optionals (missingRoles != [ ]) [
-        "User '${userName}' references unknown roles: ${helpers.formatNames missingRoles}."
-      ]
-    ) availableUsers
-    ++ lib.concatMap (
       hostName:
       let
         host = inventory.hosts.${hostName};
         missingUsers = helpers.missingFrom availableUsers (host.users or [ ]);
-        missingRoles = helpers.missingFrom availableRoles (host.roles or [ ]);
         missingNetworks = helpers.missingFrom availableNetworks (host.networks or [ ]);
         distributedBuildMachines = lib.attrByPath [ "org" "nix" "distributedBuilds" "builders" ] [ ] host;
         missingBuildMachines = helpers.missingFrom availableHosts distributedBuildMachines;
@@ -111,17 +191,11 @@ let
       lib.optionals (missingUsers != [ ]) [
         "Host '${hostName}' references unknown users: ${helpers.formatNames missingUsers}."
       ]
-      ++ lib.optionals (missingRoles != [ ]) [
-        "Host '${hostName}' references unknown roles: ${helpers.formatNames missingRoles}."
-      ]
       ++ lib.optionals (missingNetworks != [ ]) [
         "Host '${hostName}' references unknown networks: ${helpers.formatNames missingNetworks}."
       ]
       ++ lib.optionals (missingBuildMachines != [ ]) [
         "Host '${hostName}' references unknown distributed build machines: ${helpers.formatNames missingBuildMachines}."
-      ]
-      ++ lib.optionals ((host.publicYggdrasil or false) && !(privateYggNetwork.public or false)) [
-        "Host '${hostName}' opts into publicYggdrasil but inventory.networks.privateYggdrasil.public is disabled."
       ]
       ++ lib.optionals (tapeManager != null && !(builtins.elem tapeManager allowedTapeManagers)) [
         "Host '${hostName}' has invalid org.storage.tape.manager '${tapeManager}'."
@@ -129,6 +203,8 @@ let
     ) (builtins.attrNames inventory.hosts)
     ++ privateYggValidationFailures
     ++ bootstrapValidationFailures
+    ++ leaderKeyValidationFailures
+    ++ guestAccessValidationFailures
     ++ networkValidationFailures
     ++ storageFabricValidation inventory;
 
@@ -158,9 +234,22 @@ let
       fruitEntries = builtins.map (name: fruitRegistry.${name}) resolvedFruits;
       tapeDevices = lib.attrByPath [ "facts" "storage" "tape" "devices" ] null host;
       zfsConfig = lib.attrByPath [ "facts" "storage" "zfs" ] null host;
-      hostRoles = host.roles or [ ];
+      bitlockerVolumes = lib.attrByPath [ "org" "storage" "bitlocker" "volumes" ] { } host;
+      invalidBitlockerVolumes = builtins.filter (
+        name:
+        let
+          volume = bitlockerVolumes.${name};
+        in
+        !(volume ? device && volume ? mountPoint && (volume.keyFiles or [ ]) != [ ])
+      ) (builtins.attrNames bitlockerVolumes);
       tapeManager = lib.attrByPath [ "org" "storage" "tape" "manager" ] null host;
       privateYggNode = lib.attrByPath [ "networks" "privateYggdrasil" "nodes" hostName ] null inventory;
+      publicYggPeeringNode = lib.attrByPath [
+        "networks"
+        "publicYggdrasilPeering"
+        "nodes"
+        hostName
+      ] null inventory;
       privateYggPeerHosts = if privateYggNode == null then [ ] else privateYggNode.peers or [ ];
       restrictToPeerSources = lib.attrByPath [
         "firewall"
@@ -183,13 +272,9 @@ let
         conflicts = builtins.filter (name: builtins.elem name resolvedDendrites) (
           entry.meta.conflicts or [ ]
         );
-        classes = entry.meta.hostClasses or [ ];
       in
       lib.optionals (conflicts != [ ]) [
         "Host '${hostName}' selects dendrite '${entry.meta.name}' which conflicts with ${helpers.formatNames conflicts}."
-      ]
-      ++ lib.optionals (classes != [ ] && lib.intersectLists classes hostRoles == [ ]) [
-        "Host '${hostName}' selects dendrite '${entry.meta.name}' but its roles ${helpers.formatNames hostRoles} do not match supported host classes ${helpers.formatNames classes}."
       ]
     ) dendriteEntries
     ++ lib.concatMap (
@@ -225,6 +310,15 @@ let
         [
           "Host '${hostName}' selects storage/tape but is missing facts.storage.tape.devices.changer and at least one drive."
         ]
+    ++ lib.optionals (builtins.elem "storage/bitlocker" resolvedDendrites && bitlockerVolumes == { }) [
+      "Host '${hostName}' selects storage/bitlocker but is missing org.storage.bitlocker.volumes."
+    ]
+    ++
+      lib.optionals
+        (builtins.elem "storage/bitlocker" resolvedDendrites && invalidBitlockerVolumes != [ ])
+        [
+          "Host '${hostName}' selects storage/bitlocker but these volumes are missing device, mountPoint, or keyFiles: ${helpers.formatNames invalidBitlockerVolumes}."
+        ]
     ++
       lib.optionals
         (
@@ -237,13 +331,9 @@ let
         ]
     ++
       lib.optionals
-        (
-          builtins.elem "storage/tape" resolvedDendrites
-          && tapeManager == "tapelib"
-          && !(builtins.elem "tapelib" resolvedFruits)
-        )
+        (builtins.elem "network/yggdrasil-public-peering" resolvedDendrites && publicYggPeeringNode == null)
         [
-          "Host '${hostName}' selects the tapelib tape manager but does not attach the tapelib fruit."
+          "Host '${hostName}' selects network/yggdrasil-public-peering but is missing inventory.networks.publicYggdrasilPeering.nodes.${hostName}."
         ]
     ++
       lib.optionals

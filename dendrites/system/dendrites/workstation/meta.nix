@@ -5,5 +5,4 @@
   provides = [ "workstation-system" ];
   requires = [ "system" ];
   conflicts = [ "system/compute-worker" ];
-  hostClasses = [ "workstation" ];
 }

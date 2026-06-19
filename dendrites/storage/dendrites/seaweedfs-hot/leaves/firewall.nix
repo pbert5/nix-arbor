@@ -24,10 +24,10 @@ let
     "defaults"
     "ifName"
   ] "ygg0" site;
-  isMaster = builtins.elem "seaweed-master" (hostInventory.roles or [ ]);
-  isVolume = builtins.elem "seaweed-volume" (hostInventory.roles or [ ]);
-  isFiler = builtins.elem "seaweed-filer" (hostInventory.roles or [ ]);
-  isS3 = builtins.elem "seaweed-s3" (hostInventory.roles or [ ]);
+  isMaster = lib.attrByPath [ "org" "storage" "seaweedfs" "master" ] false hostInventory;
+  isVolume = lib.attrByPath [ "org" "storage" "seaweedfs" "volume" ] false hostInventory;
+  isFiler = lib.attrByPath [ "org" "storage" "seaweedfs" "filer" ] false hostInventory;
+  isS3 = lib.attrByPath [ "org" "storage" "seaweedfs" "s3" ] false hostInventory;
   openPorts =
     lib.optionals isMaster [
       masterPort

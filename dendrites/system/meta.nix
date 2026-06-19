@@ -5,5 +5,4 @@
   provides = [ "system-bundles" ];
   requires = [ ];
   conflicts = [ ];
-  hostClasses = [ ];
 }

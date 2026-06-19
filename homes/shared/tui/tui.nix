@@ -8,7 +8,7 @@
 
   programs.eza = {
     enable = true;
-    enableFishIntegration = true;
+    enableZshIntegration = true;
     git = true;
     icons = "auto";
     extraOptions = [
@@ -19,7 +19,7 @@
 
   programs.yazi = {
     enable = true;
-    enableFishIntegration = true;
+    enableZshIntegration = true;
     shellWrapperName = "y";
     settings = {
       mgr = {

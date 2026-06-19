@@ -5,5 +5,4 @@
   provides = [ "tailscale-underlay" ];
   requires = [ "network" ];
   conflicts = [ ];
-  hostClasses = [ ];
 }

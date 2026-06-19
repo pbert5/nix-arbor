@@ -13,6 +13,8 @@ in
       helvum
       obs-studio-nvenc
       pwvucontrol
+    via
+      
     ];
 
     gtk.enable = true;

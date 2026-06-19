@@ -9,7 +9,9 @@ let
     inherit inputs lib;
   };
 
-  inventory = dendriticLib.normalizeInventory (import ../../inventory/inventory.nix { inherit inputs; });
+  inventory = dendriticLib.normalizeInventory (
+    import ../../inventory/inventory.nix { inherit inputs; }
+  );
   registries = {
     dendrites = dendriticLib.registries.mkDendriteRegistry ../../dendrites;
     fruits = dendriticLib.registries.mkFruitRegistry ../../fruits;
@@ -18,7 +20,6 @@ let
   };
   publishedUserModules = dendriticLib.users.publishNixosModules {
     homeRegistry = registries.homes;
-    roles = inventory.roles;
     users = inventory.users;
   };
 in

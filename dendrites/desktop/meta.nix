@@ -5,5 +5,4 @@
   provides = [ "desktop-base" ];
   requires = [ ];
   conflicts = [ ];
-  hostClasses = [ "workstation" ];
 }

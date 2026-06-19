@@ -29,5 +29,5 @@ overlay firewall policy.
 
 ## See Also
 
-- [`docs/private-overlay-and-deployments.md`](/work/flake/docs/private-overlay-and-deployments.md)
-- [`docs/cluster-ops/bootstrap-host.md`](/work/flake/docs/cluster-ops/bootstrap-host.md)
+- [`docs/repo-ops/private-overlay/README.md`](/work/flake/docs/repo-ops/private-overlay/README.md)
+- [`docs/cluster-ops/bootstrap/enrollment/bootstrap-host.md`](/work/flake/docs/cluster-ops/bootstrap/enrollment/bootstrap-host.md)

@@ -5,5 +5,4 @@
   provides = [ "storage-base" ];
   requires = [ ];
   conflicts = [ ];
-  hostClasses = [ ];
 }

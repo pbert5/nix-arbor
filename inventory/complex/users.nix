@@ -1,6 +1,5 @@
 {
   user1 = {
-    roles = [ "workstation" ];
     system = "x86_64-linux";
     home = {
       directory = "/home/user1";
@@ -15,11 +14,17 @@
       ];
       shellPackage = "fish";
     };
-    org.flakeTarget.path = "/work/flake";
+    org = {
+      flakeTarget.path = "/work/flake";
+      home.sharedModules = [
+        "shared/common"
+        "shared/ssh"
+        "shared/workstation"
+      ];
+    };
   };
 
   user2 = {
-    roles = [ "workstation" ];
     system = "x86_64-linux";
     home = {
       directory = "/home/user2";
@@ -34,6 +39,13 @@
       ];
       shellPackage = "bashInteractive";
     };
-    org.flakeTarget.path = "/work/flake";
+    org = {
+      flakeTarget.path = "/work/flake";
+      home.sharedModules = [
+        "shared/common"
+        "shared/ssh"
+        "shared/workstation"
+      ];
+    };
   };
 }

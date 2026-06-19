@@ -1,7 +1,7 @@
 Below is a complete milestone roadmap you can drop into something like:
 
 ```text
-docs/storage-fabric-roadmap.md
+docs/deprecated/storage-fabric/roadmap.md
 ```
 
 It follows your repo’s existing style: add reusable capabilities as dendrites, put host/role data in `inventory/`, keep services as fruits only when they are named deployable outcomes, and add validation when requirements get strict. Your authoring guide already says new dendrites should live under `dendrites/<parent>/dendrites/<child>/` with a matching `.nix` and `meta.nix`, and that strict requirements should be added to validation. 
@@ -15,8 +15,8 @@ It follows your repo’s existing style: add reusable capabilities as dendrites,
 Add:
 
 ```text
-docs/storage-fabric.md
-docs/storage-fabric-roadmap.md
+docs/deprecated/storage-fabric/overview.md
+docs/deprecated/storage-fabric/roadmap.md
 ```
 
 Define these guarantees:
@@ -797,8 +797,8 @@ restore from tape/NAS/object
 Add:
 
 ```text
-docs/storage-fabric-runbook.md
-docs/storage-fabric-restore-drills.md
+docs/deprecated/storage-fabric/runbook.md
+docs/deprecated/storage-fabric/operations/restore-drills.md
 ```
 
 Done when:
@@ -1025,11 +1025,11 @@ new host only needs inventory role selection
 Docs:
 
 ```text
-docs/storage-fabric.md
-docs/storage-fabric-roadmap.md
-docs/storage-fabric-runbook.md
-docs/storage-fabric-restore-drills.md
-docs/storage-fabric-security.md
+docs/deprecated/storage-fabric/overview.md
+docs/deprecated/storage-fabric/roadmap.md
+docs/deprecated/storage-fabric/runbook.md
+docs/deprecated/storage-fabric/operations/restore-drills.md
+docs/deprecated/storage-fabric/policy/security.md
 docs/storage-fabric-failure-modes.md
 docs/storage-fabric-command-reference.md
 ```

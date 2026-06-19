@@ -1,12 +1,15 @@
 {
   lib,
   pkgs,
+  inputs,
   site,
   hostInventory,
+  hostName,
   ...
 }:
 let
   endpoints = import ../../../../lib/endpoints.nix { inherit lib; };
+  jsonFormat = pkgs.formats.json { };
   yamlFormat = pkgs.formats.yaml { };
   tapeLibraryPackages = pkgs.callPackage ./_packages/tape-library-packages.nix {
     driveDevices = driveDevices;
@@ -32,10 +35,18 @@ let
       null
     else
       builtins.head driveDevices;
-  changerDevice = tapeFacts.changer or null;
+  changerDevice = if (tapeFacts.changer or null) == "manual" then null else tapeFacts.changer or null;
   tapeOrg = lib.attrByPath [ "org" "storage" "tape" ] { } hostInventory;
+  backupPlans = lib.attrByPath [ "storage" "backupPlans" ] { } site;
+  backupperPlans = lib.filterAttrs (
+    _planName: plan:
+    (plan.enable or true) && (plan.host or null) == hostName && (plan.tool or "") == "backupper"
+  ) backupPlans;
+  gameBackuperPlans = lib.filterAttrs (
+    _planName: plan:
+    (plan.enable or true) && (plan.host or null) == hostName && (plan.tool or "") == "game-backuper"
+  ) backupPlans;
   fossilsafeOrg = tapeOrg.fossilsafe or { };
-  tapelibOrg = tapeOrg.tapelib or { };
   yatmOrg = tapeOrg.yatm or { };
   selectedLtfsManager = tapeOrg.manager or null;
   fossilsafePackage =
@@ -46,23 +57,21 @@ let
       }
     else
       null;
-  tapelibPackage =
-    if selectedLtfsManager == "tapelib" then
-      pkgs.callPackage ../../../../fruits/tapelib/nix/tapelib-package.nix {
-        sourceRoot = ../../../../fruits/tapelib;
-      }
-    else
-      null;
   inherit (tapeLibraryPackages)
+    backupper
+    backupperRunner
     changerDefault
     ltfsDefault
+    ltfsDefault2
     ltfsOpen
     mt1WithDefaults
     mt2WithDefaults
     mtWithDefaults
     mtxWithDefaults
     stfs
+    tapelibPackage
     tapeDefault
+    tapeDefault2
     yatm
     ;
   selectedLtfsManagerPackage =
@@ -71,7 +80,6 @@ let
     else
       {
         fossilsafe = fossilsafePackage;
-        tapelib = tapelibPackage;
         yatm = yatm;
       }
       .${selectedLtfsManager};
@@ -86,85 +94,153 @@ let
   fossilsafeSettings = lib.recursiveUpdate (lib.attrByPath [
     "settings"
   ] { } fossilsafeOrg) fossilsafeDeviceSettings;
-  tapelibStateDir = lib.attrByPath [ "stateDir" ] "/var/lib/tapelib" tapelibOrg;
-  tapelibDriveDefs = builtins.genList (
-    index:
+  yatmStateDir = lib.attrByPath [ "stateDir" ] "/var/lib/yatm" yatmOrg;
+  yatmSettings =
+    if selectedLtfsManager == "yatm" then
+      lib.recursiveUpdate {
+        database = {
+          dialect = "sqlite";
+          dsn = "${yatmStateDir}/tapes.db";
+        };
+        debug_listen = "${yatmDebugEndpoint.bind}:${toString yatmDebugEndpoint.port}";
+        domain = yatmEndpoint.url;
+        listen = "${yatmEndpoint.bind}:${toString yatmEndpoint.port}";
+        paths = {
+          source = "/";
+          target = "/";
+          work = "${yatmStateDir}/work";
+        };
+        scripts = {
+          encrypt = "${yatm}/share/yatm/scripts/encrypt";
+          mkfs = "${yatm}/share/yatm/scripts/mkfs";
+          mount = "${yatm}/share/yatm/scripts/mount";
+          read_info = "${yatm}/share/yatm/scripts/readinfo";
+          umount = "${yatm}/share/yatm/scripts/umount";
+        };
+        tape_devices = driveDevices;
+      } (lib.attrByPath [ "settings" ] { } yatmOrg)
+    else
+      null;
+  yatmConfigFile =
+    if yatmSettings == null then
+      null
+    else
+      yamlFormat.generate "yatm-config.yaml" yatmSettings;
+  gameBackuperPlanConfig =
+    plan:
+    builtins.removeAttrs plan [
+      "description"
+      "enable"
+      "host"
+      "source_flake"
+      "tool"
+    ];
+  gameBackuperPlanFiles = lib.mapAttrs (
+    planName: plan: yamlFormat.generate "game-backuper-${planName}.yaml" (gameBackuperPlanConfig plan)
+  ) gameBackuperPlans;
+  backupperPlanConfig =
+    planName: plan:
     let
-      stDevice = builtins.elemAt driveDevices index;
-      configuredDrives = lib.attrByPath [ "library" "drives" ] [ ] tapelibOrg;
-      configuredDrive =
-        if index < builtins.length configuredDrives then builtins.elemAt configuredDrives index else { };
+      stateDir = plan.state_dir or "/var/lib/backupper/${planName}";
+      driveConfigs = lib.imap0 (
+        index: stDevice:
+        {
+          name = "drive${toString index}";
+          inherit stDevice;
+          mountPath = "${stateDir}/mount/drive${toString index}";
+          sgDevice = null;
+        }
+      ) driveDevices;
     in
     {
-      mountPath = lib.attrByPath [
-        "mountPath"
-      ] "${tapelibStateDir}/mounts/drive${toString index}" configuredDrive;
-      name = lib.attrByPath [ "name" ] "drive${toString index}" configuredDrive;
-      sgDevice = lib.attrByPath [ "sgDevice" ] null configuredDrive;
-      inherit stDevice;
-    }
-  ) (builtins.length driveDevices);
-  tapelibConfig = {
-    cache = lib.attrByPath [ "cache" ] {
-      maxBytes = "900G";
-      path = "/run/media/ash/cache/tapelib";
-      reservedFreeBytes = "50G";
-    } tapelibOrg;
-    database = lib.attrByPath [ "database" ] {
-      path = "${tapelibStateDir}/catalog.sqlite";
-    } tapelibOrg;
-    fuse = lib.attrByPath [ "fuse" ] {
-      group = "users";
-      mountPoint = "/mnt/tapelib";
-      user = "ash";
-    } tapelibOrg;
-    games = lib.attrByPath [ "games" ] {
-      namespacePrefix = "/games";
-      selectedTapes = [ ];
-      sourceRoots = [
-        "/home/example/games/incoming"
-        "/home/example/games/_source-archives"
-      ];
-      tapeCapacityBytes = 1400000000000;
-    } tapelibOrg;
-    library = {
-      allowedGenerations = lib.attrByPath [ "library" "allowedGenerations" ] [ "L5" ] tapelibOrg;
-      changerDevice = lib.attrByPath [ "library" "changerDevice" ] changerDevice tapelibOrg;
-      drives = tapelibDriveDefs;
+      planName = planName;
+      stateDir = stateDir;
+      database = {
+        path = "${stateDir}/catalog.sqlite";
+        backupDir = "${stateDir}/backups";
+      };
+      cache = {
+        path = "${stateDir}/unused-cache";
+        maxBytes = "1";
+        reservedFreeBytes = "0";
+      };
+      scheduler = {
+        automaticRetrieve = false;
+        pollSeconds = 5;
+        unloadAfterRetrieve = true;
+      };
+      fuse = {
+        enable = false;
+        group = "root";
+        homeLink = null;
+        metadataCacheSeconds = 1.0;
+        mountPoint = "${stateDir}/fuse";
+        user = "root";
+      };
+      webui = {
+        enable = false;
+        host = "127.0.0.1";
+        port = 0;
+      };
+      library = {
+        allowedGenerations = plan.allowed_generations or [ "L5" ];
+        changerDevice = changerDevice;
+        drives = driveConfigs;
+      };
+      games = {
+        namespacePrefix = plan.namespace_prefix or "/games";
+        selectedTapes = plan.selected_tapes or [ ];
+        sourceRoots = plan.source_roots or [ ];
+        tapeCapacityBytes = plan.tape_capacity_bytes or 1200000000000;
+      };
+      archive = {
+        autoInitializeLtfs = plan.auto_initialize_ltfs or true;
+        catalogLoadedTapeBeforeWrite = plan.catalog_loaded_tape_before_write or true;
+        directSourceWrite = plan.direct_source_write or true;
+        smallFileBundleMaxBytes = plan.small_file_bundle_max_bytes or "0";
+        smallFileBundleTargetBytes = plan.small_file_bundle_target_bytes or "256M";
+      };
+      coverage = {
+        archiveRoots = plan.coverage_archive_roots or (plan.source_roots or [ ]);
+        looseRoots = plan.loose_roots or [ ];
+        zipExtensions = plan.coverage_zip_extensions or [ ".zip" ];
+        failOnMissing = plan.coverage_fail_on_missing or false;
+        maxMissingBytes = plan.coverage_max_missing_bytes or null;
+      };
+      backupper = {
+        description = plan.description or "Declarative LTFS backupper plan.";
+      };
     };
-    openFirewall = lib.attrByPath [ "openFirewall" ] false tapelibOrg;
-    package = tapelibPackage;
-    stateDir = tapelibStateDir;
-    webui = lib.attrByPath [ "webui" ] {
-      enable = true;
-      host = "127.0.0.1";
-      port = 5001;
-    } tapelibOrg;
-  };
-  yatmStateDir = lib.attrByPath [ "stateDir" ] "/var/lib/yatm" yatmOrg;
-  yatmSettings = lib.recursiveUpdate {
-    database = {
-      dialect = "sqlite";
-      dsn = "${yatmStateDir}/tapes.db";
+  backupperPlanFiles = lib.mapAttrs (
+    planName: plan:
+    jsonFormat.generate "backupper-${planName}.json" (backupperPlanConfig planName plan)
+  ) backupperPlans;
+  gameBackuperPackage =
+    inputs.game-backuper.packages.${pkgs.stdenv.hostPlatform.system}.game-backuper;
+  mkGameBackuperCommand =
+    planName: planFile:
+    pkgs.writeShellApplication {
+      name = "game-backuper-${planName}";
+      runtimeInputs = [ gameBackuperPackage ];
+      text = ''
+        if [ "$#" -eq 0 ]; then
+          exec game-backuper inspect --config ${planFile}
+        fi
+
+        case "$1" in
+          inspect|plan|write|verify|launch-live|catalog-locate|catalog-show-tape|restore-archive|restore-member)
+            command="$1"
+            shift
+            exec game-backuper "$command" --config ${planFile} "$@"
+            ;;
+          *)
+            exec game-backuper "$@"
+            ;;
+        esac
+      '';
     };
-    debug_listen = "${yatmDebugEndpoint.bind}:${toString yatmDebugEndpoint.port}";
-    domain = yatmEndpoint.url;
-    listen = "${yatmEndpoint.bind}:${toString yatmEndpoint.port}";
-    paths = {
-      source = "/";
-      target = "/";
-      work = "${yatmStateDir}/work";
-    };
-    scripts = {
-      encrypt = "${yatm}/share/yatm/scripts/encrypt";
-      mkfs = "${yatm}/share/yatm/scripts/mkfs";
-      mount = "${yatm}/share/yatm/scripts/mount";
-      read_info = "${yatm}/share/yatm/scripts/readinfo";
-      umount = "${yatm}/share/yatm/scripts/umount";
-    };
-    tape_devices = driveDevices;
-  } (lib.attrByPath [ "settings" ] { } yatmOrg);
-  yatmConfigFile = yamlFormat.generate "yatm-config.yaml" yatmSettings;
+  gameBackuperCommands = lib.mapAttrs mkGameBackuperCommand gameBackuperPlanFiles;
+  backupperPlanRendered = lib.mapAttrs backupperPlanConfig backupperPlans;
 in
 {
   _module.args.storageTape = {
@@ -179,7 +255,6 @@ in
       skipHardwareInit = lib.attrByPath [ "skipHardwareInit" ] false fossilsafeOrg;
       stateDir = lib.attrByPath [ "stateDir" ] "/var/lib/fossilsafe" fossilsafeOrg;
     };
-    tapelib = tapelibConfig;
   };
 
   boot.kernelModules = [
@@ -187,7 +262,16 @@ in
     "st"
   ];
 
-  environment.etc."yatm/config.yaml".source = yatmConfigFile;
+  environment.etc =
+    lib.optionalAttrs (yatmConfigFile != null) {
+      "yatm/config.yaml".source = yatmConfigFile;
+    }
+    // lib.mapAttrs' (
+    planName: planFile: lib.nameValuePair "backupper/plans/${planName}.json" { source = planFile; }
+  ) backupperPlanFiles
+  // lib.mapAttrs' (
+    planName: planFile: lib.nameValuePair "game-backuper/plans/${planName}.yaml" { source = planFile; }
+  ) gameBackuperPlanFiles;
 
   environment.sessionVariables = lib.mkIf (selectedLtfsManager == "yatm") {
     YATM_CAPTURED_INDICES_DIR = "${yatmStateDir}/captured_indices";
@@ -202,14 +286,121 @@ in
       gnutar
       lsscsi
       ltfsDefault
+      ltfsDefault2
       ltfsOpen
       mt1WithDefaults
       mt2WithDefaults
       sg3_utils
       stfs
+      tapelibPackage
       tapeDefault
+      tapeDefault2
+      backupper
+      backupperRunner
       mtWithDefaults
       mtxWithDefaults
     ])
-    ++ lib.optionals (selectedLtfsManagerPackage != null) [ selectedLtfsManagerPackage ];
+    ++ lib.optionals (selectedLtfsManagerPackage != null) [ selectedLtfsManagerPackage ]
+    ++ lib.optionals (gameBackuperPlans != { }) (
+      [ gameBackuperPackage ] ++ lib.attrValues gameBackuperCommands
+    );
+
+  systemd.services =
+    (lib.mapAttrs' (
+      planName: rendered:
+      lib.nameValuePair "backupper-${planName}" {
+        description = "Run backupper LTFS plan ${planName}";
+        after = [ "local-fs.target" ];
+        path = [
+          backupperRunner
+          changerDefault
+          ltfsOpen
+          mtWithDefaults
+          mtxWithDefaults
+          pkgs.findutils
+          pkgs.fuse
+          pkgs.fuse3
+          pkgs.lsof
+          pkgs.sqlite
+          pkgs.systemd
+          pkgs.sg3_utils
+          pkgs.util-linux
+          tapelibPackage
+        ];
+        environment = {
+          PYTHONUNBUFFERED = "1";
+        };
+        serviceConfig = {
+          Type = "simple";
+          ExecStart = "${lib.getExe backupperRunner} --config /etc/backupper/plans/${planName}.json";
+          Restart = "no";
+          StandardOutput = "journal";
+          StandardError = "journal";
+          TimeoutStartSec = "infinity";
+          WorkingDirectory = "/";
+        };
+      }
+    ) backupperPlanRendered)
+    // (lib.mapAttrs' (
+      planName: command:
+      lib.nameValuePair "game-backuper-${planName}" {
+        description = "Run game-backuper live tape backup for ${planName}";
+        path = [
+          gameBackuperPackage
+          mtWithDefaults
+          mtxWithDefaults
+        ];
+        environment = {
+          PYTHONUNBUFFERED = "1";
+        };
+        serviceConfig = {
+          Type = "oneshot";
+          ExecStart = "${command}/bin/game-backuper-${planName} write --backend live";
+          StandardOutput = "journal";
+          StandardError = "journal";
+          TimeoutStartSec = "infinity";
+          WorkingDirectory = "/";
+        };
+      }
+    ) gameBackuperCommands);
+
+  systemd.tmpfiles.rules =
+    (lib.flatten (
+      lib.mapAttrsToList (
+        _planName: rendered:
+        let
+          stateDir = rendered.stateDir;
+          databaseDir = builtins.dirOf rendered.database.path;
+          backupDir = rendered.database.backupDir;
+          statusDir = "${stateDir}/status";
+          cacheDir = rendered.cache.path;
+          mountDirs = map (drive: drive.mountPath) rendered.library.drives;
+        in
+        [
+          "d ${stateDir} 0750 root root - -"
+          "d ${databaseDir} 0750 root root - -"
+          "d ${backupDir} 0750 root root - -"
+          "d ${statusDir} 0750 root root - -"
+          "d ${cacheDir} 0750 root root - -"
+        ]
+        ++ map (mountDir: "d ${mountDir} 0750 root root - -") mountDirs
+      ) backupperPlanRendered
+    ))
+    ++ (lib.flatten (
+      lib.mapAttrsToList (
+        planName: plan:
+        let
+          runtimeRoot = "/var/lib/game-backuper/${planName}";
+          catalogRoot =
+            if plan ? catalog && plan.catalog ? sqlite_path then
+              builtins.dirOf plan.catalog.sqlite_path
+            else
+              runtimeRoot;
+        in
+        [
+          "d ${runtimeRoot} 0750 root root - -"
+          "d ${catalogRoot} 0750 root root - -"
+        ]
+      ) gameBackuperPlans
+    ));
 }

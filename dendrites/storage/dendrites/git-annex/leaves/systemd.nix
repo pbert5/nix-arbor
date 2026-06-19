@@ -1,4 +1,11 @@
-{ lib, pkgs, site, hostInventory, hostName, ... }:
+{
+  lib,
+  pkgs,
+  site,
+  hostInventory,
+  hostName,
+  ...
+}:
 let
   fabric = site.storageFabric or { };
   annexCfg = fabric.annex or { };
@@ -7,17 +14,22 @@ let
   annexGroup = annexCfg.group or "annex";
   annexSshDir = "${repoRoot}/.ssh";
   annexSshKey = "${annexSshDir}/id_ed25519";
+  fabricOrg = lib.attrByPath [ "org" "storage" "annex" "fabric" ] { } hostInventory;
 
-  isStorage = builtins.elem "annex-storage" (hostInventory.roles or [ ]);
-  isClient = builtins.elem "annex-client" (hostInventory.roles or [ ]);
-  isWorkstation = builtins.elem "annex-workstation" (hostInventory.roles or [ ]);
-  needsInit = isStorage || isClient || isWorkstation;
+  isStorage = fabricOrg.storage or false;
+  isClient = fabricOrg.client or false;
+  isWorkstation = fabricOrg.workstation or false;
+  isComputeCache = fabricOrg.computeCache or false;
+  needsInit = isStorage || isClient || isWorkstation || isComputeCache;
 
   # Preferred content group for this host (optional inventory setting).
   annexGroup_ = lib.attrByPath [ "org" "storage" "annex" "group" ] (
-    if isStorage then "hot"
-    else if isWorkstation then "workstation"
-    else "transient"
+    if isStorage then
+      "hot"
+    else if isWorkstation then
+      "workstation"
+    else
+      "transient"
   ) hostInventory;
   numCopies = toString (annexCfg.defaultNumCopies or 2);
 in
@@ -75,7 +87,10 @@ lib.mkIf needsInit {
       GIT_COMMITTER_NAME = "${hostName}-annex";
       GIT_COMMITTER_EMAIL = "${hostName}-annex@local";
     };
-    path = [ pkgs.git pkgs.git-annex ];
+    path = [
+      pkgs.git
+      pkgs.git-annex
+    ];
     script = ''
       set -euo pipefail
       cd "${repoRoot}"

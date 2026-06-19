@@ -46,14 +46,8 @@ let
     '';
   };
 in
-pkgs.symlinkJoin {
-  name = "${name}-with-default-nst";
-  paths = [
-    pkgs.mt-st
-    wrappedMt
-  ];
-  postBuild = ''
-    rm "$out/bin/${name}"
-    ln -s "${wrappedMt}/bin/${name}" "$out/bin/${name}"
-  '';
-}
+pkgs.runCommand "${name}-with-default-nst" { } ''
+  mkdir -p "$out/bin"
+  ln -s ${wrappedMt}/bin/${name} "$out/bin/${name}"
+  ln -s ${pkgs.mt-st}/bin/stinit "$out/bin/stinit"
+''

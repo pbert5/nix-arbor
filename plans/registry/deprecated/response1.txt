@@ -1,0 +1,118 @@
+Yes, but I would make it **a signed bundle manifest with recipient fingerprints**, not just a loose “meta hash of the pubkey.”
+
+Your repo’s plan already has the right shape:
+
+* flake is durable source of truth
+* registry is a live projection
+* `/run/cluster-identity` is runtime materialized state
+* `bundles/` is reserved for encrypted private delivery
+* active private-delivery identities may require receipts before promotion
+* explicit decryptability-aware selection is still planned, not implemented yet  
+
+The right algorithm is:
+
+```text
+For each host/service:
+  1. Load candidate identity events from registry.
+  2. Reject invalid signatures, untrusted leaders, burned identities, removed identities.
+  3. Sort newest-first by keyGeneratedAt/sourceTimestamp, then generation.
+  4. For each candidate:
+       a. If it has no private material requirement, it is usable.
+       b. If it has private delivery:
+            i. Check whether the signed manifest says this host is an intended recipient.
+           ii. If not, skip without trying decryption.
+          iii. If yes, try decrypting the bundle with local host.agekey.
+           iv. Verify decrypted content hash.
+            v. Verify decrypted private key derives the public identity in the event.
+           vi. If all pass, select it.
+  5. If none decrypt, keep the last successfully applied private material.
+```
+
+So the cheap pubkey hash check is good as a **fast prefilter**, but it should not be the deciding proof. The deciding proof should be: “I decrypted it, the plaintext hash matches the signed manifest, and the private key derives the public identity the registry claims.”
+
+A bundle manifest should look roughly like this:
+
+```json
+{
+  "schema": "cluster.identity.bundle.v1",
+  "subject": {
+    "node": "r640-0",
+    "service": "yggdrasil"
+  },
+  "generation": 2,
+  "stateEventId": "event-...",
+  "targetPath": "/var/lib/yggdrasil/private.key",
+
+  "encryption": {
+    "method": "age-x25519",
+    "recipientHost": "r640-0",
+    "recipientPublicKey": "age1...",
+    "recipientFingerprint": "sha256:...",
+    "recipientSetDigest": "sha256:..."
+  },
+
+  "bundle": {
+    "path": "bundles/r640-0/yggdrasil/gen-2.age",
+    "ciphertextSha256": "sha256:...",
+    "plaintextSha256": "sha256:..."
+  },
+
+  "expectedPublic": {
+    "yggdrasilPublicKey": "...",
+    "yggdrasilAddress": "..."
+  },
+
+  "createdAt": "2026-05-12T00:00:00Z",
+  "leader": "r640-0",
+  "signature": "..."
+}
+```
+
+The receiver can do this quickly:
+
+```bash
+local_pub="$(age-keygen -y /var/lib/cluster-identity/age/host.agekey)"
+local_fpr="$(printf '%s' "$local_pub" | sha256sum | cut -d' ' -f1)"
+```
+
+Then compare `local_fpr` to the manifest’s `recipientFingerprint`. But that is only a skip/try decision. A malicious or stale manifest could lie if signatures are not enforced, and a matching recipient hash only proves “this bundle claims to target me,” not “the decrypted material is correct.”
+
+For your repo, I’d add this as a local runtime concept:
+
+```text
+/var/lib/cluster-identity/local-state/
+  last-applied/
+    r640-0/
+      yggdrasil.json
+      yggdrasil.private.key
+  decryptability-cache.json
+```
+
+Where `decryptability-cache.json` records things like:
+
+```json
+{
+  "r640-0/yggdrasil/generation-2": {
+    "recipientMatched": true,
+    "decryptable": false,
+    "lastTriedAt": "2026-05-12T00:00:00Z",
+    "reason": "local host age key does not decrypt bundle"
+  }
+}
+```
+
+Then `/run/cluster-identity/active.json` should not blindly mean “newest registry active.” It should mean:
+
+```text
+newest valid locally usable active identity
+```
+
+And you can still expose a separate view like:
+
+```text
+/run/cluster-identity/registry-newest.json
+```
+
+for “what the leaders say is newest.”
+
+So my direct answer: **yes, include a hash/fingerprint of the recipient pubkey, but make it part of a signed manifest and use it only as a fast local precheck. The final selection should be decrypt, verify plaintext hash, verify derived public identity, then apply.**

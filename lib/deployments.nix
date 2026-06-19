@@ -1,20 +1,24 @@
-{ assembly, inputs, lib }:
+{
+  assembly,
+  inputs,
+  lib,
+}:
 let
-  exportedHosts = inventory:
-    lib.filterAttrs (_: host: host.exported or true) inventory.hosts;
+  exportedHosts = inventory: lib.filterAttrs (_: host: host.exported or true) inventory.hosts;
 
-  optionalAttr = name: value:
+  optionalAttr =
+    name: value:
     lib.optionalAttrs (value != null) {
       "${name}" = value;
     };
 
-  optionalAttrFrom = name: attrs:
+  optionalAttrFrom =
+    name: attrs:
     lib.optionalAttrs (builtins.hasAttr name attrs) {
       "${name}" = builtins.getAttr name attrs;
     };
 
-  sanitizeTag = value:
-    lib.replaceStrings [ "/" " " ":" "." ] [ "-" "-" "-" "-" ] (toString value);
+  sanitizeTag = value: lib.replaceStrings [ "/" " " ":" "." ] [ "-" "-" "-" "-" ] (toString value);
 
   mkBaseTarget =
     {
@@ -34,10 +38,7 @@ let
         # Home Manager-managed SSH config (which already maps the name to the
         # Ygg address, identity file, and user).  Avoids embedding raw IPv6
         # addresses in deploy-rs / Colmena output.
-        if deploymentTransport == "privateYggdrasil" && yggTargetHost != null then
-          hostName
-        else
-          null;
+        if deploymentTransport == "privateYggdrasil" && yggTargetHost != null then hostName else null;
       resolvedTargetHost = lib.findFirst (value: value != null) hostName [
         (deployment.targetHost or null)
         preferredTransportTarget
@@ -48,7 +49,12 @@ let
       ];
     in
     {
-      inherit bootstrap deployment deploymentTransport privateYggNode;
+      inherit
+        bootstrap
+        deployment
+        deploymentTransport
+        privateYggNode
+        ;
       inherit identityFile;
       targetHost = resolvedTargetHost;
       targetPort = deployment.targetPort or 22;
@@ -60,7 +66,6 @@ let
         ++ lib.optionals (bootstrap.operatorCapable or false) [ "operator-capable" ]
         ++ [ ("transport-" + sanitizeTag deploymentTransport) ]
         ++ (deployment.tags or [ ])
-        ++ builtins.map (role: "role-" + sanitizeTag role) (host.roles or [ ])
         ++ builtins.map (dendrite: "dendrite-" + sanitizeTag dendrite) (host.dendrites or [ ])
         ++ builtins.map (fruit: "fruit-" + sanitizeTag fruit) (host.fruits or [ ])
       );
@@ -83,22 +88,27 @@ rec {
       };
       colmena = base.deployment.colmena or { };
       hostDefinition = assembly.mkHostDefinition {
-        inherit genericSiteModule host hostName inventory registries;
+        inherit
+          genericSiteModule
+          host
+          hostName
+          inventory
+          registries
+          ;
       };
     in
     {
       imports = hostDefinition.modules;
 
-      deployment =
-        {
-          targetHost = colmena.targetHost or base.targetHost;
-          targetPort = colmena.targetPort or base.targetPort;
-          targetUser = colmena.targetUser or base.sshUser;
-          tags = lib.unique (base.tags ++ (colmena.tags or [ ]));
-        }
-        // optionalAttrFrom "allowLocalDeployment" colmena
-        // optionalAttrFrom "buildOnTarget" colmena
-        // optionalAttrFrom "replaceUnknownProfiles" colmena;
+      deployment = {
+        targetHost = colmena.targetHost or base.targetHost;
+        targetPort = colmena.targetPort or base.targetPort;
+        targetUser = colmena.targetUser or base.sshUser;
+        tags = lib.unique (base.tags ++ (colmena.tags or [ ]));
+      }
+      // optionalAttrFrom "allowLocalDeployment" colmena
+      // optionalAttrFrom "buildOnTarget" colmena
+      // optionalAttrFrom "replaceUnknownProfiles" colmena;
     };
 
   mkColmena =
@@ -116,17 +126,23 @@ rec {
         # fully-evaluated set (not a lambda or path).  Use x86_64-linux as
         # the default and override per-node for hosts that differ.
         nixpkgs = import inputs.nixpkgs.outPath { system = "x86_64-linux"; };
-        nodeNixpkgs = builtins.mapAttrs
-          (hostName: host: import inputs.nixpkgs.outPath { system = host.system; })
-          exported;
+        nodeNixpkgs = builtins.mapAttrs (
+          hostName: host: import inputs.nixpkgs.outPath { system = host.system; }
+        ) exported;
       };
     }
-    // builtins.mapAttrs
-      (hostName: host:
-        mkColmenaNode {
-          inherit genericSiteModule inventory registries host hostName;
-        })
-      exported;
+    // builtins.mapAttrs (
+      hostName: host:
+      mkColmenaNode {
+        inherit
+          genericSiteModule
+          inventory
+          registries
+          host
+          hostName
+          ;
+      }
+    ) exported;
 
   mkDeployRsNode =
     {
@@ -140,7 +156,9 @@ rec {
         inherit inventory host hostName;
       };
       deployRs = base.deployment.deployRs or { };
-      deployLib = inputs.deploy-rs.lib.${host.system} or (throw "deploy-rs does not support system '${host.system}' for host '${hostName}'.");
+      deployLib =
+        inputs.deploy-rs.lib.${host.system}
+          or (throw "deploy-rs does not support system '${host.system}' for host '${hostName}'.");
       sshPort = deployRs.targetPort or base.targetPort;
       sshOpts =
         (deployRs.sshOpts or [ ])
@@ -150,7 +168,10 @@ rec {
           "-o"
           "IdentitiesOnly=yes"
         ]
-        ++ lib.optionals (sshPort != 22) [ "-p" (toString sshPort) ];
+        ++ lib.optionals (sshPort != 22) [
+          "-p"
+          (toString sshPort)
+        ];
     in
     {
       hostname = deployRs.hostname or deployRs.targetHost or base.targetHost;
@@ -180,11 +201,16 @@ rec {
       nixosConfigurations,
     }:
     {
-      nodes = builtins.mapAttrs
-        (hostName: host:
-          mkDeployRsNode {
-            inherit inventory nixosConfigurations host hostName;
-          })
-        (exportedHosts inventory);
+      nodes = builtins.mapAttrs (
+        hostName: host:
+        mkDeployRsNode {
+          inherit
+            inventory
+            nixosConfigurations
+            host
+            hostName
+            ;
+        }
+      ) (exportedHosts inventory);
     };
 }

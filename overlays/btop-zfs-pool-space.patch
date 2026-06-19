@@ -1,0 +1,95 @@
+diff -uNr a/src/linux/btop_collect.cpp b/src/linux/btop_collect.cpp
+--- a/src/linux/btop_collect.cpp	2026-06-14 10:25:24.150756080 -0500
++++ b/src/linux/btop_collect.cpp	2026-06-14 10:25:40.505099562 -0500
+@@ -17,6 +17,7 @@
+ */
+ 
+ #include <cstdlib>
++#include <cstdio>
+ #include <unordered_map>
+ #include <unordered_set>
+ #include <fstream>
+@@ -1894,6 +1895,7 @@
+ 
+ 	//?* Collect total ZFS pool io stats
+ 	bool zfs_collect_pool_total_stats(struct disk_info &disk);
++	bool zfs_collect_space_stats(const string& dataset, struct disk_info &disk);
+ 
+ 	mem_info current_mem {};
+ 
+@@ -2178,12 +2180,17 @@
+ 						disk.used_percent = updated_stats.used_percent;
+ 						disk.free_percent = updated_stats.free_percent;
+ 					}
+-					disks_stats_promises[mountpoint] = async(std::launch::async, [mountpoint, free_priv]() -> pair<disk_info, int> {
+-						struct statvfs vfs;
+-						disk_info disk;
+-						if (statvfs(mountpoint.c_str(), &vfs) < 0) {
+-							return pair{disk, errno};
+-						}
++						const auto fstype = disk.fstype;
++						const auto zfs_device = disk.dev.string();
++						disks_stats_promises[mountpoint] = async(std::launch::async, [mountpoint, free_priv, fstype, zfs_device]() -> pair<disk_info, int> {
++							struct statvfs vfs;
++							disk_info disk;
++							if (fstype == "zfs" and zfs_collect_space_stats(zfs_device, disk)) {
++								return pair{disk, -1};
++							}
++							if (statvfs(mountpoint.c_str(), &vfs) < 0) {
++								return pair{disk, errno};
++							}
+ 						disk.total = vfs.f_blocks * vfs.f_frsize;
+ 						disk.free = (free_priv ? vfs.f_bfree : vfs.f_bavail) * vfs.f_frsize;
+ 						disk.used = disk.total - disk.free;
+@@ -2370,6 +2377,51 @@
+ 		return "";
+ 	}
+ 
++	string zfs_shell_quote(const string& value) {
++		string quoted = "'";
++		for (const auto& c : value) {
++			if (c == '\'') quoted += "'\\''";
++			else quoted += c;
++		}
++		quoted += "'";
++		return quoted;
++	}
++
++	bool zfs_collect_space_stats(const string& dataset, struct disk_info &disk) {
++		if (dataset.empty()) return false;
++
++		const string command = "/run/current-system/sw/bin/zfs list -Hp -o used,avail "
++			+ zfs_shell_quote(dataset)
++			+ " 2>/dev/null";
++		FILE* pipe = popen(command.c_str(), "r");
++		if (pipe == nullptr) return false;
++
++		unsigned long long used = 0;
++		unsigned long long avail = 0;
++		const int matched = fscanf(pipe, "%llu%llu", &used, &avail);
++		const int status = pclose(pipe);
++
++		if (matched != 2 or status != 0) return false;
++
++		const auto total = used + avail;
++		if (total > static_cast<unsigned long long>(numeric_limits<int64_t>::max())) {
++			return false;
++		}
++
++		disk.used = static_cast<int64_t>(used);
++		disk.free = static_cast<int64_t>(avail);
++		disk.total = static_cast<int64_t>(total);
++		if (disk.total != 0) {
++			disk.used_percent = round((double)disk.used * 100 / disk.total);
++			disk.free_percent = 100 - disk.used_percent;
++		} else {
++			disk.used_percent = 0;
++			disk.free_percent = 0;
++		}
++
++		return true;
++	}
++
+ 	bool zfs_collect_pool_total_stats(struct disk_info &disk) {
+ 		ifstream diskread;
+ 

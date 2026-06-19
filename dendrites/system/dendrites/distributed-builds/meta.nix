@@ -5,5 +5,4 @@
   provides = [ "nix-distributed-builds" ];
   requires = [ "system" ];
   conflicts = [ ];
-  hostClasses = [ ];
 }

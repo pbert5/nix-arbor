@@ -8,6 +8,7 @@ Parent branch for storage-related specializations like ZFS and tape management.
 
 ## Current Children
 
+- `storage/bitlocker`
 - `storage/tape`
 - `storage/zfs`
 

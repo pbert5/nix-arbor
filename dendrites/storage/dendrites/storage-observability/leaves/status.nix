@@ -1,4 +1,10 @@
-{ pkgs, lib, site, hostInventory, ... }:
+{
+  pkgs,
+  lib,
+  site,
+  hostInventory,
+  ...
+}:
 let
   fabric = site.storageFabric or { };
   annexCfg = fabric.annex or { };
@@ -9,17 +15,25 @@ let
   masterPort = hotCfg.masterPort or 9333;
   filerPort = hotCfg.filerPort or 8888;
 
-  hasAnnex = builtins.any
-    (r: builtins.elem r (hostInventory.roles or [ ]))
-    [ "annex-storage" "annex-client" "annex-workstation" "annex-compute-cache" ];
-  hasSeaweedfs = builtins.any
-    (r: builtins.elem r (hostInventory.roles or [ ]))
-    [ "seaweed-master" "seaweed-volume" "seaweed-filer" ];
-  hasRadicle = builtins.elem "radicle-seed" (hostInventory.roles or [ ]);
+  annexFabric = lib.attrByPath [ "org" "storage" "annex" "fabric" ] { } hostInventory;
+  seaweedfs = lib.attrByPath [ "org" "storage" "seaweedfs" ] { } hostInventory;
+  hasAnnex =
+    (annexFabric.storage or false)
+    || (annexFabric.client or false)
+    || (annexFabric.workstation or false)
+    || (annexFabric.computeCache or false);
+  hasSeaweedfs =
+    (seaweedfs.master or false) || (seaweedfs.volume or false) || (seaweedfs.filer or false);
+  hasRadicle = lib.attrByPath [ "org" "network" "radicle" "seed" ] false hostInventory;
 
   fabricStatus = pkgs.writeShellApplication {
     name = "fabric-status";
-    runtimeInputs = with pkgs; [ git git-annex curl coreutils ];
+    runtimeInputs = with pkgs; [
+      git
+      git-annex
+      curl
+      coreutils
+    ];
     text = ''
       set -euo pipefail
       OK=0

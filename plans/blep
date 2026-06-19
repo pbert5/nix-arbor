@@ -1,0 +1,4 @@
+1. wee need to add fall back identity content in the flake these will be in iventory keys in an identiteis doc that is sops encrypted to both leader keys
+
+
+the goal for this project is so that we no longer have to ssh into remote nodes to do janky bootstrapping, the extet of remote setup should realy just now be, in inventory when we add a new dendrite that requires an indentiy like yigg or raddicle, in its requireements, it from the meta it will be like i need an identity and then on rebuild

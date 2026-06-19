@@ -11,6 +11,19 @@ let
 			[ ];
 in
 {
+	btop = prev.btop.overrideAttrs (old: {
+		patches = (old.patches or [ ]) ++ [
+			./btop-zfs-pool-space.patch
+		];
+
+		meta = (old.meta or { }) // {
+			description = lib.concatStringsSep " " [
+				((old.meta.description or "Resource monitor"))
+				"(patched locally to report ZFS mount space from zfs list)"
+			];
+		};
+	});
+
 	mtx = prev.mtx.overrideAttrs (old: {
 		NIX_CFLAGS_COMPILE = existingCFlags old ++ [ "-std=gnu17" ];
 

@@ -2,7 +2,7 @@
 {
   programs.starship = {
     enable = true;
-    enableFishIntegration = false;
+    enableZshIntegration = true;
     settings = {
       add_newline = false;
       format = "$hostname$directory$git_branch$git_status$nix_shell$cmd_duration$status$line_break$character";

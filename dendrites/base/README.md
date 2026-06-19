@@ -27,8 +27,8 @@ repo's managed systems.
 - injects leader deployer keys into `root` authorized keys
 - enables automatic Nix GC and optimize jobs
 - enables ClamAV services
+- creates `/var/lib/download-staging` for ClamAV on-access and scheduled scans
 
 ## Selection
 
-Usually selected indirectly through roles like `workstation` and
-`compute-worker`.
+Usually selected directly by hosts that need the base system layer.

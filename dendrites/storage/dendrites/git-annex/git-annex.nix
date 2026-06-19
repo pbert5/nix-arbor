@@ -8,5 +8,6 @@
     ./leaves/private-transport.nix
     ./leaves/systemd.nix
     ./leaves/helpers.nix
+    ./leaves/annex-p2p.nix
   ];
 }

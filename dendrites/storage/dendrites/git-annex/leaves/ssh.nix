@@ -1,4 +1,10 @@
-{ lib, pkgs, site, hostName, ... }:
+{
+  lib,
+  pkgs,
+  site,
+  hostName,
+  ...
+}:
 let
   fabric = site.storageFabric or { };
   annexCfg = fabric.annex or { };
@@ -11,19 +17,25 @@ let
   # Collect declared annex SSH public keys from all peers in inventory.
   # Each host that participates in the annex fabric can declare its key via
   # org.storage.annex.sshPublicKey after first-boot keygen.
-  annexFabricRoles = [
-    "annex-storage"
-    "annex-client"
-    "annex-workstation"
-    "annex-compute-cache"
-  ];
-  isPeerHost = h: h != hostName && lib.any
-    (r: builtins.elem r (((site.hosts or { }).${h} or { }).roles or [ ]))
-    annexFabricRoles;
-  peerHosts = builtins.filter isPeerHost (builtins.attrNames (site.hosts or { }));
-  peerAuthorizedKeys = lib.concatMap (peerName:
+  isAnnexPeer =
+    h:
     let
-      peerKey = lib.attrByPath [ "org" "storage" "annex" "sshPublicKey" ] null (site.hosts.${peerName} or { });
+      fabricOrg = lib.attrByPath [ "org" "storage" "annex" "fabric" ] { } (
+        (site.hosts or { }).${h} or { }
+      );
+    in
+    (fabricOrg.storage or false)
+    || (fabricOrg.client or false)
+    || (fabricOrg.workstation or false)
+    || (fabricOrg.computeCache or false);
+  isPeerHost = h: h != hostName && isAnnexPeer h;
+  peerHosts = builtins.filter isPeerHost (builtins.attrNames (site.hosts or { }));
+  peerAuthorizedKeys = lib.concatMap (
+    peerName:
+    let
+      peerKey = lib.attrByPath [ "org" "storage" "annex" "sshPublicKey" ] null (
+        site.hosts.${peerName} or { }
+      );
     in
     lib.optional (peerKey != null) peerKey
   ) peerHosts;

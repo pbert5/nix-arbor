@@ -1,6 +1,6 @@
 I checked the `distribuited-file-store` branch and the current `fruits/tapelib` state. The old pasted plan is still the right “north star” for the system: catalog-backed FUSE overlay, queue-owned hardware work, dual LTO-5 drives, shared changer lock, LTFS tapes remaining self-contained, staged writes, and multi-tape archive planning. 
 
-The repo has already moved past pure planning. Current implementation includes the `tapelib` fruit, NixOS module, SQLite catalog/job schema, read-only FUSE browser, TL2000 inventory through `mtx status`, manual load/unload/mount/unmount commands, retrieve job creation, mounted-only retrieve execution, job-status snapshots, web/status scaffold, and a game-backup planner.  The docs also explicitly list the main remaining gaps: staged cache-to-tape execution, automatic retrieve loading/mounting, readable-path queued reads, writable staged ingest, and tape-carried manifest import. 
+The repo has already moved past pure planning. Current implementation includes the `tapelib` fruit, NixOS module, SQLite catalog/job schema, read-only FUSE browser, TL2000 inventory through `mtx status`, manual load/unload/mount/unmount commands, retrieve job creation, mounted-only retrieve execution, opt-in automatic retrieve loading/mounting, readable-path queued retrieves, writable cached FUSE ingest with explicit archive promotion, job-status snapshots, a web/operator console with guarded actions, cache-budgeted archive staging, LTFS write jobs, tape-carried manifest export/import, SQLite catalog backups, and a game-backup planner. The main remaining gaps are deeper verification/scrub workflows, parallel dual-drive optimization, and production hardening.
 ## Implementation Status
 
 Last updated: 2026-04-29
@@ -10,17 +10,18 @@ Last updated: 2026-04-29
 | 0. Stabilize baseline | ✅ Done | tests pass, nix build clean |
 | 1. Catalog indexing | ✅ Done | `tapelib index-tape` + `db.index_tape()` |
 | 2. Safe manual workflow | ✅ Done | `tapelib doctor` + hardened preflight checks |
-| 3. Mounted-only retrieve MVP | ✅ Done (prior) | `tapelib retrieve` + `run-queue` |
-| 4. Automatic retrieve scheduler | ❌ Not started | |
-| 5. Cache/staging manager | ✅ Done | rolling cache-budget staging, reservation checks, real `cleanup-cache` |
+| 3. Mounted-only retrieve MVP | ✅ Done | `tapelib retrieve` + `run-queue`; reruns now skip already-copied matching destinations |
+| 4. Automatic retrieve scheduler | 🔄 Partial | `tapelib run-queue --once --auto` can load, mount, copy, and release scheduler-mounted tapes; `tapelibd` can run it when `scheduler.automaticRetrieve = true` |
+| 5. Cache/staging manager | ✅ Done | rolling cache-budget staging, reservation checks, real `cleanup-cache`, permission-tolerant maintenance cleanup |
 | 6. Archive/write planning | ✅ Done | `tapelib stage-games-backup` fills cache-budget waves and skips already-written / queued files for safe refill |
 | 7. LTFS write runner | ✅ Done | `tapelib write-archive`, incremental cache drain + per-file catalog commits, aggregated tape manifests, tape-carried inventory export |
-| 8. Writable FUSE ingest | ❌ Not started | |
-| 9. Readable FUSE retrieve | ❌ Not started | |
+| 8. Writable FUSE ingest | 🔄 Partial | `/write/inbox-cached` stores closed files in local cache, queues `ingest_cached_files`, and `promote-ingest` turns them into `write_archive` jobs for explicit target tapes |
+| 9. Readable FUSE retrieve | 🔄 Partial | `/readable/<tape>/<path>` queues retrieve jobs and streams restored cache when present; bundled extraction remains planned |
 | 10. Tape-carried inventory import | ✅ Done | `tapelib import-inventory` stores snapshots + advisory observations |
-| 11. Verification and scrubbing | 🔄 Partial | `tapelib verify --tape <barcode|drive> [--mode metadata|checksums]` |
-| 12. Web/API operator console | 🔄 Scaffold only | JSON status endpoint exists |
+| 11. Verification and scrubbing | 🔄 Partial | `tapelib verify [--tape <barcode|drive>] [--mode metadata|checksums]`, timer-safe auto-selection of mounted allowed tapes, and confirmed web `verify` action |
+| 12. Web/API operator console | 🔄 Partial | read-only `/` console plus `/api/console`, tapes, drives, files, cache, warnings, jobs, journal; POST actions for inventory, retrieve, safe cancel, and ingest promotion |
 | 13. Dual-drive queue optimization | ❌ Not started | |
+| 14. Production hardening | 🔄 Partial | `tapelib backup-db` plus daily `tapelib-db-backup.timer`; migration/versioning and metrics remain planned |
 
 ---
 ## Milestones to “fully functional”
@@ -158,44 +159,52 @@ Acceptance check:
 
 Goal: restore jobs should load, mount, copy, and optionally unload tapes automatically.
 
-This is one of the major missing pieces. The current queue runner intentionally does not load, mount, unmount, or unload tapes. 
+This is now partially implemented. The default queue runner is still mounted-only
+for operator safety, but `tapelib run-queue --once --auto` can take a queued retrieve
+job through load, read-only LTFS mount, copy-out, and release of tapes that it
+mounted itself. `tapelibd` can run that automatic path when
+`scheduler.automaticRetrieve = true`.
 
 Needed:
 
 * Real scheduler loop in `tapelibd`:
 
-  * find queued jobs
-  * group by tape
-  * prefer already mounted tapes
-  * choose free drive
-  * acquire changer lock only for movement
-  * acquire drive lock for mount/read/unmount
+  * find queued jobs ✅
+  * group by tape ✅
+  * prefer already mounted tapes ✅
+  * choose free drive ✅
+  * acquire changer lock only for movement ✅ through existing `executor.load_tape`
+  * acquire drive lock for mount/read/unmount ✅ through existing executor mount/unmount commands
 * State transitions:
 
-  * `queued`
-  * `waiting_for_drive`
-  * `waiting_for_changer`
-  * `loading_tape`
-  * `mounting_ltfs`
-  * `running`
-  * `unmounting`
-  * `unloading`
-  * `complete`
+  * `queued` ✅
+  * `waiting_for_drive` ✅
+  * `waiting_for_changer` ✅
+  * `loading_tape` ✅
+  * `mounting_ltfs` ✅
+  * `running` ✅
+  * `unmounting` ✅
+  * `unloading` ✅
+  * `complete` ✅
 * Idle-mounted tape policy:
 
   * keep recently used tape mounted for N minutes
   * do not unload while file handles/jobs exist
+  * current behavior leaves the final scheduler-mounted tape mounted by default,
+    or unloads it when `scheduler.unloadAfterRetrieve = true`
 * Two-drive policy:
 
   * one drive can restore while the changer loads another tape into the second drive
   * changer remains single-operation locked
+  * current behavior is sequential; full parallel dual-drive preparation remains
+    planned for milestone 13
 
 Acceptance check:
 
 * Queue retrieve job for files across two tapes.
-* No manual load commands.
-* System loads tape A, restores its files, then handles tape B.
-* With two drives, it can keep tape A mounted while preparing tape B when safe.
+* No manual load commands. ✅ with `run-queue --once --auto` or daemon automatic mode
+* System loads tape A, restores its files, then handles tape B. ✅ sequentially
+* With two drives, it can keep tape A mounted while preparing tape B when safe. Planned under dual-drive optimization.
 
 ---
 
@@ -319,28 +328,33 @@ Acceptance check:
 
 Goal: file-browser drag/drop becomes useful without pretending tape is a normal disk.
 
-The FUSE layer is currently intentionally read-only. It exposes `browse`, `readable`, `write`, `thumbnails`, `jobs`, and `system`, but write inboxes reject writes for now. 
+This is now partially implemented. `/mnt/tapelib/write/inbox-cached` accepts
+cached writes through FUSE create/write/flush/release, stores closed files under
+the local cache, and queues `ingest_cached_files` jobs. `tapelib promote-ingest`
+turns one of those jobs into a normal `write_archive` job only after an operator
+chooses a target tape. `/browse` remains metadata-only, and
+`/write/inbox-direct` still rejects writes.
 
 Needed:
 
-* Make only `/mnt/tapelib/write/inbox-cached` writable.
-* Implement create/write/flush/release in FUSE.
-* Store incoming data in local cache, not tape.
-* Detect closed files/folders and create ingest records.
+* Make only `/mnt/tapelib/write/inbox-cached` writable. ✅
+* Implement create/write/flush/release in FUSE. ✅
+* Store incoming data in local cache, not tape. ✅
+* Detect closed files/folders and create ingest records. ✅
 * Let user choose target policy:
 
-  * default archive namespace
-  * selected tape set
-  * queue only, do not immediately write
-* Reject unsafe direct writes by default.
-* Keep `/browse` safe and metadata-only.
+  * default archive namespace ✅ current target uses the configured namespace
+  * selected tape set 🔄 explicit target tape is implemented; automatic tape-set planning remains planned
+  * queue only, do not immediately write ✅
+* Reject unsafe direct writes by default. ✅
+* Keep `/browse` safe and metadata-only. ✅
 
 Acceptance check:
 
-* Drag a folder into `write/inbox-cached`.
-* Files land in cache.
-* A queued archive job appears.
-* No tape moves until scheduler accepts the job.
+* Drag a folder into `write/inbox-cached`. 🔄 create/write/release and mkdir are implemented; rename-heavy GUI copies still need hardening.
+* Files land in cache. ✅
+* A queued archive job appears. ✅ after explicit `promote-ingest --job-id ... --tape ...`
+* No tape moves until scheduler accepts the job. ✅
 * Interrupted copy does not create a half-valid archive job.
 
 ---
@@ -349,32 +363,36 @@ Acceptance check:
 
 Goal: opening files under `/mnt/tapelib/readable/<tape>/...` can trigger safe retrieval.
 
-Currently `readable` returns placeholder metadata and does not queue real retrieve/load work. 
+This is now partially implemented. Direct catalog entries under `readable` queue
+retrieve jobs into the local restore cache and return JSON status until the
+restored file is present. Once the cache file matches the cataloged size,
+repeated reads stream from local cache. Bundled-member extraction still returns
+a clear not-implemented JSON response.
 
 Needed:
 
 * Decide exact behavior:
 
-  * option A: opening a file queues a retrieve and returns `EAGAIN`/clear error until ready
+  * option A: opening a file queues a retrieve and returns `EAGAIN`/clear error until ready ✅ implemented as JSON status
   * option B: opening blocks until retrieved
-  * option C: opening creates a local cached restore and then streams it
+  * option C: opening creates a local cached restore and then streams it ✅ once restored cache is present
 * Strongly recommend:
 
-  * no automatic load from `browse`
-  * `readable` can queue but not silently move hardware unless config allows it
-  * file-manager thumbnailers should not trigger tape movement
+  * no automatic load from `browse` ✅
+  * `readable` can queue but not silently move hardware unless config allows it ✅
+  * file-manager thumbnailers should not trigger tape movement ✅
 * Add xattrs or sidecar JSON:
 
-  * tape barcode
-  * archive path
-  * restore status
-  * cache status
+  * tape barcode ✅ returned in JSON status
+  * archive path ✅ returned in JSON status
+  * restore status ✅ job id/state returned in JSON status
+  * cache status ✅ returned in JSON status
 
 Acceptance check:
 
-* `cat /mnt/tapelib/readable/TAPE/foo.zip` either queues a restore safely or gives a clear “queued, check jobs” message.
-* GUI browsing does not accidentally load tapes.
-* Repeated reads reuse local restored cache if policy allows.
+* `cat /mnt/tapelib/readable/TAPE/foo.zip` either queues a restore safely or gives a clear “queued, check jobs” message. ✅
+* GUI browsing does not accidentally load tapes. ✅
+* Repeated reads reuse local restored cache if policy allows. ✅
 
 ---
 
@@ -415,11 +433,13 @@ Acceptance check:
 
 Goal: know whether catalog entries are actually recoverable.
 
-The module already wires a `tapelib-verify` timer, but this needs real verification behavior. 
+The module wires a `tapelib-verify` timer, the CLI can verify mounted allowed
+tapes by metadata or checksum, and the web action API exposes a confirmed
+`verify` action.
 
 Needed:
 
-* `verify_tape`
+* `verify_tape` ✅ mounted tape verification is available through CLI and web action
 * `verify_file`
 * `verify_archive_job`
 * Modes:
@@ -435,9 +455,9 @@ Needed:
   * media warnings
 * Surface warnings in:
 
-  * CLI
+  * CLI ✅ writes `status/verify.json` and prints the verification payload
   * FUSE `/system`
-  * web UI
+  * web UI 🔄 web action exists; richer console rendering remains planned
 
 Acceptance check:
 
@@ -452,42 +472,51 @@ Acceptance check:
 
 Goal: make it usable without remembering every command.
 
-Current web service is a lightweight JSON/status scaffold. 
+This now has a read-only operator console plus the controlled action API.
+`/` serves a small browser console, and `/api/console`, `/api/tapes`,
+`/api/drives`, `/api/files`, `/api/cache`, `/api/warnings`, `/api/jobs`, and
+`/api/journal` expose the current state. `POST /api/actions/...` supports
+inventory refresh, mounted tape indexing, retrieve queueing, safe cancel, ingest
+promotion, verification, and guarded load/unload/mount/unmount.
 
 Needed:
 
 * Read-only first:
 
-  * tapes
-  * slots
-  * drives
-  * mounted state
-  * jobs
-  * journal
-  * cache usage
-  * warnings
+  * tapes ✅
+  * slots ✅ through inventory endpoint
+  * drives ✅
+  * mounted state 🔄 drive state is exposed; live mount probing is still stronger in CLI/FUSE
+  * jobs ✅
+  * journal ✅
+  * cache usage ✅
+  * warnings ✅
 * Then controlled actions:
 
-  * inventory
-  * index tape
-  * retrieve
-  * cancel queued job
-  * load/unload with confirmation
-  * mount/unmount with confirmation
+  * inventory ✅
+  * index tape ✅ requires `confirm = "index-tape"`
+  * retrieve ✅
+  * cancel queued job ✅ requires `confirm = "cancel"`
+  * promote cached ingest ✅ requires `confirm = "promote-ingest"`
+  * verify mounted tape ✅ requires `confirm = "verify"`
+  * load/unload with confirmation ✅ requires `confirm = "load-tape"` or `confirm = "unload-tape"`
+  * mount/unmount with confirmation ✅ requires `confirm = "mount-ltfs"` or `confirm = "unmount-ltfs"`
 * For risky operations, require explicit confirmation:
 
-  * unload
+  * unload ✅
   * write
   * cancel active job
   * force reconcile
 
 Acceptance check:
 
-* Open web UI.
-* See current TL2000 state.
-* Queue a retrieve.
-* Watch state move through scheduler.
-* No destructive/risky action happens from a single accidental click.
+* Open web UI. ✅
+* See current TL2000 state. 🔄 read-only catalog/drive/cache/job state is visible; live changer inventory remains JSON API-backed.
+* Queue a retrieve. ✅ through the web action API
+* Watch state move through scheduler. 🔄 console refreshes job state; richer per-job web view remains planned
+* No destructive/risky action happens from a single accidental click. ✅ guarded
+  hardware actions require matching confirmation strings, and no web write action
+  is exposed yet.
 
 ---
 
@@ -549,7 +578,7 @@ Needed:
 
   * before schema migration
   * after major write jobs
-  * periodically to cache and maybe to tape manifests
+  * periodically to cache and maybe to tape manifests ✅ daily timer exists
 * Permissions audit:
 
   * `tapelib` group can operate

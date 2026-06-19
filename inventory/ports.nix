@@ -64,6 +64,20 @@
     port = 8082;
   };
 
+  romm = {
+    bind = "0.0.0.0";
+    hosts = [ "t320-0" ];
+    port = 8095;
+    url = "http://t320-0:8095";
+  };
+
+  organizr = {
+    bind = "0.0.0.0";
+    hosts = [ "t320-0" ];
+    port = 9983;
+    url = "http://t320-0:9983";
+  };
+
   # SeaweedFS hot pool — all ports are private-overlay-only.
   # Bound to the Yggdrasil interface address, not to 0.0.0.0.
   seaweedfsMaster = {

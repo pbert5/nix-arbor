@@ -5,5 +5,4 @@
   provides = [ "game-library" ];
   requires = [ "media" ];
   conflicts = [ ];
-  hostClasses = [ ];
 }

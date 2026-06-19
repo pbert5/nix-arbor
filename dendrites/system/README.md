@@ -14,4 +14,4 @@ Parent branch for high-level system posture like workstation vs compute-worker.
 
 ## Selection
 
-Normally selected through host roles rather than directly.
+Normally selected directly in each host's dendrite list.

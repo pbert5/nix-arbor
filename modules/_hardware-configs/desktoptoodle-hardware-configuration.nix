@@ -19,7 +19,7 @@
 		};
 
 	fileSystems."/boot" =
-		{ device = "/dev/disk/by-uuid/50CC-DE00";
+		{ device = "/dev/disk/by-uuid/REDACTED-UUID";
 			fsType = "vfat";
 			options = [ "fmask=0077" "dmask=0077" ];
 		};

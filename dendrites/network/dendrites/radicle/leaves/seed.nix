@@ -1,8 +1,13 @@
-{ lib, site, hostInventory, ... }:
+{
+  lib,
+  site,
+  hostInventory,
+  ...
+}:
 let
   fabric = site.storageFabric or { };
   radicleOrg = lib.attrByPath [ "org" "network" "radicle" ] { } hostInventory;
-  isSeed = builtins.elem "radicle-seed" (hostInventory.roles or [ ]);
+  isSeed = radicleOrg.seed or false;
   repos = radicleOrg.repos or (fabric.radicle.repos or [ ]);
 in
 lib.mkIf isSeed {

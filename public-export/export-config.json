@@ -1,0 +1,148 @@
+{
+  "include_paths": [
+    "AGENTS.md",
+    "README.md",
+    "bootstrap",
+    "checks",
+    "dendrites",
+    "docs",
+    "experiments",
+    "features",
+    "flake.lock",
+    "flake.nix",
+    "fruits",
+    "homes",
+    "hosts",
+    "inventory",
+    "lib",
+    "modules",
+    "overlays",
+    "packages",
+    "plans",
+    "public-export",
+    "templates",
+    "tools"
+  ],
+  "exclude_paths": [
+    "bootstrap/__pycache__",
+    "experiments/migration",
+    "experiments/old-layout",
+    "inventory/guest-access.nix",
+    "inventory/keys",
+    "inventory/host-bootstrap.nix",
+    "inventory/private-yggdrasil-identities.nix",
+    "inventory/identity-services"
+  ],
+  "literal_replacements": [
+    {
+      "from": "/work/flake",
+      "to": "/work/flake"
+    },
+    {
+      "from": "/home/example",
+      "to": "/home/example"
+    },
+    {
+      "from": "/home/example",
+      "to": "/home/example"
+    },
+    {
+      "from": "200:db8::10",
+      "to": "200:db8::10"
+    },
+    {
+      "from": "200:db8::20",
+      "to": "200:db8::20"
+    }
+  ],
+  "regex_replacements": [
+    {
+      "pattern": "\\b100\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\b(?!/)",
+      "replacement": "100.64.0.10"
+    },
+    {
+      "pattern": "\\b10\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\b(?!/)",
+      "replacement": "10.0.0.10"
+    },
+    {
+      "pattern": "\\b192\\.168\\.[0-9]{1,3}\\.[0-9]{1,3}\\b(?!/)",
+      "replacement": "192.168.0.10"
+    },
+    {
+      "pattern": "hashedPassword = \\\"[^\\\"]*\\\";",
+      "replacement": "hashedPassword = null;"
+    },
+    {
+      "pattern": "authorizedKeysFile = \\./keys/[^;]+;",
+      "replacement": ""
+    },
+    {
+      "pattern": "identityFile = \\\"[^\\\"]+\\\";",
+      "replacement": "identityFile = null;"
+    },
+    {
+      "pattern": "/home/example/\\.ssh/[^\\s\\\"']*_[0-9]{8}[^\\s\\\"']*",
+      "replacement": "/home/example/.ssh/bootstrap_key"
+    },
+    {
+      "pattern": "sshKey = \\\"[^\\\"]+\\\";",
+      "replacement": "sshKey = \"/run/keys/REPLACE_ME\";"
+    },
+    {
+      "pattern": "/dev/tape/by-id/REPLACE_ME"\\n]+",
+      "replacement": "/dev/tape/by-id/REPLACE_ME"
+    },
+    {
+      "pattern": "by-uuid/[0-9A-Fa-f-]{36}",
+      "replacement": "by-uuid/REDACTED-UUID"
+    },
+    {
+      "pattern": "by-uuid/[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}\\b",
+      "replacement": "by-uuid/REDACTED-UUID"
+    },
+    {
+      "pattern": "\\b[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\\b",
+      "replacement": "REDACTED-UUID"
+    },
+    {
+      "pattern": "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}",
+      "replacement": "user@example.com"
+    }
+  ],
+  "scoped_regex_replacements": [
+    {
+      "suffixes": [
+        ".md",
+        ".markdown",
+        ".txt",
+        ".yaml",
+        ".yml"
+      ],
+      "paths": [
+        "README.md",
+        "docs",
+        "plans",
+        "examples"
+      ],
+      "pattern": "\\bash\\b",
+      "replacement": "user1"
+    },
+    {
+      "suffixes": [
+        ".md",
+        ".markdown",
+        ".txt",
+        ".yaml",
+        ".yml"
+      ],
+      "paths": [
+        "README.md",
+        "docs",
+        "plans",
+        "examples"
+      ],
+      "pattern": "\\bmadeline\\b",
+      "replacement": "user2"
+    }
+  ]
+}

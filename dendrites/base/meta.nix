@@ -8,5 +8,4 @@
   ];
   requires = [ ];
   conflicts = [ ];
-  hostClasses = [ ];
 }

@@ -5,5 +5,4 @@
   provides = [ "cinnamon-desktop" ];
   requires = [ "desktop" ];
   conflicts = [ "desktop/gnome" ];
-  hostClasses = [ "workstation" ];
 }

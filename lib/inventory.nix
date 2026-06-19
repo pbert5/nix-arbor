@@ -1,31 +1,90 @@
 { helpers, lib }:
 let
-  dendritesFromNetworks = networksInventory: selectedNetworks:
+  accessLib = import ./access.nix { inherit helpers lib; };
+  identityPolicyLib = import ./identity-policy.nix { };
+  yggIdentitiesLib = import ./yggdrasil-identities.nix { };
+
+  mergeAttrsList = attrs: lib.foldl' lib.recursiveUpdate { } attrs;
+
+  normalizeNetworks =
+    rawNetworks:
+    let
+      collectLayer =
+        path: inheritedOptions: layer:
+        let
+          layerOptions = lib.recursiveUpdate inheritedOptions (layer.options or { });
+          directNetworks = lib.mapAttrs (
+            networkName: network:
+            network
+            // {
+              name = network.name or networkName;
+              path = path ++ [ networkName ];
+              options = lib.recursiveUpdate layerOptions (network.options or { });
+            }
+          ) (layer.networks or { });
+          childNetworks = mergeAttrsList (
+            lib.mapAttrsToList (
+              layerName: childLayer: collectLayer (path ++ [ layerName ]) layerOptions childLayer
+            ) (layer.layers or { })
+          );
+        in
+        directNetworks // childNetworks;
+    in
+    if rawNetworks ? layers then collectLayer [ ] { } { layers = rawNetworks.layers; } else rawNetworks;
+
+  dendritesFromNetworks =
+    networksInventory: selectedNetworks:
     lib.unique (
       helpers.removeNulls (
-        builtins.map
-          (networkName:
-            let
-              network = networksInventory.${networkName} or null;
-            in
-            if network == null then null else network.dendrite or null)
-          selectedNetworks
+        builtins.map (
+          networkName:
+          let
+            network = networksInventory.${networkName} or null;
+          in
+          if network == null then null else network.dendrite or null
+        ) selectedNetworks
       )
     );
 
-  normalizeUser = userName: user:
+  enabledNetworkNames =
+    networksInventory:
+    builtins.attrNames (lib.filterAttrs (_: network: network.enabled or true) networksInventory);
+
+  normalizeNetworkMembership =
+    networksInventory: org: host:
+    let
+      membership = lib.attrByPath [ "network" "membership" ] { } org;
+      optIn =
+        if membership ? optIn then
+          membership.optIn
+        else if host ? networks then
+          host.networks
+        else
+          "all";
+      selected =
+        if optIn == "all" then
+          enabledNetworkNames networksInventory
+        else if builtins.isList optIn then
+          optIn
+        else
+          [ optIn ];
+      optOut = membership.optOut or [ ];
+    in
+    lib.unique (builtins.filter (networkName: !(builtins.elem networkName optOut)) selected);
+
+  normalizeUser =
+    userName: user:
     user
     // {
-      roles = lib.unique (user.roles or [ ]);
-      home =
-        {
-          homeModule = user.home.homeModule or userName;
-        }
-        // (user.home or { });
+      home = {
+        homeModule = user.home.homeModule or userName;
+      }
+      // (user.home or { });
       org = user.org or { };
     };
 
-  normalizeLegacyTape = host:
+  normalizeLegacyTape =
+    host:
     let
       legacyTape = host.tapeLibrary or null;
     in
@@ -51,15 +110,13 @@ let
             legacyTapeSettings.drive_device
           else
             helpers.firstOrNull legacyDrives;
-        cleanedFossilsafeSettings =
-          legacyFossilsafeSettings
-          // {
-            tape = builtins.removeAttrs legacyTapeSettings [
-              "changer_device"
-              "drive_device"
-              "drive_devices"
-            ];
-          };
+        cleanedFossilsafeSettings = legacyFossilsafeSettings // {
+          tape = builtins.removeAttrs legacyTapeSettings [
+            "changer_device"
+            "drive_device"
+            "drive_devices"
+          ];
+        };
         legacyYatm = legacyTape.yatm or { };
         legacyYatmSettings = builtins.removeAttrs (legacyYatm.settings or { }) [ "tape_devices" ];
       in
@@ -75,20 +132,17 @@ let
 
         org.storage.tape = {
           manager = legacyTape.ltfsManager or "fossilsafe";
-          fossilsafe =
-            (builtins.removeAttrs legacyFossilsafe [ "settings" ])
-            // {
-              settings = cleanedFossilsafeSettings;
-            };
-          yatm =
-            (builtins.removeAttrs legacyYatm [ "settings" ])
-            // {
-              settings = legacyYatmSettings;
-            };
+          fossilsafe = (builtins.removeAttrs legacyFossilsafe [ "settings" ]) // {
+            settings = cleanedFossilsafeSettings;
+          };
+          yatm = (builtins.removeAttrs legacyYatm [ "settings" ]) // {
+            settings = legacyYatmSettings;
+          };
         };
       };
 
-  normalizeLegacyZfs = host:
+  normalizeLegacyZfs =
+    host:
     let
       legacyZfs = host.zfsPool or null;
     in
@@ -109,92 +163,80 @@ let
         };
       };
 
-  normalizeHost = roles: networksInventory: hostName: host:
+  normalizeHost =
+    networksInventory: hostName: host:
     let
-      normalizedRoles =
-        lib.unique (
-          (host.roles or [ ])
-          ++ helpers.removeNulls (builtins.map helpers.legacyRoleFromDendrite (host.dendrites or [ ]))
-        );
-
-      roleData = builtins.map (roleName: roles.${roleName} or { }) normalizedRoles;
-      normalizedNetworks = lib.unique (host.networks or [ ]);
-      networkDendrites = dendritesFromNetworks networksInventory normalizedNetworks;
       legacyZfs = normalizeLegacyZfs host;
       legacyTape = normalizeLegacyTape host;
 
-      facts =
-        lib.recursiveUpdate
-          (
-            lib.optionalAttrs (host ? hostId) {
-              hostId = host.hostId;
-            }
-          )
-          (
-            lib.recursiveUpdate
-              legacyZfs.facts
-              (lib.recursiveUpdate legacyTape.facts (host.facts or { }))
-          );
+      facts = lib.recursiveUpdate (lib.optionalAttrs (host ? hostId) {
+        hostId = host.hostId;
+      }) (lib.recursiveUpdate legacyZfs.facts (lib.recursiveUpdate legacyTape.facts (host.facts or { })));
 
-      org =
-        lib.recursiveUpdate
-          legacyZfs.org
-          (lib.recursiveUpdate legacyTape.org (host.org or { }));
+      org = lib.recursiveUpdate legacyZfs.org (lib.recursiveUpdate legacyTape.org (host.org or { }));
+      normalizedNetworks = normalizeNetworkMembership networksInventory org host;
+      networkDendrites = dendritesFromNetworks networksInventory normalizedNetworks;
     in
     {
       exported = host.exported or true;
       system = host.system;
-      roles = normalizedRoles;
       networks = normalizedNetworks;
-      publicYggdrasil = host.publicYggdrasil or false;
-      dendrites =
-        lib.unique (
-          helpers.removeNulls (builtins.map helpers.normalizeLegacyDendriteName (host.dendrites or [ ]))
-          ++ networkDendrites
-          ++ lib.concatMap (role: role.dendrites or [ ]) roleData
-        );
-      fruits =
-        lib.unique (
-          (host.fruits or [ ])
-          ++ lib.concatMap (role: role.fruits or [ ]) roleData
-        );
-      users =
-        lib.unique (
-          (host.users or [ ])
-          ++ lib.concatMap (role: role.users or [ ]) roleData
-        );
-      roleHomes = lib.unique (lib.concatMap (role: role.homes or [ ]) roleData);
+      dendrites = lib.unique (
+        helpers.removeNulls (builtins.map helpers.normalizeLegacyDendriteName (host.dendrites or [ ]))
+        ++ networkDendrites
+      );
+      fruits = lib.unique (host.fruits or [ ]);
+      users = lib.unique (host.users or [ ]);
       facts = facts;
       org = org;
       hardwareModules = host.hardwareModules or [ ];
-      overrides =
-        lib.unique (
-          builtins.map
-            helpers.normalizeOverrideName
-            ((host.overrides or [ ]) ++ (host.hostModules or [ ]))
-        );
+      overrides = lib.unique (
+        builtins.map helpers.normalizeOverrideName ((host.overrides or [ ]) ++ (host.hostModules or [ ]))
+      );
       _sourceHostName = hostName;
     };
+  mergeYggIdentitiesIntoNetworks =
+    networks: yggdrasilServices:
+    let
+      yggIdentities = yggIdentitiesLib.deriveYggdrasilIdentities yggdrasilServices;
+    in
+    if !(networks ? privateYggdrasil) then
+      networks
+    else
+      networks
+      // {
+        privateYggdrasil = networks.privateYggdrasil // {
+          nodes = lib.mapAttrs (
+            nodeName: node: node // (yggIdentities.${nodeName} or { })
+          ) (networks.privateYggdrasil.nodes or { });
+        };
+      };
+
 in
 {
-  normalizeInventory = rawInventory:
+  normalizeInventory =
+    rawInventory:
     let
-      roles = rawInventory.roles or { };
-      networks = rawInventory.networks or { };
-      rawUsers =
-        if rawInventory ? users then
-          rawInventory.users
-        else
-          rawInventory.people or { };
-      users =
-        lib.mapAttrs
-          normalizeUser
-          rawUsers;
+      rawNetworks = rawInventory.networks or { };
+      networks = normalizeNetworks rawNetworks;
+      rawUsers = if rawInventory ? users then rawInventory.users else rawInventory.people or { };
+      users = lib.mapAttrs normalizeUser rawUsers;
+      yggdrasilServices = (rawInventory.identities or { }).services.yggdrasil or { };
+      networksWithYgg = mergeYggIdentitiesIntoNetworks networks yggdrasilServices;
+      hosts = lib.mapAttrs (normalizeHost networksWithYgg) (rawInventory.hosts or { });
+      guestAccess = accessLib.normalizeGuestAccess {
+        inherit hosts users;
+        rawAccess = rawInventory.guestAccess or { };
+      };
     in
     rawInventory
     // {
-      inherit roles users networks;
+      inherit guestAccess;
+      inherit users;
+      networks = networksWithYgg;
+      networkTopology = rawNetworks;
       people = users;
-      hosts = lib.mapAttrs (normalizeHost roles networks) (rawInventory.hosts or { });
+      inherit hosts;
+      identityPolicy = identityPolicyLib.normalizeIdentityPolicy rawInventory;
     };
 }
