@@ -1,7 +1,9 @@
 {
+  cheatsheets,
   helpers,
   inputs,
   lib,
+  topologyLib,
   usersLib,
   validation,
 }:
@@ -31,6 +33,13 @@ let
       name,
     }:
     (registry.${name} or (throw "Missing ${kind} '${name}' in dendritic registry.")).module;
+
+  mkDendriticHomeArgs =
+    { inventory, registries }:
+    {
+      inherit inventory registries;
+      cheatsheets = cheatsheets.collect { inherit registries; };
+    };
 in
 rec {
   mkFruit =
@@ -68,6 +77,8 @@ rec {
         resolvedDendrites = resolvedDendrites;
         resolvedFruits = fruitResolution.names;
       };
+      install = lib.attrByPath [ "hostBootstrap" hostName "install" ] null inventory;
+      installEnabled = install != null && (install.enable or false);
 
       userModules = builtins.map (
         userName:
@@ -84,6 +95,12 @@ rec {
         genericSiteModule
         inputs.agenix.nixosModules.default
         inputs.sops-nix.nixosModules.sops
+        inputs.nix-topology.nixosModules.default
+        {
+          topology.self.interfaces = topologyLib.mkHostInterfaces {
+            inherit hostName host inventory;
+          };
+        }
         {
           _module.args = {
             inherit inputs;
@@ -95,11 +112,20 @@ rec {
           };
         }
       ]
+      ++ lib.optionals installEnabled [
+        inputs.disko.nixosModules.disko
+        {
+          disko.devices = install.disko.devices;
+        }
+      ]
       ++ lib.optionals ((host.users or [ ]) != [ ]) [
         inputs.home-manager.nixosModules.home-manager
         {
           home-manager.extraSpecialArgs = {
             inherit inputs;
+            dendritic = mkDendriticHomeArgs {
+              inherit inventory registries;
+            };
             site = inventory;
           };
           home-manager.useGlobalPkgs = true;
@@ -216,6 +242,9 @@ rec {
     inputs.home-manager.lib.homeManagerConfiguration {
       extraSpecialArgs = {
         inherit inputs;
+        dendritic = mkDendriticHomeArgs {
+          inherit inventory registries;
+        };
         site = inventory;
       };
       modules = [

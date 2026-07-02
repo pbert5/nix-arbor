@@ -17,6 +17,9 @@ def materialize_state(registry: Path, out: Path) -> None:
     known_hosts = state / "known_hosts"
     if known_hosts.exists():
         shutil.copy2(known_hosts, out / "ssh_known_hosts")
+    ssh_config = state / "ssh_config"
+    if ssh_config.exists():
+        shutil.copy2(ssh_config, out / "ssh_config")
     for subdir, filename in [
         ("yggdrasil", "peers.json"),
         ("radicle", "nodes.json"),

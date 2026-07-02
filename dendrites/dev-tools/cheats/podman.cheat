@@ -1,0 +1,43 @@
+% dendritic, podman, containers
+
+# List running containers
+podman ps
+
+# List all containers, including stopped
+podman ps -a
+
+# List images
+podman images
+
+# Run a container interactively, removing it on exit
+podman run -it --rm <image> sh
+
+# Show logs for a container, following
+podman logs -f <container>
+
+# Exec into a running container
+podman exec -it <container> sh
+
+# Stop a container
+podman stop <container>
+
+# Remove a stopped container
+podman rm <container>
+
+# Remove an image
+podman rmi <image>
+
+# Show resource usage for running containers
+podman stats
+
+# List networks (oci-containers backend used by services.romm)
+podman network ls
+
+# Inspect a container's config
+podman inspect <container>
+
+# Prune unused containers, images, and networks
+podman system prune
+
+$ container: podman ps -a --format '{{.Names}}' 2>/dev/null
+$ image: podman images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null

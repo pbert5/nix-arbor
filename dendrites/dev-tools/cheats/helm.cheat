@@ -1,0 +1,62 @@
+% dendritic, helm, kubernetes
+
+# Add a Helm repository
+helm repo add <name> <url>
+
+# Update all Helm repositories
+helm repo update
+
+# Search for charts in configured repositories
+helm search repo <query>
+
+# Install a chart into a namespace
+helm install <release> <chart> -n <namespace>
+
+# Install a chart with custom values file
+helm install <release> <chart> -f <values.yaml>
+
+# Upgrade a release (install if not present)
+helm upgrade --install <release> <chart> -n <namespace>
+
+# Upgrade with custom values
+helm upgrade <release> <chart> -f <values.yaml> -n <namespace>
+
+# List all releases across namespaces
+helm list -A
+
+# List releases in a namespace
+helm list -n <namespace>
+
+# Show release status
+helm status <release> -n <namespace>
+
+# Show release history
+helm history <release> -n <namespace>
+
+# Rollback a release to a previous revision
+helm rollback <release> <revision> -n <namespace>
+
+# Uninstall a release
+helm uninstall <release> -n <namespace>
+
+# Render chart templates locally without installing
+helm template <release> <chart>
+
+# Show chart default values
+helm show values <chart>
+
+# Get values currently applied to a release
+helm get values <release> -n <namespace>
+
+# Diff a pending upgrade (requires helm-diff plugin)
+helm diff upgrade <release> <chart> -n <namespace>
+
+# Lint a chart for issues
+helm lint <chart>
+
+# Package a chart directory into a .tgz
+helm package <chart-dir>
+
+$ namespace: kubectl get namespaces -o jsonpath='{.items[*].metadata.name}' 2>/dev/null | tr ' ' '\n'
+$ release: helm list -A -o json 2>/dev/null | jq -r '.[].name'
+$ chart: helm search repo -o json 2>/dev/null | jq -r '.[].name'

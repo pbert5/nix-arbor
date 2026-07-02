@@ -1,0 +1,136 @@
+% dendritic, neovim, lazyvim, nvim, editor
+
+# Open a file
+nvim <file>
+
+# Open a file at a specific line
+nvim +<line> <file>
+
+# Open a directory (neo-tree shows on the left)
+nvim <dir>
+
+# Open from stdin (pipe into nvim)
+<cmd> | nvim -
+
+# Sync all plugins headlessly
+nvim --headless "+Lazy! sync" +qa
+
+# Update all plugins headlessly
+nvim --headless "+Lazy! update" +qa
+
+# Clean unused plugins headlessly
+nvim --headless "+Lazy! clean" +qa
+
+# Update treesitter parsers headlessly
+nvim --headless "+TSUpdate" +qa
+
+# Install a Mason LSP / linter / formatter
+nvim --headless "+MasonInstall <lsp>" +qa
+
+# Run health check and page through results
+nvim --headless "+checkhealth" "+w! /tmp/nvim-health.txt" +qa && bat /tmp/nvim-health.txt
+
+# Show LazyVim file navigation shortcuts
+printf '%s\n' \
+  "Space Space   Find files (Telescope)" \
+  "Space /       Live grep across project" \
+  "Space f r     Recent files" \
+  "Space f n     New file" \
+  "Space e       Toggle file explorer (neo-tree)" \
+  "Space E       Explorer at current file" \
+  "Space s s     Jump to symbol in file" \
+  "Space s S     Jump to symbol across workspace"
+
+# Show LazyVim buffer and window shortcuts
+printf '%s\n' \
+  "Space b b     Switch buffers" \
+  "Space b d     Delete (close) buffer" \
+  "Space b l     Delete all buffers to the left" \
+  "Space b p     Pin buffer" \
+  "H             Previous buffer" \
+  "L             Next buffer" \
+  "Ctrl-h/j/k/l  Move between windows" \
+  "Space w w     Switch windows" \
+  "Space w d     Delete window" \
+  "Space w s     Split window horizontal" \
+  "Space w v     Split window vertical"
+
+# Show LazyVim LSP / code shortcuts
+printf '%s\n' \
+  "Space c a     Code action" \
+  "Space c r     Rename symbol" \
+  "Space c f     Format buffer" \
+  "Space c m     Open Mason (LSP installer)" \
+  "Space c l     Run linter" \
+  "g d           Go to definition" \
+  "g D           Go to declaration" \
+  "g r           Go to references" \
+  "g i           Go to implementation" \
+  "g y           Go to type definition" \
+  "K             Hover docs" \
+  "] d           Next diagnostic" \
+  "[ d           Previous diagnostic" \
+  "Space x x     Open diagnostics list (Trouble)"
+
+# Show LazyVim git shortcuts
+printf '%s\n' \
+  "Space g g     Open lazygit" \
+  "Space g f     Git log for current file" \
+  "Space g l     Git log" \
+  "Space g b     Git blame line" \
+  "Space g s     Git status" \
+  "Space g d     Git diff (Diffview)" \
+  "] h           Next hunk (gitsigns)" \
+  "[ h           Previous hunk" \
+  "Space g h s   Stage hunk" \
+  "Space g h r   Reset hunk" \
+  "Space g h p   Preview hunk"
+
+# Show LazyVim search shortcuts (Telescope)
+printf '%s\n' \
+  "Space s f     Find files" \
+  "Space s g     Live grep" \
+  "Space s b     Search open buffers" \
+  "Space s h     Help tags" \
+  "Space s k     Keymaps" \
+  "Space s c     Command history" \
+  "Space s m     Marks" \
+  "Space s r     Resume last search" \
+  "Space s w     Search word under cursor"
+
+# Show LazyVim terminal and misc shortcuts
+printf '%s\n' \
+  "Space f t     Float terminal" \
+  "Space f T     Terminal in new window" \
+  "Ctrl-/        Toggle float terminal (from normal mode)" \
+  "Space l       Lazy plugin manager" \
+  "Space u n     Toggle line numbers" \
+  "Space u w     Toggle word wrap" \
+  "Space u s     Toggle spell check" \
+  "Space u d     Toggle diagnostics" \
+  "Space u c     Toggle conceal" \
+  "Space ?       Show keymaps cheatsheet (which-key)"
+
+# Show LazyVim flash (jump) shortcuts
+printf '%s\n' \
+  "s             Flash jump (type 2 chars to jump there)" \
+  "S             Flash treesitter (select a node)" \
+  "r             Remote flash (operator-pending)" \
+  "Ctrl-s        Toggle flash in search (/)"
+
+$ file: find . -maxdepth 5 -type f ! -path '*/.git/*' 2>/dev/null | head -100
+$ dir: find . -maxdepth 3 -type d ! -path '*/.git/*' 2>/dev/null | head -50
+$ line: printf '%s\n' 1 10 50 100 200 500
+$ lsp: printf '%s\n' \
+    nil lua-language-server \
+    pyright basedpyright pylsp \
+    typescript-language-server \
+    rust-analyzer \
+    clangd \
+    bash-language-server \
+    yaml-language-server json-lsp \
+    taplo marksman \
+    ruff mypy black isort \
+    shellcheck shfmt \
+    stylua prettier
+$ cmd: printf '%s\n' "cat" "rg" "fd" "jq" "yq"

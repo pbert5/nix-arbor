@@ -112,7 +112,8 @@ org.storage.annex = {
 
 org.network.radicle = {
   seed = true;
-  privateKeyFile = "/var/lib/radicle/keys/radicle";
+  # Optional: only set this for a custom $RAD_HOME/keys/radicle path.
+  privateKeyFile = "/run/radicle/keys/radicle";
   repos = [ "flake-devbox" "cluster-data" ];
 };
 ```
@@ -172,9 +173,10 @@ Host-specific fabric overrides on `desktoptoodle` include:
 5. set `org.storage.annex.group`
 6. enable at least one archive backend if using `archive-node`
 7. add backend-specific facts, such as tape devices or archive paths
-8. set `org.network.radicle.privateKeyFile` if using
-   `org.network.radicle.seed`
-9. run `nix flake check`
+8. let `network/radicle` use its metadata-declared identity target path, or set
+   `org.network.radicle.privateKeyFile` only when using a custom key
+9. set `org.network.radicle.seed` when the host should advertise as a seed
+10. run `nix flake check`
 
 ## Example host snippets
 

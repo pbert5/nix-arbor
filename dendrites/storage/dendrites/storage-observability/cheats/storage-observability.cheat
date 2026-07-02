@@ -1,0 +1,13 @@
+% dendritic, storage, observability, fabric-status
+
+# Show storage fabric health
+fabric-status
+
+# Show failed storage-related systemd units
+systemctl --failed 'annex*' 'seaweedfs*' 'radicle*'
+
+# Show annex remote daemon logs
+journalctl -u annex-remotedaemon --no-pager
+
+# Show SeaweedFS master logs
+journalctl -u seaweedfs-master --no-pager

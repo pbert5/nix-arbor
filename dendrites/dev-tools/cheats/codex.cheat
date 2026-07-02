@@ -1,0 +1,133 @@
+% dendritic, codex, ai, openai
+
+# Start an interactive Codex session
+codex
+
+# Start an interactive session with an initial prompt
+codex "<prompt>"
+
+# Resume the most recent interactive session
+codex resume --last
+
+# Resume a specific interactive session (picker if no id given)
+codex resume <session_id>
+
+# Fork the most recent session (branching point for a new direction)
+codex fork --last
+
+# Fork a specific session
+codex fork <session_id>
+
+# Archive a session by id or name
+codex archive <session_id>
+
+# Unarchive a session
+codex unarchive <session_id>
+
+# Run Codex non-interactively with a prompt
+codex exec "<prompt>"
+
+# Run Codex non-interactively with stdin as the prompt
+echo "fix the bug in foo.py" | codex exec -
+
+# Run non-interactively with a specific model
+codex exec -m o3 "<prompt>"
+
+# Run non-interactively using a named config profile
+codex exec -p <profile> "<prompt>"
+
+# Resume a previous exec session non-interactively
+codex exec resume --last "<followup>"
+
+# Apply the latest diff produced by a Codex agent run
+codex apply <task_id>
+
+# Run a code review non-interactively (diff vs default base)
+codex review
+
+# Review only uncommitted (staged + unstaged + untracked) changes
+codex review --uncommitted
+
+# Review against a specific base branch
+codex review --base <branch>
+
+# Review with custom instructions
+codex review "<custom instructions>"
+
+# Check login status
+codex login status
+
+# Log in interactively
+codex login
+
+# Log in with an API key from stdin
+printenv OPENAI_API_KEY | codex login --with-api-key
+
+# Log out (remove stored credentials)
+codex logout
+
+# Diagnose installation, config, auth, and runtime health
+codex doctor
+
+# Diagnose and emit a redacted machine-readable report
+codex doctor --json
+
+# List MCP servers configured for Codex
+codex mcp list
+
+# Show details for a specific MCP server
+codex mcp get <mcp_server>
+
+# Add an MCP server
+codex mcp add <mcp_server>
+
+# Remove an MCP server
+codex mcp remove <mcp_server>
+
+# Run a command inside the Codex sandbox
+codex sandbox <cmd>
+
+# Run non-interactively with full disk read access granted to sandbox
+codex exec -c 'sandbox_permissions=["disk-full-read-access"]' "<prompt>"
+
+# Override the model for a single run
+codex exec -c 'model="o4-mini"' "<prompt>"
+
+# Submit a task to Codex Cloud non-interactively
+codex cloud exec "<prompt>"
+
+# List Codex Cloud tasks
+codex cloud list
+
+# Show the status of a Codex Cloud task
+codex cloud status <task_id>
+
+# Show the diff for a Codex Cloud task
+codex cloud diff <task_id>
+
+# Apply a Codex Cloud task's diff locally
+codex cloud apply <task_id>
+
+# List available plugins
+codex plugin list
+
+# Install a plugin
+codex plugin add <plugin>
+
+# Remove a plugin
+codex plugin remove <plugin>
+
+# Show available models
+codex debug models
+
+# Generate shell completions
+codex completion <shell>
+
+$ session_id: ls "${CODEX_HOME:-$HOME/.codex}/sessions/" 2>/dev/null | grep -oE '[0-9a-f-]{36}' | sort -u
+$ task_id: codex cloud list 2>/dev/null | awk 'NR>1 {print $1}'
+$ profile: ls "${CODEX_HOME:-$HOME/.codex}"/*.config.toml 2>/dev/null | xargs -n1 basename | sed 's/\.config\.toml$//'
+$ mcp_server: codex mcp list 2>/dev/null | awk 'NR>1 {print $1}'
+$ plugin: codex plugin list 2>/dev/null | awk 'NR>1 {print $1}'
+$ branch: git branch --format='%(refname:short)' 2>/dev/null
+$ shell: printf '%s\n' bash zsh fish
+$ cmd: printf '%s\n' bash sh python3

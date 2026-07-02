@@ -20,9 +20,9 @@ let
       availableBootstrapHosts = builtins.attrNames (inventory.hostBootstrap or { });
       leaderKeysDir = ../inventory/keys/leaders;
       leaderKeyFiles = builtins.attrNames (
-        lib.filterAttrs (
-          name: type: type == "regular" && lib.hasSuffix ".txt" name
-        ) (builtins.readDir leaderKeysDir)
+        lib.filterAttrs (name: type: type == "regular" && lib.hasSuffix ".txt" name) (
+          builtins.readDir leaderKeysDir
+        )
       );
       parseLeaderKeyHost =
         fileName:
@@ -80,6 +80,16 @@ let
           hasDatedKeyName = identityFile != null && builtins.match ".*_[0-9]{8}([^/]*)" identityFile != null;
           leaderKeyFile = "${hostName}-root-deployer.txt";
           operatorCapable = bootstrap.operatorCapable or false;
+          host = inventory.hosts.${hostName} or { };
+          install = bootstrap.install or null;
+          installEnabled = install != null && (install.enable or false);
+          hostInstall = lib.attrByPath [ "org" "install" ] { } host;
+          installId = if install == null then null else install.installationId or null;
+          hostInstallId = hostInstall.installationId or null;
+          installDisks =
+            if install == null then { } else lib.attrByPath [ "disko" "devices" "disk" ] { } install;
+          expectedHardware = if install == null then { } else install.expectedHardware or { };
+          expectedDiskSize = if install == null then { } else install.expectedDiskSize or { };
         in
         lib.optionals (!(builtins.elem hostName availableHosts)) [
           "inventory.hostBootstrap defines unknown host '${hostName}'."
@@ -92,6 +102,49 @@ let
         ]
         ++ lib.optionals (operatorCapable && !(builtins.elem leaderKeyFile leaderKeyFiles)) [
           "inventory.hostBootstrap.${hostName}.operatorCapable is true but inventory/keys/leaders/${leaderKeyFile} is missing."
+        ]
+        ++ lib.optionals (installEnabled && !(hostInstall.enable or false)) [
+          "inventory.hostBootstrap.${hostName}.install.enable requires hosts.${hostName}.org.install.enable."
+        ]
+        ++ lib.optionals (installEnabled && (installId == null || installId != hostInstallId)) [
+          "inventory.hostBootstrap.${hostName}.install.installationId must match hosts.${hostName}.org.install.installationId."
+        ]
+        ++
+          lib.optionals
+            (
+              installEnabled
+              && (
+                (install.targetHost or null) == null
+                || (install.sshUser or null) == null
+                || (install.expectedLiveHostName or null) == null
+                || (install.expectedLiveMarker or null) == null
+              )
+            )
+            [
+              "inventory.hostBootstrap.${hostName}.install requires targetHost, sshUser, expectedLiveHostName, and expectedLiveMarker."
+            ]
+        ++
+          lib.optionals
+            (
+              installEnabled
+              && ((expectedHardware.sysVendor or null) == null || (expectedHardware.productName or null) == null)
+            )
+            [
+              "inventory.hostBootstrap.${hostName}.install.expectedHardware requires sysVendor and productName."
+            ]
+        ++
+          lib.optionals
+            (
+              installEnabled
+              && (
+                (expectedDiskSize.minimumBytes or null) == null || (expectedDiskSize.maximumBytes or null) == null
+              )
+            )
+            [
+              "inventory.hostBootstrap.${hostName}.install.expectedDiskSize requires minimumBytes and maximumBytes."
+            ]
+        ++ lib.optionals (installEnabled && builtins.length (builtins.attrNames installDisks) != 1) [
+          "inventory.hostBootstrap.${hostName}.install.disko.devices.disk must define exactly one target disk."
         ]
       ) availableBootstrapHosts;
       leaderKeyValidationFailures = lib.concatMap (

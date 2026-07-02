@@ -1,13 +1,32 @@
-{ lib, pkgs, hostInventory, hostName, ... }:
+{
+  lib,
+  pkgs,
+  hostInventory,
+  hostName,
+  site,
+  ...
+}:
 let
   radicleOrg = lib.attrByPath [ "org" "network" "radicle" ] { } hostInventory;
-  privateKeyFile = radicleOrg.privateKeyFile or null;
+  identityRequirement = lib.attrByPath [
+    "identityRequirements"
+    "byHost"
+    hostName
+    "radicle"
+  ] { } site;
+  privateKeyFile = radicleOrg.privateKeyFile or identityRequirement.targetPath or null;
   serviceEnabled = privateKeyFile != null;
-  radHome = "/var/lib/radicle";
+  radHome =
+    if privateKeyFile == null then
+      "/var/lib/radicle"
+    else
+      builtins.dirOf (builtins.dirOf privateKeyFile);
 in
 {
-  # Initialise the Radicle identity on first boot if the key doesn't exist yet.
-  # rad auth creates the key at $RAD_HOME/keys/radicle AND writes config.json.
+  # Initialise the Radicle identity at the registry-declared target path on
+  # first boot. org.network.radicle.privateKeyFile is an explicit
+  # $RAD_HOME/keys/radicle override; ordinary hosts inherit the destination
+  # from meta.nix.
   # To re-key: stop radicle-seed, delete $radHome/keys/radicle, reboot.
   systemd.services.radicle-keygen = lib.mkIf serviceEnabled {
     description = "Initialise Radicle node identity (first boot)";

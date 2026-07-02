@@ -32,6 +32,7 @@
       ExtendedDetectionInfo = true;
       LogClean = false;
       LogVerbose = false;
+      MaxThreads = 2;
       OnAccessPrevention = true;
       OnAccessIncludePath = "/var/lib/download-staging";
       OnAccessExcludePath = "/nix/store";
@@ -46,5 +47,8 @@
   systemd.services.clamdscan.serviceConfig = {
     Nice = 15;
     IOSchedulingClass = "idle";
+    # Recursive scans encounter transient sockets and pipes under /home.
+    # clamdscan reports those unsupported file types with exit code 2.
+    SuccessExitStatus = [ 2 ];
   };
 }

@@ -1,0 +1,42 @@
+% dendritic, network, yggdrasil
+
+# Show this node's Yggdrasil address and key info
+yggdrasilctl getself
+
+# List known peers and their state
+yggdrasilctl getpeers
+
+# List reachable nodes on the mesh
+yggdrasilctl getnodeinfo
+
+# Show the routing table
+yggdrasilctl getroutes
+
+# Show the multicast interfaces in use
+yggdrasilctl getmulticastinterfaces
+
+# Add a peer at runtime (without editing inventory)
+sudo yggdrasilctl addpeer uri=<peer_uri>
+
+# Remove a runtime peer
+sudo yggdrasilctl removepeer uri=<peer_uri>
+
+# Show the private overlay daemon status
+systemctl status yggdrasil
+
+# Show the public peering sidecar status (separate service/interface)
+systemctl status yggdrasil-public-peering
+
+# Show the rendered public peering config
+cat /run/yggdrasil-public-peering/config.json
+
+# Generate a fresh keypair/config for manual inspection
+yggdrasil -genconf -json | jq .
+
+# Tail the private overlay daemon logs
+journalctl -u yggdrasil -f
+
+# Tail the public peering sidecar logs
+journalctl -u yggdrasil-public-peering -f
+
+$ peer_uri: printf '%s\n' "tls://" "tcp://" "quic://"

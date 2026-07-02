@@ -80,6 +80,7 @@ rec {
     }:
     { pkgs, ... }:
     let
+      homeUser = user.home.username;
       userConfig = {
         isNormalUser = true;
         extraGroups = user.nixos.extraGroups or [ ];
@@ -94,9 +95,14 @@ rec {
       };
     in
     {
-      users.users.${user.home.username} = userConfig;
+      users.users.${homeUser} = userConfig;
 
-      home-manager.users.${user.home.username}.imports = [
+      systemd.tmpfiles.rules = [
+        "d /nix/var/nix/profiles/per-user/${homeUser} 0755 ${homeUser} users - -"
+        "d /nix/var/nix/gcroots/per-user/${homeUser} 0755 ${homeUser} users - -"
+      ];
+
+      home-manager.users.${homeUser}.imports = [
         (mkHomeIdentityModule {
           inherit
             extraHomeNames

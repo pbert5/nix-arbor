@@ -1,0 +1,49 @@
+% dendritic, codex, codex-switch, auth, profiles
+
+# List Codex Switch profiles
+codex-switch list
+
+# List Codex Switch profiles with IDs
+codex-switch list --ids
+
+# Show the active Codex Switch profile
+codex-switch status
+
+# Switch to a Codex profile
+codex-switch switch <profile>
+
+# Toggle back to the previous Codex profile
+codex-switch toggle
+
+# Save current CODEX_HOME auth.json as a profile
+codex-switch add-current <name>
+
+# Save and activate current CODEX_HOME auth.json as a profile
+codex-switch add-current <name> --activate
+
+# Save an auth.json file as a profile
+codex-switch add-current <name> --auth-file <auth_file>
+
+# Prepare Codex for a fresh login
+codex-switch prepare-login
+
+# Export Codex Switch profiles and stored auth
+codex-switch export <export_file>
+
+# Import Codex Switch profiles and stored auth
+codex-switch import <export_file>
+
+# Delete a Codex Switch profile
+codex-switch delete <profile>
+
+# Show the shared Codex Switch store path
+codex-switch path
+
+# Run the flake-provided Codex Switch CLI
+nix run .#codex-switch -- <subcommand>
+
+$ profile: codex-switch list --ids 2>/dev/null | awk '{print $2}'
+$ name: printf '%s\n' default work personal
+$ auth_file: find "$HOME/.codex-switch" "$HOME/.codex" -maxdepth 3 -name 'auth.json' 2>/dev/null
+$ export_file: printf '%s\n' "$HOME/codex-switch-export.json"
+$ subcommand: printf '%s\n' list status switch toggle add-current prepare-login export import delete path

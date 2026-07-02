@@ -11,6 +11,14 @@ let
 			[ ];
 in
 {
+	codex-switch = final.writeShellApplication {
+		name = "codex-switch";
+		runtimeInputs = [ final.python3 ];
+		text = ''
+			exec ${final.python3}/bin/python ${../tools/codex-switch/codex-switch.py} "$@"
+		'';
+	};
+
 	btop = prev.btop.overrideAttrs (old: {
 		patches = (old.patches or [ ]) ++ [
 			./btop-zfs-pool-space.patch

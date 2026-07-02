@@ -10,6 +10,8 @@ Adds the baseline host configuration required for a ZFS-managed system.
 
 - enables ZFS as a supported filesystem
 - adds the configured pool to `boot.zfs.extraPools`
+- explicitly preserves forced root-pool import behavior across the NixOS 26.05
+  upgrade
 - sets `networking.hostId` when provided
 
 ## Inventory Inputs

@@ -2,8 +2,8 @@ import hashlib
 import subprocess
 from pathlib import Path
 
-from .events import new_event_id, now_utc, write_json
-from .signing import sign_record
+from .events import now_utc, write_json
+from .signing import key_fingerprint, public_key_from_private, sign_record
 
 
 def publish_bundle(node: str, service: str, generation: int, source: Path, target_path: str, target_host: str, ssh_user: str) -> None:
@@ -33,20 +33,39 @@ def write_receipt(
     signer: str | None,
     signing_key: Path,
     signature: str | None,
+    cluster_id: str,
+    event_id: str,
+    bundle_manifest: str,
 ) -> None:
-    event_id = new_event_id("receipt")
+    public_key = signer or public_key_from_private(signing_key)
     receipt = {
         "schema": "cluster.identity.receipt.v1",
+        "clusterId": cluster_id,
         "node": node,
         "service": service,
         "generation": generation,
         "status": status,
         "activated": activated,
+        "eventId": event_id,
+        "bundleManifest": bundle_manifest,
         "observedPublic": {},
-        "signedByNode": signer or _public_key(signing_key),
+        "signedByNode": {
+            "node": node,
+            "keyType": "ssh-host",
+            "keyId": key_fingerprint(public_key),
+            "publicKey": public_key,
+        },
         "createdAt": now_utc(),
     }
-    receipt["signature"] = signature or sign_record(receipt, signing_key)
+    if signature:
+        receipt["signature"] = {
+            "type": "openssh",
+            "namespace": "cluster-identity",
+            "keyId": key_fingerprint(public_key),
+            "value": signature,
+        }
+    else:
+        receipt["signature"] = sign_record(receipt, signing_key)
     write_json(path, receipt)
 
 
@@ -69,6 +88,7 @@ def seal_bundle(
     leader: str,
     leader_key: str,
     signing_key: Path,
+    cluster_id: str,
 ) -> Path:
     bundle_dir = registry / "bundles" / node / service
     bundle_dir.mkdir(parents=True, exist_ok=True)
@@ -82,6 +102,7 @@ def seal_bundle(
     ciphertext = encrypted.read_bytes()
     payload = {
         "schema": "cluster.identity.bundle.v1",
+        "clusterId": cluster_id,
         "subject": {
             "node": node,
             "service": service,
@@ -102,16 +123,11 @@ def seal_bundle(
         "expectedPublic": expected_public,
         "createdAt": now_utc(),
         "leader": leader,
-        "leaderKey": leader_key,
+        "leaderKeyId": key_fingerprint(leader_key),
     }
     payload["signature"] = sign_record(payload, signing_key)
     write_json(manifest, payload)
     return manifest
-
-
-def _public_key(key_path: Path) -> str:
-    completed = subprocess.run(["ssh-keygen", "-y", "-f", str(key_path)], check=True, text=True, stdout=subprocess.PIPE)
-    return completed.stdout.strip()
 
 
 def _sha256_bytes(data: bytes) -> str:

@@ -1,0 +1,63 @@
+% dendritic, storage, zfs, zpool
+
+# List imported pools
+zpool list
+
+# Show pool status and any errors
+zpool status <pool>
+
+# Show pool I/O stats
+zpool iostat -v <pool>
+
+# Scrub a pool for silent corruption
+sudo zpool scrub <pool>
+
+# Show scrub/resilver progress
+zpool status <pool>
+
+# Show pool history of administrative commands
+zpool history <pool>
+
+# Import a pool by name (after boot.zfs.extraPools changes)
+sudo zpool import <pool>
+
+# Export a pool cleanly before moving disks
+sudo zpool export <pool>
+
+# List datasets and their used/available space
+zfs list
+
+# List datasets with referenced and used space, sorted by used
+zfs list -o name,used,refer,avail -s used
+
+# Show a dataset's properties
+zfs get all <dataset>
+
+# Set a dataset property
+sudo zfs set <property>=<value> <dataset>
+
+# Show snapshots for a dataset
+zfs list -t snapshot -r <dataset>
+
+# Create a snapshot
+sudo zfs snapshot <dataset>@<snapshot_name>
+
+# Roll back a dataset to a snapshot (destroys newer data)
+sudo zfs rollback <dataset>@<snapshot_name>
+
+# Destroy a snapshot
+sudo zfs destroy <dataset>@<snapshot_name>
+
+# Send an incremental snapshot stream to another dataset
+sudo zfs send -i <from_snapshot> <to_snapshot> | sudo zfs receive <dataset>
+
+# Show ARC and pool space accounting (used by the repo's btop ZFS overlay)
+zfs list -o name,used,avail -p
+
+$ pool: zpool list -H -o name 2>/dev/null
+$ dataset: zfs list -H -o name 2>/dev/null
+$ snapshot_name: printf '%s\n' "$(date +%Y-%m-%d)"
+$ from_snapshot: zfs list -H -t snapshot -o name 2>/dev/null
+$ to_snapshot: zfs list -H -t snapshot -o name 2>/dev/null
+$ property: printf '%s\n' compression atime quota reservation mountpoint readonly
+$ value: printf '%s\n' on off

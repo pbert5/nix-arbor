@@ -15,10 +15,13 @@ repo's workstation hosts.
 - installs VIA udev rules so compatible keyboards are accessible without manual
 	permissions hacks
 - installs the flake-pinned `nixard` package explorer
+- installs diagnostic tooling: `vulnix`, `sbomnix`, `grype`, `lynis`,
+	`nix-tree`, `nix-du`, `nix-output-monitor`
 
 ## Current Children
 
 - `system/workstation/gaming`
+- `system/workstation/remote-desktop`
 
 ## Requirements
 

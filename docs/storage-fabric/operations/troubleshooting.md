@@ -139,7 +139,8 @@ rad node status
 
 ### Common causes
 
-- `org.network.radicle.privateKeyFile` is not set on a `radicle-seed` host
+- the `network/radicle` identity requirement has no `targetPath` and no custom
+  `org.network.radicle.privateKeyFile` override is set
 - the key does not exist on disk yet
 - Ygg bind address or firewall state is wrong
 

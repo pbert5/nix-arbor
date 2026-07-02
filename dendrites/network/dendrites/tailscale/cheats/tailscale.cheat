@@ -1,0 +1,43 @@
+% dendritic, network, tailscale
+
+# Show this node's Tailscale status
+tailscale status
+
+# Show status as JSON
+tailscale status --json
+
+# Show this node's Tailscale IP
+tailscale ip -4
+
+# Ping a peer over the tailnet
+tailscale ping <peer>
+
+# Show the current network check / DERP info
+tailscale netcheck
+
+# Bring the daemon up (uses extraSetFlags from inventory, e.g. --operator)
+sudo tailscale up
+
+# Bring the daemon up with SSH enabled
+sudo tailscale up --ssh
+
+# Tear down the tailnet connection without disabling the service
+sudo tailscale down
+
+# SSH into a peer via Tailscale SSH
+tailscale ssh <peer>
+
+# Copy a file to a peer
+tailscale file cp <local_path> <peer>:
+
+# Show pending file transfers
+tailscale file get
+
+# Show the daemon's current configuration
+tailscale debug prefs
+
+# Show systemd status for the daemon this dendrite enables
+systemctl status tailscaled
+
+$ peer: tailscale status --json 2>/dev/null | jq -r '.Peer[]?.HostName' 2>/dev/null
+$ local_path: printf '%s\n' "$PWD"

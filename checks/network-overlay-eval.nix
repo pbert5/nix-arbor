@@ -1,8 +1,7 @@
-{ pkgs }:
+{ nixpkgs, pkgs }:
 let
   lib = pkgs.lib;
   system = pkgs.stdenv.hostPlatform.system;
-  evalConfig = import "${pkgs.path}/nixos/lib/eval-config.nix";
 
   site = {
     networks.privateYggdrasil = {
@@ -59,7 +58,7 @@ let
       hostInventory,
       modules ? [ ],
     }:
-    evalConfig {
+    nixpkgs.lib.nixosSystem {
       inherit system;
       modules =
         modules
@@ -122,7 +121,7 @@ let
 
   assertionsHold =
     assert alphaEval.config.networking.firewall.enable;
-    assert alphaEval.config.networking.firewall.checkReversePath == true;
+    assert alphaEval.config.networking.firewall.checkReversePath == "loose";
     assert alphaEval.config.services.tailscale.enable;
     assert alphaEval.config.services.yggdrasil.enable;
     assert alphaEval.config.services.yggdrasil.settings.AllowedPublicKeys == [ "beta-public-key" ];

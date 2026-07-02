@@ -19,7 +19,8 @@ registry.
 
 Current source and policy surfaces:
 
-- `inventory/identities.nix`
+- `inventory/identity-services/identities.nix`
+- `inventory/identity-services/status-ipns.nix`
 - `inventory/keys/host-age-recipients.nix`
 - `inventory/keys/identities/cluster-private-identities.sops.yaml`
 - `inventory/keys/followers/host-age-private-keys.sops.yaml`
@@ -30,7 +31,12 @@ Current source and policy surfaces:
 
 Implemented command surfaces:
 
-- `clusterctl registry init|validate|reconcile|materialize|sync|push|notify|status`
+- `clusterctl registry init|validate|reconcile|materialize|snapshot|publish-ipfs|fetch-ipfs`
+- `clusterctl registry listen-pubsub`
+- `clusterctl registry ipns-key ensure`
+- `clusterctl registry status-ipns-key ensure`
+- `clusterctl registry publish-status`
+- `clusterctl registry sync|push|notify|status`
 - `clusterctl identity publish|publish-public|publish-inventory|promote|burn|status|apply`
 - `clusterctl bundle publish`
 - `clusterctl receipt write|collect`
@@ -44,10 +50,28 @@ Implemented runtime behavior:
 - registry state materializes under `/run/cluster-identity`
 - SSH known-host, Yggdrasil, Radicle, and git-annex views are generated for
   consumers
-- private blocks in `inventory/identities.nix` become registry
+- private blocks in `inventory/identity-services/identities.nix` become registry
   `privateDelivery` metadata, not plaintext private keys
-- receipt gating, burn records, duplicate detection, and timestamp-aware
+- receipt gating, burn records, duplicate detection, and generation-first
   reconciliation are present
+- canonical JSON signatures, per-leader event hash chains, generation-first
+  conflict freezing, and persistent anti-rollback checkpoints are present
+- leaders can build exhaustive signed snapshots, add and pin them with Kubo,
+  publish monotonic heads through an enrolled IPNS key, and preserve the prior
+  published CID
+- the NixOS dendrite owns leader Kubo, SOPS-backed IPNS key import, publication
+  timers, and best-effort rebuild publication triggers
+- followers resolve all enrolled leader IPNS names, verify and cache immutable
+  snapshots, reject rollback and root-chain forks, pin accepted CIDs, assemble
+  leader-authored event chains, and materialize last-good state
+- leaders publish signed PubSub root hints after successful IPFS/IPNS
+  publication, and followers verify those hints before waking the normal fetch
+  service
+- every registry participant can enroll a node-local `status-ipns` identity;
+  once enrolled and rebuilt, `cluster-identity-status-publish.timer` publishes a
+  node-signed IPNS status document showing the services and identities actually
+  materialized under `/run/cluster-identity`; leader hosts can fall back to a
+  SOPS-backed status key when remote node-local enrollment is unavailable
 - `dev-machine` and `compute-worker` identity inventory has been moved out of
   active inventory into `inventory/deprecated/`
 
@@ -61,3 +85,10 @@ These are current planned items, not implemented behavior:
 - fully automated service identity delivery from decrypted SOPS ledger entries
 - richer service-specific reload or restart policy after materialized state
   changes
+- live leader IPNS key enrollment and rollout
+- live rollout and validation of B1 node status IPNS publishing
+- optional Tor onion mirrors and IPFS Cluster CRDT pin coordination
+
+Signed PubSub root announcements are implemented in code. Live rollout and
+validation remain pending; current behavior is documented under
+`docs/cluster-ops/identity/registry/`.

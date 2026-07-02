@@ -1,119 +1,66 @@
 # Agent Working Agreement
 
-This repository prefers declarative Nix workflows.
+This repository follows Codex's `AGENTS.md` guidance: keep durable common
+instructions here, and put path-specific rules in closer `AGENTS.md` files.
+Nested files add to or override this file for their subtree.
 
-## Core Direction
+## Required First Steps
 
-- Default to declarative configuration over ad-hoc imperative scripts.
+1. Read `/home/example/.codex/RTK.md`.
+2. Use `rtk` for every shell command. This is mandatory.
+3. For coding tasks, load Serena's instructions first and keep using
+   project-aware tools during investigation and editing.
+4. Discover and use applicable MCP servers for current external facts instead
+   of relying on stale model knowledge or broad web searches.
+5. For Nix, NixOS, Home Manager, flakes, overlays, derivations, dev shells, or
+   repo-layout work, invoke the `nixos` skill.
+6. For flake architecture, module-boundary decisions, cross-class composition,
+   or experiment-local flake design, invoke the `dendritic` skill as an
+   appendix to `nixos`.
+
+## Shell Commands
+
+- Prefix every shell command with `rtk`.
+- Examples: `rtk git status`, `rtk nixos-rebuild build --flake .#desktoptoodle`.
+- If raw command behavior is required, use `rtk proxy <command>`.
+- Verify availability with `rtk --version` when uncertain.
+- CODEX: dont run background commands, just runn them in the foreground
+
+## Repo Defaults
+
+- Prefer declarative Nix configuration over ad-hoc imperative scripts.
 - Keep system behavior encoded in Nix whenever practical.
 - Favor small, composable modules with clear ownership.
+- Prefer the simplest minimal change. Use native or standard-library features
+  before new dependencies or abstractions, and avoid speculative generality.
 - Beyond the core host age encryption key installed during enrollment, manage
-  machine setup and cluster behavior declaratively through the flake. Use the
-  live USB installer and NixOS modules for initial setup whenever practical.
+  machine setup and cluster behavior declaratively through the flake.
 
-## Documentation Hygiene
+## Tooling
 
-- When adding or changing a feature, component, flake output, inventory surface,
-  or operational workflow, update the relevant docs in the same change.
-- Prefer updating existing docs when they already cover the area, and add a new
-  focused doc when the feature needs usage notes, architecture notes, or
-  operator guidance of its own.
-- Do not leave implemented behavior documented only in plans, chat history, or
-  code comments; promote current truth into `docs/`.
-- When a plan document becomes partially implemented, document the implemented
-  subset clearly and label remaining items as planned rather than present fact.
+- Use `tool_search` when an applicable MCP tool is deferred or not visible.
+- Use Serena for semantic code navigation and edits when it fits the file type.
+  - Use Serena for Python work when semantic navigation saves context or reduces mistakes:
+    - Prefer Serena when a task touches 3 or more files, requires finding definitions or callers, involves refactors, or needs project-structure understanding.
+    - Use Serena for class/function/method navigation, reference tracing, signature changes, and low-token edits in larger Python subprojects.
+    - Do not force Serena for tiny scripts, simple syntax fixes, formatting-only edits, or traceback-local bugs where the failing line is already clear.
+    - Pair Serena with normal verification tools such as pytest, ruff, mypy, or the narrowest relevant project check.
+- for manipulating nix code:
+  - Serena for repo navigation and low-token edits.
+  - nixd for Nix-aware LSP behavior, options, packages, and cross-file analysis
+  - MCP-NixOS for accurate package/options lookup instead of hallucinated option names. It provides current NixOS packages, options, Home Manager options, nix-darwin, flakes, Noogle, and related Nix resources.
+  - 
+- Use shell tools for builds, tests, Git, generated output, and cases where
+  semantic tools do not fit.
+- Use `apply_patch` for small line-oriented edits.
+- When work genuinely requires the whole repository, read
+  `repomix-output.xml` instead of scanning every source file individually.
 
-## Agent Skill Usage
+## Verification
 
-- For Nix, NixOS, Home Manager, flakes, overlays, derivations, dev shells, or
-  repo-layout work, invoke the `nixos` skill (`$nixos` in Codex, `/nixos` in
-  Claude).
-- For flake architecture, module-boundary decisions, cross-class composition, or
-  the preferred design theory for the primary system flake and `experiments/`,
-  invoke the `dendritic` skill (`$dendritic` in Codex, `/dendritic` in Claude)
-  as an appendix to the `nixos` skill.
-- Both skills are authored under `.github/skills/` and exposed through
-  `.agents/skills/` for Codex and `.claude/skills/` for Claude.
-- Load only the reference files needed for the current task from
-  `.github/skills/nixos/references/` to keep context focused.
-- Keep the discoverable skill under `.github/skills/nixos/` aligned with the
-  source material under `skills/third-party/kettleofketchup-nixos/` when it is
-  updated.
-- Prefer the `dendritic` skill's aspect-oriented design theory when shaping the
-  main flake or experiment-local flakes: thin entry points, feature-first
-  modules, and composition across NixOS/Home Manager/Darwin where it helps.
-
-## Inventory and Lib Boundaries
-
-- `inventory/` is **data only**. Files there must not contain assembly code:
-  no derivations across multiple sources, no `builtins.readFile` for keys, no
-  dynamic URL construction, no filtering/mapping that joins inventory files.
-- Assembly logic belongs in `lib/`. The entry point for all inventory-level
-  derivations is `lib/inventory.nix`'s `normalizeInventory`, which is called
-  once by the flake and receives the entire raw inventory.
-- Extend `lib/inventory.nix` (or add a focused helper under `lib/`) for new
-  derivations, then wire them into `normalizeInventory`.
-- Typical things that belong in lib, not inventory:
-  - Deriving leaders/remotes from host roles and network data
-  - Merging identity service records (e.g. yggdrasil addresses) into network
-    node definitions
-  - Reading and normalizing key files
-  - Any cross-file join or transformation
-
-## File Naming
-
-- Never use `default.nix`.
-- Prefer explicit filenames even when the filename repeats the parent directory
-  name.
-- Redundant names are acceptable if they make the tree easier to visually
-  interpret.
-
-## Auto-Import Hygiene
-
-- This repo uses `import-tree` to auto-import active modules under `modules/`.
-- If a file under `modules/` should not be auto-imported, place it under a path
-  containing `/_`.
-
-## Container Policy
-
-- Podman is the backend of record.
-- Prefer Nix-native container management (`virtualisation.oci-containers`)
-  instead of compose-style orchestration.
-- Avoid introducing Docker Compose or non-declarative container wrappers unless
-  explicitly requested.
-- We can skip `virtualisation.oci-containers` for programs that are one-shot
-  runs.
-
-## Experiment Isolation (Important)
-
-- Unstable/prototype work must stay isolated under `experiments/`.
-- For experiments, changes should live in the experiment flake and
-  experiment-local files, not in the system flake by default.
-- Do not wire experimental services/modules into `flake.nix`, host assemblies,
-  or shared system roles until the experiment is declared stable.
-- Promotion from `experiments/` to system-level modules should be an explicit,
-  separate step.
-
-## Flake Evaluation Hygiene
-
-- Flakes ignore untracked files.
-- Before evaluating, building, or rebuilding a flake change that depends on a
-  newly created file, stage the required untracked files first.
-- Stage them in the correct Git repo for the flake being evaluated.
-- If nested Git repos exist, determine which repo owns the file instead of
-  blindly staging from the current directory.
-- Do not stage unrelated files just to make evaluation pass.
-
-## Live Cluster Validation
-
-- Leader hosts such as `desktoptoodle` and `r640-0` have root SSH access to
-  all devices defined in the flake. When working from one of those leaders,
-  you may use `clusterctl deploy` for the host or hosts currently being
-  changed.
-- When validating changes intended for the live cluster, deploy to each managed
-  machine with `clusterctl deploy r640-0 desktoptoodle t320-0` unless the user
-  explicitly asks for a dry run or a narrower host set.
-- Long-running deploys can burn excessive agent tokens while producing little
-  useful signal. After starting a deploy that is expected to run for a while,
-  do not keep polling it to completion by default; report that it is running
-  and let the user reprompt when it finishes or needs attention.
+- Before handoff, run the narrowest check that exercises the changed behavior.
+- Do not run deployments or activation commands such as `clusterctl deploy` or
+  `nixos-rebuild switch` unless the user explicitly grants permission for that
+  specific deployment.
+- Prefer build and evaluation checks when deployment permission has not been
+  granted.

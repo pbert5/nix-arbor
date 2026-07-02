@@ -1,0 +1,19 @@
+% dendritic, zoxide
+
+# Jump to the highest-ranked directory matching a query (aliased to z)
+zoxide query <name>
+
+# Add the current directory to the database manually
+zoxide add .
+
+# Show all tracked directories with their rank
+zoxide query -l -s
+
+# Remove a directory from the database
+zoxide remove <path>
+
+# Import history from a different tool (e.g. z.lua, fasd)
+zoxide import --from=z <path>
+
+$ name: zoxide query -l 2>/dev/null | xargs -n1 basename
+$ path: zoxide query -l 2>/dev/null

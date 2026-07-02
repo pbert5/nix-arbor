@@ -7,12 +7,18 @@ let
   dendriticLib = import ../../lib/lib.nix {
     inherit inputs lib;
   };
-  inventory = dendriticLib.normalizeInventory (import ../../inventory/inventory.nix { inherit inputs; });
+  baseInventory = dendriticLib.normalizeInventory (import ../../inventory/inventory.nix { inherit inputs; });
   registries = {
     dendrites = dendriticLib.registries.mkDendriteRegistry ../../dendrites;
     fruits = dendriticLib.registries.mkFruitRegistry ../../fruits;
     homes = dendriticLib.registries.mkHomeRegistry ../../homes;
     hosts = dendriticLib.registries.mkHostRegistry ../../hosts;
+  };
+  inventory = baseInventory // {
+    identityRequirements = dendriticLib.identityRequirements.resolve {
+      dendriteRegistry = registries.dendrites;
+      inventory = baseInventory;
+    };
   };
   genericSiteModule = {
     _module.args.site = inventory;

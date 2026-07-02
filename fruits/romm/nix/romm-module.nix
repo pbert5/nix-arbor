@@ -103,7 +103,10 @@ in
     systemd.tmpfiles.rules = [
       "d ${cfg.stateDir} 0750 root root - -"
       "d ${secretsDir} 0700 root root - -"
-      "d ${dbDir} 0750 root root - -"
+      # mariadb's official image runs mariadbd as the fixed mysql uid/gid 999;
+      # creating this dir as root:root leaves mariadbd unable to read its own
+      # datadir (table discovery silently fails, e.g. "Table 'romm.users' doesn't exist").
+      "d ${dbDir} 0750 999 999 - -"
       "d ${assetsDir} 0755 root root - -"
       "d ${configDir} 0755 root root - -"
       "d ${resourcesDir} 0755 root root - -"

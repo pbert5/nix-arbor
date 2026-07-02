@@ -141,6 +141,31 @@ Relevant fields for cluster ops include:
 - `facts`
 - `org.*`
 
+### `org.clusterIdentity`
+
+Host-local registry role and bootstrap metadata.
+
+Important fields:
+
+- `role`: `leader`, `follower`, or `bootstrap-only`
+- `registryTransport.identityFile`: transitional Git/SSH transport key path
+
+Service identity enrollment is implied by selected dendrites and their actual
+service settings. Dendrite `meta.nix` files declare `identityRequirements` and
+optional predicates such as `org.network.radicle.seed`; hosts do not enable
+duplicate `org.clusterIdentity.services.*` switches. Missing source records
+are reported by `clusterctl identity matrix` and created with `clusterctl
+identity generate-missing`.
+
+Leader IPNS enrollment is derived from the `system/cluster-identity` dendrite's
+identity requirement. Its stable public `k51...` name lives in
+`inventory/identity-services/ipns-publisher.nix`; its private PEM lives in
+`inventory/keys/leaders/leader-ipns-keys.sops.yaml`. Generate missing pairs
+with `clusterctl identity generate-missing --service ipns-publisher`.
+
+The legacy `org.clusterIdentity.ipnsName` and `ipnsKeySopsFile` fields remain
+accepted as explicit overrides, but are not the normal enrollment surface.
+
 ## `inventory/users.nix`
 
 Normal user identity and login policy.
@@ -170,6 +195,24 @@ Optional list of additional key files to merge into the same user.
 Optional inline list of SSH public keys. Prefer a key file when you expect to
 copy/paste or rotate keys by hand.
 
+### `org.ssh.identityFiles`
+
+Optional list of machine-local private key paths for outbound cluster SSH.
+Home Manager offers each key only when it is readable on the current machine,
+so a desktop-local operator key does not disable default identities on another
+leader. These keys apply to normal, Yggdrasil, bootstrap, and same-user cluster
+aliases.
+
+### `org.clusterIdentity.role`
+
+Set to `"leader"` for a user who may operate the cluster from leader hosts.
+Every host whose own `org.clusterIdentity.role` is `"leader"` and which selects
+that user receives a host-specific private deploy key at
+`~/.ssh/cluster-leader-ed25519`. The matching public records live in
+`inventory/identity-services/leader-user-ssh.nix` and are authorized for root
+SSH fleet-wide. Private keys remain in the SOPS-encrypted private identity
+ledger.
+
 Network membership is declared under `org.network.membership` and normalized
 to the generated `networks` field.
 
@@ -182,7 +225,8 @@ Important fields:
 - `builders`
   inventory host names to use as remote build machines
 - `sshKey`
-  local private key path used by the coordinator's Nix daemon
+  optional local private key override used by the coordinator's Nix daemon;
+  normally derived from normalized registry/bootstrap transport identity
 - `buildersUseSubstitutes`
   optional override for `nix.settings.builders-use-substitutes`
 

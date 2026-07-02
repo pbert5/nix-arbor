@@ -55,6 +55,14 @@ commands include:
 See [`../operations/reference/command-reference.md`](../operations/reference/command-reference.md)
 for the full command table.
 
+The dendrite also hides the upstream `git-annex` graphical assistant autostart
+entry and wraps `git-annex assistant` so it refuses to run unless
+`GIT_ANNEX_ALLOW_ASSISTANT=1` is set. The refusal points operators to
+`git-annex assistant-safety-info`, which prints the checklist and explicit
+opt-in command. Fabric hosts use explicit system services and `cluster-annex`;
+the desktop assistant can automatically transfer content based on repo config
+and is unsafe on repos whose wanted or required content is not fully set.
+
 ### Transfer boundary
 
 The private-transport policy expects annex content remotes to use private Ygg
@@ -161,7 +169,9 @@ Radicle is used here as a metadata replication surface, not a payload carrier.
 
 - role: `radicle-seed`
 - service: `radicle-seed`
-- private key path: `org.network.radicle.privateKeyFile`
+- default private-key destination:
+  `network/radicle`'s `meta.nix` identity requirement
+- custom private-key override: `org.network.radicle.privateKeyFile`
 - repo list: `org.network.radicle.repos` or `storageFabric.radicle.repos`
 - default private port: `8776`
 

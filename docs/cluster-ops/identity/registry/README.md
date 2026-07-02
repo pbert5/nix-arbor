@@ -5,7 +5,9 @@ truth. Start here when working on registry transport, event state, or follower
 materialization.
 
 - [`live-identity-registry.md`](./live-identity-registry.md)
+- [`registry-content-v1.md`](./registry-content-v1.md)
 - [`identity-registry-transport.md`](./identity-registry-transport.md)
+- [`project-goals-and-roadmap.md`](./project-goals-and-roadmap.md)
 
 The old registry plan notes are archived under
 [`plans/registry/deprecated/`](/work/flake/plans/registry/deprecated/).

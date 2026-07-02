@@ -1,0 +1,16 @@
+% matrix-hub, matrix
+
+# Get Matrix admin password
+ssh r640-0 cat /var/lib/matrix-hub-bootstrap/admin-password
+
+# Check bootstrap service status
+ssh r640-0 systemctl status matrix-hub-bootstrap
+
+# Tail Matrix homeserver logs
+ssh r640-0 journalctl -u continuwuity -f
+
+# Check Matrix client API version endpoint (Tailscale)
+curl -s http://r640-0:6167/_matrix/client/versions | jq .
+
+# Force re-bootstrap (removes done marker and re-runs)
+ssh r640-0 'rm /var/lib/matrix-hub-bootstrap/done && systemctl start matrix-hub-bootstrap'

@@ -8,4 +8,12 @@
   ];
   requires = [ "network" ];
   conflicts = [ ];
+  cheatsheets.fileRegex = "^cheats/.*\\.cheat$";
+  identityRequirements = [
+    {
+      service = "yggdrasil";
+      generator = "yggdrasil";
+      sourceLedger = "inventory/identity-services/yggdrasil.nix";
+    }
+  ];
 }

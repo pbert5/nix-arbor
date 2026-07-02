@@ -19,6 +19,7 @@
     "nix-command"
     "flakes"
   ];
+  nix.settings.trusted-users = [ "@wheel" ];
   nix.settings.download-buffer-size = 524288000;
 
   time.timeZone = "America/Chicago";

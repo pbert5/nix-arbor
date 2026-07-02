@@ -31,7 +31,9 @@
     "inventory/keys",
     "inventory/host-bootstrap.nix",
     "inventory/private-yggdrasil-identities.nix",
-    "inventory/identity-services"
+    "inventory/identity-services",
+    "plans/walpaper/cute_wallpapers.txt",
+    "docs/desktop/private-wallpaper-collections.md"
   ],
   "literal_replacements": [
     {

@@ -12,6 +12,8 @@ desktop sub-dendrites.
 
 - `desktop/cinnamon`
 - `desktop/gnome`
+- `desktop/hyprland`
+- `desktop/hyprland-minimal`
 
 ## Selection
 

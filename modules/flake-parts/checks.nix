@@ -44,6 +44,7 @@ in
 
           network-overlay-eval = import ../../checks/network-overlay-eval.nix {
             inherit pkgs;
+            nixpkgs = inputs.nixpkgs;
           };
 
           yggdrasil-private-smoke = import ../../checks/yggdrasil-private-smoke.nix {
@@ -53,6 +54,11 @@ in
           identity-policy = import ../../checks/identity-policy.nix {
             inherit pkgs;
             inventory = config.dendritic.inventory;
+            nixosConfigurations = config.flake.nixosConfigurations;
+          };
+
+          cluster-identity-registry-v1 = import ../../checks/cluster-identity-registry-v1.nix {
+            inherit pkgs;
           };
 
           deployment-targets-eval =

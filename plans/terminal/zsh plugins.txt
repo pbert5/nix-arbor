@@ -1,0 +1,45 @@
+i want to add new zsh tools:
+alias-finder plugin
+[catimg](https://github.com/ohmyzsh/ohmyzsh/tree/master/plugins/catimg)
+[colored-man-pages](https://github.com/ohmyzsh/ohmyzsh/tree/master/plugins/colored-man-pages)
+[colorize](https://github.com/ohmyzsh/ohmyzsh/tree/master/plugins/colorize)
+command-not-found
+conda
+conda-env
+copy file
+copy path
+docker
+dotenv
+docker-compose
+extract
+eza
+fancy-ctrl-z
+fzf
+git-auto-fetch
+git prompt
+helm
+hitchhiker
+ipfs
+keychain ( only if it would integrate well with the flake)
+lol
+lpass ( plus add the lpass cli)
+magic-enter ( we can add navi stuff to this)
+man
+pip
+pipenv
+pj
+podman
+pylint
+python
+safe-paste
+sudo
+tmux
+universal archive
+web-search
+zbell
+zsh-interactive-cd
+gitignore
+
+
+ofc for all of these only add them if they wont interfere with prexisting tools, plus for completions maybe tie them into caraspace
+also make sure to update navi with anything these add

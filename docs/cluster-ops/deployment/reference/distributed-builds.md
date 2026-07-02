@@ -27,7 +27,6 @@ dendrites = [
 
 org.nix.distributedBuilds = {
   builders = [ "r640-0" ];
-  sshKey = "/run/keys/REPLACE_ME";
 };
 ```
 
@@ -40,8 +39,17 @@ org.nix.buildMachine = {
 };
 ```
 
-The `sshKey` path is a local private key path on the coordinator host. The repo
-stores the path, not the key material.
+On leader coordinators, the dendrite prefers the SOPS-installed
+`cluster-identity-leader-user-ssh-nix-build` key. That copy is root-readable
+for the Nix daemon's SSH client, while the normal operator key remains in the
+leader user's `~/.ssh`.
+
+If that key is unavailable, the coordinator reuses the local key path already
+resolved for its cluster registry transport/signing identity, then falls back to
+the coordinator's `inventory/host-bootstrap.nix` `identityFile`.
+`org.nix.distributedBuilds.sshKey` and `builderOverrides.<name>.sshKey` remain
+explicit local-path overrides; those paths must be readable by the Nix daemon's
+remote build hook. The repo stores paths, not private key material.
 
 ## Transport Resolution
 
@@ -69,8 +77,15 @@ Inspect generated build machines:
 nix eval '.#nixosConfigurations.desktoptoodle.config.nix.buildMachines' --json
 ```
 
-Check the coordinator can reach the builder with the same private key path:
+Check the coordinator can reach the builder with its resolved identity:
 
 ```bash
-ssh -i /home/example/.ssh/deploy_rsa root@200:db8::10 'nix --version'
+ssh r640-0 'nix --version'
+```
+
+Force a tiny remote build through the same Nix hook:
+
+```bash
+nix build --impure --no-link --max-jobs 0 \
+  --expr 'with import <nixpkgs> {}; runCommand "remote-builder-smoke" {} "echo ok > $out"'
 ```

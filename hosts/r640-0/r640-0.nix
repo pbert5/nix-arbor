@@ -17,6 +17,11 @@ in
 {
   networking.hostName = "r640-0";
 
+  # This host boots from plain ext4 and uses ZFS for managed storage. Disable
+  # host-side LVM discovery so retired Proxmox media and LVM signatures inside
+  # backup zvols are not auto-activated during boot.
+  services.lvm.enable = false;
+
   boot.loader.grub.enable = lib.mkForce false;
   boot.loader.systemd-boot.enable = true;
   boot.loader.systemd-boot.configurationLimit = 10;

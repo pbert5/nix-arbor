@@ -42,10 +42,27 @@ Deploy the whole fleet:
 nix run .#clusterctl -- deploy all
 ```
 
+Boot-critical or unverifiable hosts are automatically removed from Colmena
+fan-out and routed through deploy-rs.
+
 Preview without changing anything:
 
 ```bash
 nix run .#clusterctl -- deploy all --dry-run
+```
+
+## Interactive VM
+
+Launch the `desktoptoodle` playtest VM:
+
+```bash
+nix run .#host-vm -- desktoptoodle
+```
+
+Start clean if you want to throw away the current qcow state:
+
+```bash
+nix run .#host-vm -- desktoptoodle --fresh
 ```
 
 ## Identity Matrix
@@ -68,6 +85,24 @@ Scope to one host or service:
 nix run .#clusterctl -- identity matrix --node r640-0
 nix run .#clusterctl -- identity matrix --service git-annex
 ```
+
+Show more or fewer burned live records per cell. The default is the latest two
+burns; use a negative value for unlimited history:
+
+```bash
+nix run .#clusterctl -- identity matrix --burn-limit 5
+nix run .#clusterctl -- identity matrix --burn-limit -1
+```
+
+Use the old ledger-only active display without status IPNS acknowledgement:
+
+```bash
+nix run .#clusterctl -- identity matrix --no-status-ack
+```
+
+With status acknowledgement enabled, `gN/au` means the ledger says active but
+the target's signed status IPNS record did not confirm it, `gN/a` means the
+target confirmed it, and `gN/aa` means every reachable peer status also agrees.
 
 ## Generate Missing Identities
 
@@ -95,6 +130,36 @@ Preview the changes first:
 nix run .#clusterctl -- identity generate-missing --node all --dry-run
 ```
 
+The command writes generated source records as the invoking user, then
+automatically uses `sudo` for only the publication phase when the live registry
+or signing key is root-only. Pass `--no-publish` to stop after updating the
+declarative source ledger.
+
+## Rotate An Identity
+
+Replace one existing identity in the inventory source ledger with the next
+generation:
+
+```bash
+nix run .#clusterctl -- identity rotate r640-0 yggdrasil
+```
+
+Preview without changing the ledger:
+
+```bash
+nix run .#clusterctl -- identity rotate r640-0 yggdrasil --dry-run
+```
+
+For `host-age`, the command updates `inventory/keys/host-age-recipients.nix`
+after replacing the target host key.
+
+The new generation is one higher than the highest generation known from the
+flake ledger, materialized live state, or accepted registry events. Publication
+also burns stale same-leader live claims that are absent from inventory or
+older than a rotated fingerprint. Guarded services such as `host-age`,
+`ssh-host`, and IPNS identities are skipped unless you pass
+`--burn-guarded-stale`.
+
 ## Smoke-Test Rollout
 
 Run the live smoke test on the operator-capable hosts:
@@ -103,11 +168,10 @@ Run the live smoke test on the operator-capable hosts:
 nix run .#clusterctl -- identity smoke-test
 ```
 
-Include the whole fleet as rollout subjects while still verifying on the easy
-Tailscale-access leaders:
+Select the hosts whose accepted IPNS checkpoints must converge:
 
 ```bash
-nix run .#clusterctl -- identity smoke-test --node all --verify-node r640-0 --verify-node desktoptoodle
+nix run .#clusterctl -- identity smoke-test --verify-node r640-0 --verify-node desktoptoodle
 ```
 
 ## Good Defaults

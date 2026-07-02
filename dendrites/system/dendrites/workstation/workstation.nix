@@ -1,5 +1,9 @@
 { inputs, pkgs, ... }:
 {
+  imports = [
+    ./leaves/diagnostics.nix
+  ];
+
   networking.networkmanager.enable = true;
   virtualisation.docker = {
     enable = true;

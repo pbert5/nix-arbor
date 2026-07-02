@@ -6,4 +6,11 @@
     rsync
     openssh
   ];
+
+  environment.etc."xdg/autostart/git-annex.desktop".text = ''
+    [Desktop Entry]
+    Type=Application
+    Name=Git Annex Assistant
+    Hidden=true
+  '';
 }

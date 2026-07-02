@@ -163,6 +163,36 @@ nix run .#colmena -- apply --on r640-0
 These use the flake-pinned tool versions instead of whatever happens to be in
 your shell environment.
 
+## Render Network Topology Diagrams
+
+```bash
+nix build .#topology.x86_64-linux.config.output -o ./topology-result
+```
+
+Use this to get a current SVG picture of the fleet instead of cross-referencing
+`inventory/hosts.nix` and `inventory/networks.nix` by hand.
+
+Expected output shape:
+
+- `./topology-result/main.svg` — hosts, services, and the physical
+  desktoptoodle/t320-0 direct link
+- `./topology-result/network.svg` — one card per logical network
+  (`direct-link`, `tailscale`, `yggdrasil-private`,
+  `yggdrasil-public-peering`), each showing only the hosts and edges that
+  inventory actually assigns to it
+
+If a network or link looks wrong, check inventory first, not the topology
+wiring — `lib/topology.nix` only reorganizes data that already lives in
+`org.network.directLink` and `inventory/networks.nix`; see
+[`docs/architecture/overview.md`](/work/flake/docs/architecture/overview.md#network-and-deployment-surfaces)
+for exactly which field feeds which part of the diagram. To inspect what one
+host resolved to without rendering:
+
+```bash
+nix eval .#nixosConfigurations.<host>.config.topology.self.interfaces \
+  --apply 'ifaces: builtins.mapAttrs (_: i: { inherit (i) network addresses virtual physicalConnections; }) ifaces'
+```
+
 ## Check The Live And Evaluated Kernel
 
 ```bash

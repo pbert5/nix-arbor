@@ -1,0 +1,46 @@
+% dendritic, storage, git-annex, cluster-annex
+
+# Show cluster annex status
+cluster-annex status
+
+# Initialize the local annex repository
+cluster-annex init
+
+# Set this host's annex preferred-content group
+cluster-annex set-group <group>
+
+# Add a peer remote over the private network
+cluster-annex add-remote <name> <host-alias>
+
+# Sync annex metadata with peers
+cluster-annex sync
+
+# Sync annex metadata and content with peers
+cluster-annex sync-all
+
+# Show where annex content exists
+cluster-annex whereis <path>
+
+# Drop annex content only when policy allows
+cluster-annex drop-safe <path>
+
+# Stage a project into the hot pool
+cluster-annex stage <project>
+
+# Remove a staged project from the hot pool
+cluster-annex unstage <project>
+
+# Stage inputs for a compute job
+cluster-annex job-stage <project> <job-id>
+
+# Publish outputs for a compute job
+cluster-annex job-publish <job-id>
+
+# Clean hot staging for a compute job
+cluster-annex job-clean <job-id>
+
+# Read the guarded git-annex assistant checklist
+git-annex assistant-safety-info
+
+$ name: nix eval --raw --apply 'hosts: builtins.concatStringsSep "\n" (builtins.attrNames hosts)' .#inventory.hosts 2>/dev/null
+$ host-alias: nix eval --raw --apply 'nodes: builtins.concatStringsSep "\n" (builtins.concatMap (name: let node = nodes.${name}; aliases = node.aliases or [ ]; in if aliases == [ ] then [ name ] else aliases) (builtins.attrNames nodes))' .#inventory.networks.privateYggdrasil.nodes 2>/dev/null

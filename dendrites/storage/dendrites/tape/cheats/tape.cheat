@@ -1,0 +1,58 @@
+% dendritic, storage, tape
+
+# Find the default non-rewinding tape drive
+tape-default
+
+# Find the second configured non-rewinding tape drive
+tape-default-2
+
+# Find the default changer
+changer-default
+
+# Find the default LTFS sg device
+ltfs-default
+
+# Show tape status using the default drive
+mt status
+
+# Rewind the default tape drive
+mt rewind
+
+# Eject the default tape drive
+mt offline
+
+# Show changer inventory using the default changer
+mtx status
+
+# Load a changer slot into the default drive
+mtx load <slot>
+
+# Unload the default drive to a changer slot
+mtx unload <slot>
+
+# List local backupper plans
+backupper list
+
+# Start all local backupper plans
+backupper start
+
+# Show status for all local backupper plans
+backupper status
+
+# Tail logs for one backupper plan
+backupper logs <plan>
+
+# Start one declarative game-backuper plan in inspect mode
+game-backuper-<plan>
+
+# Run a declarative game-backuper plan write
+game-backuper-<plan> write --backend live
+
+# Start the YATM web UI with the generated config
+yatm
+
+# Export YATM library state
+yatm-export-library
+
+$ slot: seq 1 48
+$ plan: find /etc/backupper/plans -maxdepth 1 -name '*.json' -printf '%f\n' 2>/dev/null | sed 's/\.json$//' | sort

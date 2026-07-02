@@ -1,0 +1,7 @@
+% dendritic, system, workstation, nixard
+
+# Launch nixard (press u on first use to populate its local package database)
+nixard
+
+# Update the local package database from inside nixard
+u

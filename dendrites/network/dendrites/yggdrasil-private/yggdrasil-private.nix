@@ -3,6 +3,7 @@
   hostName,
   hostInventory,
   lib,
+  pkgs,
   site,
   ...
 }:
@@ -23,7 +24,11 @@ let
   defaultPersistentKeys = defaults.persistentKeys or true;
   defaultOpenMulticastPort = defaults.openMulticastPort or false;
   hostDendrites = hostInventory.dendrites or [ ];
-  hostFirewall = if hostNode == null then firewallDefaults else lib.recursiveUpdate firewallDefaults (hostNode.firewall or { });
+  hostFirewall =
+    if hostNode == null then
+      firewallDefaults
+    else
+      lib.recursiveUpdate firewallDefaults (hostNode.firewall or { });
   firewallEnforce = hostFirewall.enforce or true;
   firewallOverlay = hostFirewall.overlay or { };
   transportFirewall = hostFirewall.transport or { };
@@ -34,7 +39,8 @@ let
 
   peerNode = peerHost: nodes.${peerHost} or { };
 
-  peerUri = peerHost:
+  peerUri =
+    peerHost:
     let
       peer = peerNode peerHost;
       peerScheme = peer.scheme or defaultScheme;
@@ -45,25 +51,52 @@ let
     in
     peer.uri or "${peerScheme}://${peerHostName}:${toString peerPort}${peerKeySuffix}";
 
-  peerKeys = lib.filter (key: key != null) (builtins.map (peerHost: (peerNode peerHost).publicKey or null) peerHosts);
-  peerAddresses = lib.filter (address: address != null) (builtins.map (peerHost: (peerNode peerHost).address or null) peerHosts);
-  missingPeerAddresses = builtins.filter (peerHost: ((peerNode peerHost).address or null) == null) peerHosts;
-  missingPeerPublicKeys = builtins.filter (peerHost: ((peerNode peerHost).publicKey or null) == null) peerHosts;
+  peerKeys = lib.filter (key: key != null) (
+    builtins.map (peerHost: (peerNode peerHost).publicKey or null) peerHosts
+  );
+  peerAddresses = lib.filter (address: address != null) (
+    builtins.map (peerHost: (peerNode peerHost).address or null) peerHosts
+  );
+  missingPeerAddresses = builtins.filter (
+    peerHost: ((peerNode peerHost).address or null) == null
+  ) peerHosts;
+  missingPeerPublicKeys = builtins.filter (
+    peerHost: ((peerNode peerHost).publicKey or null) == null
+  ) peerHosts;
   guestAccess = lib.attrByPath [ "guestAccess" "yggdrasil" "byHost" hostName ] { } site;
   guestPeerKeys = guestAccess.publicKeys or [ ];
   guestPeerAddresses = guestAccess.sourceAddresses or [ ];
 
-  hostListenScheme = if hostNode == null then defaultScheme else hostNode.listenScheme or defaultScheme;
+  hostListenScheme =
+    if hostNode == null then defaultScheme else hostNode.listenScheme or defaultScheme;
   hostListenPort = if hostNode == null then defaultPort else hostNode.listenPort or defaultPort;
   hostListenHost = if hostNode == null then "[::]" else hostNode.listenHost or "[::]";
   hostIfName = if hostNode == null then defaultIfName else hostNode.ifName or defaultIfName;
-  hostMulticastInterfaces = if hostNode == null then defaultMulticastInterfaces else hostNode.multicastInterfaces or defaultMulticastInterfaces;
-  hostNodeInfoPrivacy = if hostNode == null then defaultNodeInfoPrivacy else hostNode.nodeInfoPrivacy or defaultNodeInfoPrivacy;
-  hostPersistentKeys = if hostNode == null then defaultPersistentKeys else hostNode.persistentKeys or defaultPersistentKeys;
-  hostOpenMulticastPort = if hostNode == null then defaultOpenMulticastPort else hostNode.openMulticastPort or defaultOpenMulticastPort;
+  hostMulticastInterfaces =
+    if hostNode == null then
+      defaultMulticastInterfaces
+    else
+      hostNode.multicastInterfaces or defaultMulticastInterfaces;
+  hostNodeInfoPrivacy =
+    if hostNode == null then
+      defaultNodeInfoPrivacy
+    else
+      hostNode.nodeInfoPrivacy or defaultNodeInfoPrivacy;
+  hostPersistentKeys =
+    if hostNode == null then
+      defaultPersistentKeys
+    else
+      hostNode.persistentKeys or defaultPersistentKeys;
+  hostOpenMulticastPort =
+    if hostNode == null then
+      defaultOpenMulticastPort
+    else
+      hostNode.openMulticastPort or defaultOpenMulticastPort;
   hostListenEnabled = if hostNode == null then false else hostNode.listen or false;
   hostAllowlist = lib.unique (
-    peerKeys ++ guestPeerKeys ++ (if hostNode == null then [ ] else hostNode.extraAllowedPublicKeys or [ ])
+    peerKeys
+    ++ guestPeerKeys
+    ++ (if hostNode == null then [ ] else hostNode.extraAllowedPublicKeys or [ ])
   );
   hostOverlayAllowedTCPPorts = firewallOverlay.allowedTCPPorts or [ ];
   hostOverlayAllowedUDPPorts = firewallOverlay.allowedUDPPorts or [ ];
@@ -85,7 +118,12 @@ let
     .${hostListenScheme} or null;
 
   hostHasOverlayInterface = hostNode != null && hostIfName != "none";
-  hostShouldOpenListenerFirewall = firewallEnforce && hostListenEnabled && openListenerFirewall && firewallInterface != null && listenerProtocol != null;
+  hostShouldOpenListenerFirewall =
+    firewallEnforce
+    && hostListenEnabled
+    && openListenerFirewall
+    && firewallInterface != null
+    && listenerProtocol != null;
   hostTrustedInterfaces = config.networking.firewall.trustedInterfaces or [ ];
 
   yggFirewallInterfaces = lib.optionalAttrs (hostHasOverlayInterface && firewallEnforce) {
@@ -108,22 +146,29 @@ let
   };
 
   yggHostEntries = builtins.listToAttrs (
-    lib.concatMap
-      (nodeName:
-        let
-          node = nodes.${nodeName};
-          address = node.address or null;
-          aliases = lib.unique ([ "${nodeName}-ygg" ] ++ (node.aliases or [ ]));
-        in
-        lib.optional (address != null) {
-          name = address;
-          value = aliases;
-        })
-      (builtins.attrNames nodes)
+    lib.concatMap (
+      nodeName:
+      let
+        node = nodes.${nodeName};
+        address = node.address or null;
+        aliases = lib.unique ([ "${nodeName}-ygg" ] ++ (node.aliases or [ ]));
+      in
+      lib.optional (address != null) {
+        name = address;
+        value = aliases;
+      }
+    ) (builtins.attrNames nodes)
   );
 
   yggPeerSourceFilterCommands =
-    if !(hostHasOverlayInterface && firewallEnforce && hostOverlayRestrictToPeerSources && firewallBackend == "iptables") then
+    if
+      !(
+        hostHasOverlayInterface
+        && firewallEnforce
+        && hostOverlayRestrictToPeerSources
+        && firewallBackend == "iptables"
+      )
+    then
       ""
     else
       let
@@ -186,11 +231,29 @@ in
     };
   };
 
+  systemd.services.yggdrasil-route-precedence = lib.mkIf hostHasOverlayInterface {
+    description = "Keep Yggdrasil routes ahead of Tailscale exit-node routes";
+    wantedBy = [ "multi-user.target" ];
+    after = [
+      "tailscaled.service"
+      "yggdrasil.service"
+    ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+      ExecStartPre = "-${lib.getExe' pkgs.iproute2 "ip"} -6 rule del priority 5260 to 200::/7 lookup main";
+      ExecStart = "${lib.getExe' pkgs.iproute2 "ip"} -6 rule add priority 5260 to 200::/7 lookup main";
+      ExecStop = "-${lib.getExe' pkgs.iproute2 "ip"} -6 rule del priority 5260 to 200::/7 lookup main";
+    };
+  };
+
   networking.firewall = lib.mkIf (hostNode != null && firewallEnforce) {
     enable = lib.mkDefault true;
     checkReversePath = lib.mkDefault firewallCheckReversePath;
     interfaces = lib.recursiveUpdate yggFirewallInterfaces transportFirewallInterfaces;
-    extraCommands = lib.mkIf (yggPeerSourceFilterCommands != "") (lib.mkAfter yggPeerSourceFilterCommands);
+    extraCommands = lib.mkIf (yggPeerSourceFilterCommands != "") (
+      lib.mkAfter yggPeerSourceFilterCommands
+    );
   };
 
   networking.hosts = lib.mkIf (yggHostEntries != { }) yggHostEntries;

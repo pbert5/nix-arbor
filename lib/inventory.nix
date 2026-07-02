@@ -1,7 +1,7 @@
 { helpers, lib }:
 let
   accessLib = import ./access.nix { inherit helpers lib; };
-  identityPolicyLib = import ./identity-policy.nix { };
+  identityPolicyLib = import ./identity-policy.nix { inherit lib; };
   yggIdentitiesLib = import ./yggdrasil-identities.nix { };
 
   mergeAttrsList = attrs: lib.foldl' lib.recursiveUpdate { } attrs;

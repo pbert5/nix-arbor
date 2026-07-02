@@ -119,9 +119,15 @@ The current host schema separates:
 Examples in the current inventory:
 
 - `r640-0` selects `storage/zfs` and provides `facts.storage.zfs.*`
-- `desktoptoodle` selects `system/workstation/gaming` for Steam, selects
+- `desktoptoodle` selects `desktop/hyprland` for its UWSM-managed Hyprland
+  session and declarative Home Manager desktop stack, selects
+  `system/workstation/gaming` for Steam, selects
+  `system/workstation/remote-desktop` for Sunshine/Moonlight access, selects
   SeaweedFS and Radicle storage-fabric branches, and does not currently select
-  the tape-library dendrite or a tape fruit
+  the tape-library dendrite or a tape fruit. See
+  [Hyprland Desktop](../desktop/hyprland.md) for the session stack, starter
+  controls, and minimal recovery branch, and
+  [Remote Desktop](../desktop/remote-desktop.md) for Sunshine pairing notes.
 
 ## Validation
 
@@ -156,6 +162,34 @@ inventory:
 
 For operator-facing details, see
 [`docs/repo-ops/private-overlay/README.md`](/work/flake/docs/repo-ops/private-overlay/README.md).
+
+`nix-topology` (`modules/flake-parts/topology.nix`) renders this surface as
+diagrams. Every exported host's nixosConfiguration imports
+`nix-topology.nixosModules.default` (`lib/assembly.nix`), so hosts are
+auto-discovered with no per-host wiring. `lib/topology.nix` derives each
+host's `topology.self.interfaces` directly from the same inventory data used
+above, rather than relying on nix-topology's generic auto-detection:
+
+- `org.network.directLink` becomes a real point-to-point edge between the two
+  named peer hosts (e.g. the desktoptoodle/t320-0 direct-attach link)
+- `networks.privateYggdrasil`/`networks.publicYggdrasilPeering` become a
+  `ygg0` interface per member host, with edges drawn to each host's declared
+  `peers` list rather than assuming full mesh
+- Tailscale membership groups hosts under a shared `tailscale` network
+  (peers are dynamic, so no explicit edges are drawn)
+- Network display names come from each network's `description` in
+  `inventory/networks.nix`, set once for all hosts by `mkGlobalNetworks` in
+  `modules/flake-parts/topology.nix`
+
+Render with:
+
+```bash
+nix build .#topology.x86_64-linux.config.output
+```
+
+The output directory contains `main.svg` (hosts and services) and
+`network.svg` (per-network topology, including direct-link, Tailscale, and
+both Yggdrasil networks).
 
 ## Current Drift From Earlier Plans
 

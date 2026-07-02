@@ -1,0 +1,54 @@
+% dendritic, tmux, multiplexer
+
+# Attach to main session, or create it (mox alias)
+tmux new -A -s main
+
+# Create a named session
+tmux new -s <session>
+
+# Attach to a named session
+tmux attach -t <session>
+
+# List sessions (tl alias from OMZ tmux plugin)
+tmux ls
+
+# Kill a named session (tkss alias)
+tmux kill-session -t <session>
+
+# Kill all sessions (tksv alias)
+tmux kill-server
+
+# Save session state (resurrect — prefix + Ctrl-s inside tmux)
+# Restore: prefix + Ctrl-r
+
+# Show dendritic tmux key bindings (prefix = Ctrl-b)
+printf '%s\n' \
+  "Prefix |       Split pane vertically (keeps current path)" \
+  "Prefix -       Split pane horizontally (keeps current path)" \
+  "Prefix c       New window (keeps current path)" \
+  "Prefix h/j/k/l Move between panes (vim-style)" \
+  "Prefix r       Reload ~/.config/tmux/tmux.conf in place" \
+  "Prefix d       Detach from session" \
+  "Prefix [       Enter copy mode (vi keys: v select, y yank)" \
+  "Prefix ]       Paste from tmux buffer" \
+  "Prefix z       Toggle pane zoom (fullscreen)" \
+  "Prefix &       Kill current window" \
+  "Prefix x       Kill current pane" \
+  "Prefix ,       Rename current window" \
+  "Prefix \$       Rename current session" \
+  "Prefix t       Show clock" \
+  "Prefix ?       List all key bindings" \
+  "Prefix Ctrl-s  Save session (resurrect)" \
+  "Prefix Ctrl-r  Restore session (resurrect)"
+
+# Show OMZ tmux plugin shell aliases
+printf '%s\n' \
+  "mox            tmux new -A -s main  (attach or create main)" \
+  "ta  <session>  tmux attach -t" \
+  "tad <session>  tmux attach -t + detach other clients" \
+  "ts  <session>  tmux new-session -s" \
+  "tl             tmux list-sessions" \
+  "tkss <session> tmux kill-session -t" \
+  "tksv           tmux kill-server (kills ALL sessions)"
+
+$ session: tmux ls 2>/dev/null | awk -F: '{print $1}'

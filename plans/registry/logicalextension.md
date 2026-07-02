@@ -1,0 +1,1 @@
+using the ipns, every node can point at which id's from the registry they have implmeented, ( could be a per service thing, that way we can know exactly where to reach each machine  and have an easy way to see their exact status)

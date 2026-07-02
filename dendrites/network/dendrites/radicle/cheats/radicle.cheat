@@ -1,0 +1,48 @@
+% dendritic, network, radicle
+
+# Show this node's Radicle identity
+rad self
+
+# Show running node status
+rad node status
+
+# Start the local node
+rad node start
+
+# Stop the local node
+rad node stop
+
+# List tracked/seeded repositories
+rad ls
+
+# Initialize a new repo as a Radicle project
+rad init
+
+# Clone a Radicle repo by ID
+rad clone <repo_id>
+
+# Inspect a repo's Radicle ID and delegates
+rad inspect
+
+# Sync the current repo with the network
+rad sync
+
+# Track a repo so this node seeds it
+rad seed <repo_id>
+
+# Stop seeding a repo
+rad unseed <repo_id>
+
+# List peers this node is connected to
+rad node sessions
+
+# Show the systemd unit backing the seed node
+systemctl status radicle-node
+
+# Show the seed-repos list rendered from org.network.radicle.repos
+cat /etc/radicle/seed-repos.json
+
+# Show the node's rendered listen/announce config
+cat /etc/radicle/config.json
+
+$ repo_id: rad ls --all 2>/dev/null | awk '{print $1}'

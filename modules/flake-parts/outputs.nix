@@ -18,7 +18,9 @@ in
     inputs.home-manager.flakeModules.home-manager
   ];
 
-  systems = lib.unique (builtins.map (host: host.system) (builtins.attrValues config.dendritic.inventory.hosts));
+  systems = lib.unique (
+    builtins.map (host: host.system) (builtins.attrValues config.dendritic.inventory.hosts)
+  );
 
   perSystem =
     { system, ... }:
@@ -32,18 +34,39 @@ in
         ];
       };
       repoPackages = import ../../packages/packages.nix { inherit pkgs; };
+      deployRs = pkgs.writeShellApplication {
+        name = "deploy";
+        runtimeInputs = [ pkgs.nix-output-monitor ];
+        text = ''
+          extra_args=()
+          has_build_args=false
+
+          for arg in "$@"; do
+            if [[ "$arg" == "--" ]]; then
+              has_build_args=true
+              break
+            fi
+          done
+
+          if [[ "$has_build_args" == false ]]; then
+            extra_args+=(--)
+          fi
+
+          extra_args+=(--log-format internal-json --print-build-logs -v)
+
+          ${inputs.deploy-rs.packages.${system}.deploy-rs}/bin/deploy "$@" "''${extra_args[@]}" |& nom --json
+        '';
+      };
     in
     {
       _module.args.pkgs = pkgs;
-      packages =
-        repoPackages
-        // {
-          agenix = inputs.agenix.packages.${system}.default;
-          bootstrap-host = repoPackages.yggdrasil-bootstrap;
-          colmena = inputs.colmena.packages.${system}.colmena;
-          deploy-rs = inputs.deploy-rs.packages.${system}.deploy-rs;
-          sops = pkgs.sops;
-        };
+      packages = repoPackages // {
+        agenix = inputs.agenix.packages.${system}.default;
+        bootstrap-host = repoPackages.yggdrasil-bootstrap;
+        colmena = inputs.colmena.packages.${system}.colmena;
+        deploy-rs = deployRs;
+        sops = pkgs.sops;
+      };
       apps.agenix = {
         type = "app";
         program = "${inputs.agenix.packages.${system}.default}/bin/agenix";
@@ -63,6 +86,26 @@ in
         type = "app";
         program = "${repoPackages.clusterctl}/bin/clusterctl";
         meta.description = "Manage the live signed cluster identity registry";
+      };
+      apps.clusterchk = {
+        type = "app";
+        program = "${repoPackages.clusterctl}/bin/clusterchk";
+        meta.description = "Inspect cluster state through read-only commands";
+      };
+      apps.clusterplan = {
+        type = "app";
+        program = "${repoPackages.clusterctl}/bin/clusterplan";
+        meta.description = "Preview supported cluster changes without applying them";
+      };
+      apps.codex-switch = {
+        type = "app";
+        program = "${repoPackages.codex-switch}/bin/codex-switch";
+        meta.description = "Switch Codex auth profiles using the Codex Switch shared file store";
+      };
+      apps.host-vm = {
+        type = "app";
+        program = "${repoPackages."host-vm"}/bin/host-vm";
+        meta.description = "Build and launch an interactive NixOS VM for a flake host";
       };
       apps.public-export = {
         type = "app";
@@ -101,8 +144,8 @@ in
       };
       apps.deploy-rs = {
         type = "app";
-        program = "${inputs.deploy-rs.packages.${system}.deploy-rs}/bin/deploy";
-        meta.description = "Run the flake-pinned deploy-rs deployment tool";
+        program = "${deployRs}/bin/deploy";
+        meta.description = "Run the flake-pinned deploy-rs deployment tool with nom output";
       };
       apps.organizr-test = {
         type = "app";

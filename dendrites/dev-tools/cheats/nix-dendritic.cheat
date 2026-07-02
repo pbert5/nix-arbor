@@ -1,0 +1,126 @@
+% nix, nixos, flake, dendritic, home-manager, nps, nix-search-cli
+
+# Search nixpkgs packages
+nps <query>
+
+# Search nixpkgs packages with limit
+nps --limit <limit> <query>
+
+# Show this flake's outputs
+nix flake show
+
+# Check this flake
+nix flake check
+
+# Show flake metadata
+nix flake metadata
+
+# Update all flake inputs
+nix flake update
+
+# Update one flake input
+nix flake update <input>
+
+# Lock one flake input to the newest available revision
+nix flake lock --update-input <input>
+
+# Build a flake package
+nix build .#<package>
+
+# Run a flake app or package
+nix run .#<app>
+
+# Enter this flake's development shell
+nix develop
+
+# Enter a flake development shell by name
+nix develop .#<dev_shell>
+
+# Build desktoptoodle without switching
+nixos-rebuild build --flake .#desktoptoodle
+
+# Build a selected NixOS host closure
+nix build .#nixosConfigurations.<host>.config.system.build.toplevel
+
+# Build a selected Home Manager activation package
+nix build .#homeConfigurations.<home>.activationPackage
+
+# Switch the current machine to a selected host configuration
+sudo nixos-rebuild switch --flake .#<host>
+
+# Test a selected host configuration without making it the boot default
+sudo nixos-rebuild test --flake .#<host>
+
+# Build one flake check
+nix build .#checks.<system>.<check>
+
+# Evaluate an inventory value as JSON
+nix eval --json .#inventory.<inventory_path>
+
+# List inventory hosts
+nix eval --raw --apply 'hosts: builtins.concatStringsSep "\n" (builtins.attrNames hosts)' .#inventory.hosts
+
+# List inventory users
+nix eval --raw --apply 'users: builtins.concatStringsSep "\n" (builtins.attrNames users)' .#inventory.users
+
+# List identity services
+nix eval --raw --apply 'services: builtins.concatStringsSep "\n" (builtins.attrNames services)' .#inventory.identities.services
+
+# List exported NixOS configuration names
+nix eval --raw --apply 'configs: builtins.concatStringsSep "\n" (builtins.attrNames configs)' .#nixosConfigurations
+
+# List Home Manager configuration names
+nix eval --raw --apply 'configs: builtins.concatStringsSep "\n" (builtins.attrNames configs)' .#homeConfigurations
+
+# Build Colmena hive evaluation
+nix build .#colmenaHive
+
+# Dry-run all hosts through clusterctl
+clusterctl deploy all --dry-run
+
+# Switch all hosts through clusterctl
+clusterctl deploy all
+
+# Apply one host through clusterctl
+clusterctl deploy <host>
+
+# Dry-run one host through clusterctl
+clusterctl deploy <host> --dry-run
+
+# Run Colmena apply switch directly for one host
+nix run .#colmena -- apply --on <host> switch
+
+# Run Colmena apply dry-activate directly for one host
+nix run .#colmena -- apply --on <host> dry-activate
+
+# Evaluate Colmena node names
+nix run .#colmena -- eval -E '{ nodes, ... }: builtins.attrNames nodes'
+
+# Show store closure size for a build result
+nix path-info --closure-size --human-readable ./result
+
+# Show why one store path depends on another
+nix why-depends <derivation_or_path> <dependency_path>
+
+# Compare two system generations
+nix store diff-closures <old_generation> <new_generation>
+
+# Open a Nix REPL for this flake
+nix repl .
+
+# Format Nix files in this flake
+nix fmt
+
+$ input: nix flake metadata --json 2>/dev/null | jq -r '.locks.nodes.root.inputs | keys[]' 2>/dev/null
+$ package: nix eval --json .#packages.$(nix eval --raw --impure --expr builtins.currentSystem) 2>/dev/null | jq -r 'keys[]' 2>/dev/null
+$ app: nix eval --json .#apps.$(nix eval --raw --impure --expr builtins.currentSystem) 2>/dev/null | jq -r 'keys[]' 2>/dev/null
+$ dev_shell: nix eval --json .#devShells.$(nix eval --raw --impure --expr builtins.currentSystem) 2>/dev/null | jq -r 'keys[]' 2>/dev/null
+$ host: nix eval --raw --apply 'hosts: builtins.concatStringsSep "\n" (builtins.attrNames hosts)' .#inventory.hosts 2>/dev/null
+$ home: nix eval --raw --apply 'configs: builtins.concatStringsSep "\n" (builtins.attrNames configs)' .#homeConfigurations 2>/dev/null
+$ system: nix eval --raw --impure --expr builtins.currentSystem 2>/dev/null
+$ check: nix eval --json .#checks.$(nix eval --raw --impure --expr builtins.currentSystem) 2>/dev/null | jq -r 'keys[]' 2>/dev/null
+$ inventory_path: printf '%s\n' hosts users identities networks ports storage
+$ old_generation: find /nix/var/nix/profiles -maxdepth 1 -name 'system-*-link' 2>/dev/null | sort -V
+$ new_generation: printf '%s\n' /run/current-system ./result
+$ derivation_or_path: printf '%s\n' ./result /run/current-system
+$ dependency_path: nix path-info --recursive ./result 2>/dev/null

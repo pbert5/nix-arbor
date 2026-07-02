@@ -16,6 +16,17 @@ clusterctl identity generate-missing --dry-run
 
 The matrix uses services as rows and hosts as columns.
 
+Desired rows are not hard-coded in `clusterctl`. Selected dendrites declare
+their identity requirements and generator names in `meta.nix`; the flake
+resolves them per host under `inventory.identityRequirements.byHost`.
+Selecting the dendrite, plus any service-specific predicate declared in its
+metadata, is the opt-in. Hosts do not repeat identity enable flags under
+`org.clusterIdentity`.
+
+```bash
+nix eval '.#inventory.identityRequirements.byHost' --json | jq
+```
+
 Legend:
 
 - `-`: the service is not desired on that host
@@ -39,42 +50,86 @@ clusterctl identity generate-missing --node HOST
 clusterctl identity matrix --node HOST
 ```
 
+Generation keeps flake edits owned by the invoking user. Its default
+auto-publish step detects a root-only registry, materialized output, or signing
+key and re-invokes only `identity publish` through `sudo`. Use `--no-publish`
+when preparing source-ledger changes that should not be published yet.
+
 ## Guide 1: Initialize Registry On First Leader
 
 ```bash
 sudo mkdir -p /var/lib/cluster-identity/registry
 sudo chown root:root /var/lib/cluster-identity/registry
-sudo clusterctl registry init --registry /var/lib/cluster-identity/registry
+sudo clusterctl registry ensure-v1 --registry /var/lib/cluster-identity/registry
 sudo clusterctl registry validate --registry /var/lib/cluster-identity/registry
 sudo clusterctl registry reconcile --registry /var/lib/cluster-identity/registry --out /run/cluster-identity
 ```
 
-## Guide 2: Add Or Fetch Remotes
+`ensure-v1` preserves an incompatible legacy registry by moving it to a
+timestamped sibling such as
+`/var/lib/cluster-identity/registry-pre-v1-20260623T...Z`, then initializes a
+clean v1 registry. Leader activation runs this migration before republishing
+the current flake identity ledger.
+
+## Guide 2: Enroll And Inspect Leader IPNS Heads
 
 ```bash
-cd /var/lib/cluster-identity/registry
-clusterctl registry remotes sync
-git remote -v
-git fetch --all --prune
-clusterctl registry reconcile
+clusterctl identity matrix --service ipns-publisher
+clusterctl identity generate-missing --service ipns-publisher --dry-run
+clusterctl identity generate-missing --service ipns-publisher --no-publish
+jq '.trustedLeaders | map_values(.ipnsName)' /etc/cluster-identity/policy.json
+systemctl status ipfs cluster-identity-ipns-key.service cluster-identity-publish.timer
+clusterctl registry publish-ipfs --publisher "$(hostname)"
 ```
+
+The generator creates one stable Ed25519 IPNS key per missing leader, stores
+the public `k51...` name in
+`inventory/identity-services/ipns-publisher.nix`, encrypts the private PEM into
+`inventory/keys/leaders/leader-ipns-keys.sops.yaml`, and stages exactly those
+two files so flake evaluation can see them. It may ask for sudo because the
+leader host-age key is root-readable. A changed name is a bootstrap trust
+change, not a routine rotation.
 
 ## Guide 3: Publish The Flake Identity Ledger
 
 ```bash
 clusterctl identity publish
 clusterctl registry validate
-clusterctl registry notify
+systemctl start cluster-identity-publish.service
 ```
 
-`clusterctl identity publish` reads `inventory/identities.nix`, writes any
-missing registry events, reconciles `/run/cluster-identity`, and pushes
-configured registry remotes. Use `--node HOST` or `--service SERVICE` only when
-you intentionally want to narrow the publish.
+`clusterctl identity publish` reads the normalized identity ledgers, writes any
+missing registry events, burns stale same-leader live claims that are no longer
+in inventory or have been replaced by a newer fingerprint, and reconciles local
+state. Guarded services such as `host-age`, `ssh-host`, and IPNS identities are
+skipped unless you pass `--burn-guarded-stale`. The leader publication service
+builds the signed snapshot, advances IPNS, and emits a best-effort signed
+PubSub hint. Use `--node HOST` or `--service SERVICE` only when you
+intentionally want to narrow the publish. `clusterctl registry notify` remains
+an SSH-triggered migration and repair fallback.
 
 Leaders also run a best-effort publish during NixOS activation through the
 `system/cluster-identity` dendrite. Keep using the explicit command for repair,
 debugging, and immediate convergence after editing the identity ledger.
+
+## Guide 3a: Enroll Leader Users
+
+Users with `org.clusterIdentity.role = "leader"` receive one host-specific SSH
+identity on every leader host that selects them:
+
+```bash
+clusterctl identity matrix --service leader-user-ssh
+clusterctl identity generate-missing --service leader-user-ssh --dry-run
+clusterctl identity generate-missing --service leader-user-ssh --no-publish
+```
+
+Generation writes public records to
+`inventory/identity-services/leader-user-ssh.nix` and encrypts the private keys
+into `inventory/keys/identities/cluster-private-identities.sops.yaml`. Deploy
+the full fleet once so every host trusts the new public keys, then normal
+`clusterctl deploy`, identity generation, publication, and registry inspection
+run from the leader user. The old root deploy keys may stay trusted during
+migration and recovery.
 
 ## Guide 4: Publish A Narrow Subset For Debugging
 
@@ -82,12 +137,11 @@ debugging, and immediate convergence after editing the identity ledger.
 clusterctl identity publish --node r640-0
 clusterctl identity publish --service yggdrasil
 
-clusterctl registry notify --target r640-0
+systemctl start cluster-identity-publish.service
 ```
 
-Low-level per-event commands such as `clusterctl identity publish-public` are
-kept as escape hatches while the ledger publisher matures, but they are not the
-normal operator path.
+Low-level per-event publication remains an internal test helper. It is not an
+installed operator command.
 
 ## Guide 5: Edit Private Identity Ledgers
 
@@ -114,6 +168,23 @@ clusterctl identity matrix --node HOST --service SERVICE
 clusterctl identity generate-missing --node HOST --service SERVICE
 clusterctl identity publish --node HOST --service SERVICE
 ```
+
+To replace an existing identity with a new generation and swap the flake source
+ledger in one step:
+
+```bash
+clusterctl identity rotate HOST SERVICE
+clusterctl identity rotate HOST SERVICE --dry-run
+```
+
+For `host-age`, `rotate` updates `inventory/keys/host-age-recipients.nix`.
+For other supported services, it updates the matching
+`inventory/identity-services/<service>.nix` file.
+The replacement generation is chosen above the highest generation known from
+the flake ledger, materialized live state, and accepted registry events, so a
+leader with stale desired inventory does not reuse a live generation. The
+publish step burns older same-leader generations when the rotated fingerprint
+changed.
 
 ## Guide 6: Enroll A Host Age Recipient
 
@@ -159,15 +230,14 @@ clusterctl identity matrix --node r640-0 --service yggdrasil
 The direct SSH copy path remains available for repair:
 
 ```bash
-clusterctl bundle publish r640-0 yggdrasil \
+clusterctl bundle emergency-publish r640-0 yggdrasil \
   --generation 1 \
   --source ./private/r640-0-yggdrasil.key \
   --target-path /var/lib/yggdrasil/private.key
 
 clusterctl receipt collect r640-0 yggdrasil --generation 1
 clusterctl identity promote r640-0 yggdrasil --generation 1
-clusterctl registry push
-clusterctl registry notify
+systemctl start cluster-identity-publish.service
 ```
 
 USB and PXE private-key delivery are intentionally out of scope for this MVP.
@@ -180,8 +250,7 @@ clusterctl identity burn r640-0 yggdrasil \
   --fingerprint sha256:... \
   --reason "suspected compromise"
 
-clusterctl registry push
-clusterctl registry notify
+systemctl start cluster-identity-publish.service
 ```
 
 ## Guide 9: Follower Repair Sync
@@ -190,17 +259,16 @@ clusterctl registry notify
 systemctl start cluster-identity-fetch-now.service
 journalctl -u cluster-identity-fetch.service -n 100 --no-pager
 clusterctl registry status
+cat /var/lib/cluster-identity/local-state/fetch-status.json
+cat /var/lib/cluster-identity/local-state/checkpoint.json
 ls -R /run/cluster-identity
 ```
 
 ## Guide 10: Smoke-Test The Live Identity Rollout Path
 
-Use the smoke test when you want a real end-to-end validation of:
-
-- one-at-a-time staged and active rollout
-- bulk rollout across a host set
-- repeated stress rounds
-- follower fetch/materialization on the easy-access verification hosts
+Use the smoke test when you want an end-to-end validation of signed snapshot
+publication, IPNS resolution, follower verification, anti-rollback checkpoint
+advancement, and materialization.
 
 The default target set is the operator-capable hosts from
 `inventory/host-bootstrap.nix`, which currently means the Tailscale-reachable
@@ -208,13 +276,12 @@ leaders.
 
 ```bash
 clusterctl identity smoke-test
-clusterctl identity smoke-test --node r640-0 --node desktoptoodle
-clusterctl identity smoke-test --node all --verify-node r640-0 --verify-node desktoptoodle
+clusterctl identity smoke-test --verify-node r640-0 --verify-node desktoptoodle
 ```
 
-The command publishes synthetic smoke identities into the live registry,
-verifies them on the selected verification hosts under `/run/cluster-identity`,
-then burns the smoke identities so they do not remain active.
+The command republishes the current registry without creating synthetic
+identities, then waits until every selected host accepts the exact CID and root
+sequence.
 
 ## Guide 11: Registry-Driven Deploy Dry Run
 

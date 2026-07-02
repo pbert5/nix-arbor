@@ -28,8 +28,17 @@ clusterctl identity matrix --node HOST
 systemctl status cluster-identity-fetch.timer
 systemctl start cluster-identity-fetch-now.service
 journalctl -u cluster-identity-fetch.service -n 100 --no-pager
-git -C /var/lib/cluster-identity/registry remote -v
+cat /var/lib/cluster-identity/local-state/fetch-status.json
+cat /var/lib/cluster-identity/local-state/checkpoint.json
+ipfs --api=/unix/run/ipfs.sock id
 ```
+
+Inspect each leader result in `fetch-status.json`. `root-sequence-rollback`,
+`same-sequence-equivocation`, and
+`root-history-does-not-descend-from-last-good`,
+`leader-event-chain-rollback`, and
+`leader-event-chain-does-not-descend-from-last-good` are deliberate
+rejections. The follower keeps its prior head and materialized state.
 
 ## Rebuild Prints HOME Or Host-Key Errors
 
@@ -39,19 +48,21 @@ cat /etc/cluster-identity/policy.json
 sudo systemctl start cluster-identity-fetch.service
 ```
 
-Leader activation publishes the flake identity ledger and may fetch or push the
-registry remotes. That activation path runs without relying on the caller's
-shell home directory; it exports `HOME=/root` and writes Git global state to
-`/var/lib/cluster-identity/gitconfig`.
+Receiving-host activation never publishes the flake identity ledger.
+`clusterctl deploy` publishes from the deploying leader after a successful
+deployment. Registry fetch and explicit publication run after networking is
+available. Those paths export `HOME=/root` when required because the Kubo CLI
+needs it even when using the configured Unix API socket.
 
-Strict registry SSH uses `/etc/cluster-identity/registry-known-hosts`, generated
+Legacy registry SSH uses `/etc/cluster-identity/registry-known-hosts`, generated
 from `inventory/identity-services/ssh-host.nix`,
 `inventory/identity-services/yggdrasil.nix`, and
 `inventory/host-bootstrap.nix`. If SSH reports an unknown host key for a leader
 fallback IP or Yggdrasil address, confirm that file contains the target host,
 fallback address, private Yggdrasil address, and SSH host key.
 
-Registry transport keys are host-local activation inputs. Prefer
+Git registry transport is disabled in default inventory. If explicitly enabled
+for migration, its keys are host-local activation inputs. Prefer
 `org.clusterIdentity.registryTransport.identityFile` when a leader should use a
 machine-local key for live registry fetch or push; keep
 `inventory/host-bootstrap.nix` focused on the operator-side deploy key.
@@ -59,12 +70,24 @@ machine-local key for live registry fetch or push; keep
 ## Registry Has Invalid Event
 
 ```bash
-clusterctl registry validate --registry /var/lib/cluster-identity/registry
-jq . /var/lib/cluster-identity/registry/events/*.json
+clusterctl registry validate --registry /var/lib/cluster-identity/accepted-registry
+jq . /var/lib/cluster-identity/local-state/fetch-status.json
 ```
 
 Check for missing `schema`, `eventId`, `subject.node`, `subject.service`,
 integer `generation`, valid `state`, and a non-empty `signature`.
+
+If every old event is missing v1 fields such as `clusterId`, `leaderSeq`,
+`eventHash`, and `payloadHash`, preserve and reseed the legacy registry:
+
+```bash
+clusterctl registry ensure-v1
+clusterctl identity publish --no-fetch --no-push
+clusterctl registry validate
+```
+
+The old Git repository remains under a timestamped
+`/var/lib/cluster-identity/registry-pre-v1-*` path.
 
 ## Registry Commit Reports Unknown Author
 
@@ -84,7 +107,7 @@ that behavior was present.
 ```bash
 cat /etc/cluster-identity/policy.json
 clusterctl registry validate
-ssh-keygen -y -f /home/example/.ssh/deploy_rsa
+ssh-keygen -y -f "$(jq -r '.signingKeyPath' /etc/cluster-identity/policy.json)"
 ```
 
 Registry validation verifies OpenSSH signatures in the `cluster-identity`
@@ -93,15 +116,36 @@ namespace. Confirm the event `leader`, event `leaderKey`, policy
 signatures are rejected unless policy explicitly enables
 `allowPlaceholderSignatures`.
 
+Trusted leader public keys come from `inventory/keys/leaders/`. The policy
+normalizer trims those files to a single public-key line before comparing them
+with event `leaderKey` values, so trailing newlines in the key files should not
+cause false validation failures.
+
 ## Active Identity Not Materialized
 
 ```bash
-clusterctl registry reconcile --registry /var/lib/cluster-identity/registry --out /run/cluster-identity
-jq . /var/lib/cluster-identity/registry/state/active.json
+clusterctl registry fetch-ipfs
+jq . /var/lib/cluster-identity/accepted-registry/events/*/*.json
+jq . /run/cluster-identity/active.json
 ls -R /run/cluster-identity
 ```
 
 If the event used private delivery, confirm the receipt exists.
+
+## SSH Still Uses A Bootstrap Address Or Key
+
+```bash
+cat /run/cluster-identity/ssh_config
+ssh -G HOST | grep -E '^(hostname|hostkeyalias|identityfile|identitiesonly) '
+```
+
+The live include must appear before the declarative fallback host blocks in
+`~/.ssh/config`. Normal `HOST` and `HOST-ygg` aliases use the active registry
+Yggdrasil endpoint. Home Manager conditionally offers keys declared in
+`users.<name>.org.ssh.identityFiles` when they exist locally; this avoids
+forcing a desktop-only key path on another leader. Use `HOST-bootstrap`
+explicitly when the registry route is unavailable; it uses the inventory
+bootstrap address and any explicitly declared bootstrap identity.
 
 ## Staged Identity Visible But Not Active
 
@@ -122,18 +166,35 @@ grep -R "sha256:" /var/lib/cluster-identity/registry/events
 Publish a higher-generation replacement with a different fingerprint. Do not
 reuse burned material.
 
-## Radicle Remote Unavailable
+## IPNS Head Unavailable
 
 ```bash
-git -C /var/lib/cluster-identity/registry remote -v
-clusterctl registry remotes sync
-clusterctl registry sync
+jq '.trustedLeaders | map_values(.ipnsName)' /etc/cluster-identity/policy.json
+ipfs --api=/unix/run/ipfs.sock name resolve /ipns/LEADER_IPNS_NAME
+cat /var/lib/cluster-identity/local-state/fetch-status.json
 ```
 
-Radicle is secondary and may not be configured until the real `rad://` identity
-is known. If a Radicle remote is declared in `inventory/identity-policy.nix`,
-verify that the generated Git remote URL matches that real identity. Use leader
-Git over SSH or fallback SSH while Radicle is down.
+An unavailable head does not clear last-good state. Check Kubo connectivity and
+the leader publisher timer; do not delete the local checkpoint to force an old
+root through.
+
+## PubSub Hint Did Not Trigger A Fetch
+
+```bash
+systemctl status cluster-identity-pubsub-listener.service
+journalctl -u cluster-identity-pubsub-listener.service -n 100 --no-pager
+jq . /var/lib/cluster-identity/local-state/pubsub-status.json
+ipfs --api=/unix/run/ipfs.sock pubsub ls
+ipfs --api=/unix/run/ipfs.sock pubsub peers \
+  cluster-identity/user1-homelab/roots/v1
+```
+
+Check that Kubo has `Pubsub.Enabled = true`, the listener is subscribed to the
+inventory topic, and at least one PubSub peer is visible. Rejected hints record
+their last error in `pubsub-status.json`. A missed hint is not a convergence
+failure: `cluster-identity-fetch.timer` continues polling trusted IPNS heads.
+The listener reports `connectionState = "retrying"` while Kubo is restarting
+and returns to `subscribed` without failing the system activation.
 
 ## Yggdrasil Path Broken
 

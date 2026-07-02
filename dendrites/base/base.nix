@@ -9,5 +9,6 @@
     ./leaves/guest-access-ssh.nix
     ./leaves/terminal.nix
     ./leaves/clamav.nix
+    ./leaves/security.nix
   ];
 }

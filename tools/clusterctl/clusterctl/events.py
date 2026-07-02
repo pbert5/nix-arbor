@@ -3,6 +3,8 @@ import json
 import uuid
 from pathlib import Path
 
+from .canonical import canonical_bytes
+
 VALID_STATES = {
     "planned",
     "staged",
@@ -34,14 +36,12 @@ def read_json(path: Path, default=None):
 
 def write_json(path: Path, data) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as handle:
-        json.dump(data, handle, indent=2, sort_keys=True)
-        handle.write("\n")
+    path.write_bytes(canonical_bytes(data) + b"\n")
 
 
 def iter_json_files(path: Path):
     if not path.exists():
         return
-    for item in sorted(path.glob("*.json")):
+    for item in sorted(path.glob("**/*.json")):
         if item.is_file():
             yield item

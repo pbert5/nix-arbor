@@ -1,0 +1,43 @@
+
+IMPLEMENTED: added desktop/hyprland and swapped desktoptoodle over to it.
+
+- Hyprland uses the NixOS module and UWSM.
+- XDG Desktop Portal Hyprland is supplied by the NixOS module, with the GTK
+  portal retained as its file-picker fallback.
+- PipeWire and WirePlumber are enabled.
+- Hyprpolkitagent, SwayNC, Hypridle, Kitty, Rofi, Waybar, Awww, Hyprlock, and
+  Dolphin are configured declaratively through the dendrite and its shared
+  Home Manager module.
+- Awww runs without imposing a wallpaper; selecting and managing wallpaper
+  content remains planned.
+
+Original request:
+
+were going to add a hyperland dendrite and swap desktoptoodle over to it
+- for the window manager i want hyprland
+XDG Desktop Portal- xdg-desktop-portal-hyprland
+pipewire, wireplumber
+hyprpolkitagent
+swaync for notifications
+idle daemon = hypridle
+terminal = kitty
+
+https://wiki.hypr.land/Getting-Started/Master-Tutorial/
+rofi for launcher
+Waybar for bar
+awww for wallpapers
+hyperlock
+dolphin  file manager
+<<<<<<< Updated upstream
+
+
++ i want to add fastfesth
++ i want super k as a secondary kitty open shortcut
++ i want to add confient ssh suport from rofi 
+SSH stuff
+
+Rofi can be used as an SSH launcher.
+
+The simple version reads your saved SSH hosts and gives you a searchable list. You pick “t320” or “r640-1,” and it opens a terminal connected to that machine.
+=======
+>>>>>>> Stashed changes

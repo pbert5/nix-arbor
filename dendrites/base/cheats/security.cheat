@@ -1,0 +1,42 @@
+% dendritic, base, security, fail2ban, aide, opensnitch, lsof
+
+# Show fail2ban service status
+systemctl status fail2ban
+
+# Show fail2ban client status
+sudo fail2ban-client status
+
+# Show fail2ban sshd jail status
+sudo fail2ban-client status sshd
+
+# Unban an IP from the sshd jail
+sudo fail2ban-client set sshd unbanip <ip>
+
+# Show configured fail2ban ignore IPs for this host
+nix eval .#nixosConfigurations.$(hostname).config.services.fail2ban.ignoreIP --json
+
+# Show OpenSnitch daemon status
+systemctl status opensnitchd
+
+# Show OpenSnitch logs for this boot
+journalctl -u opensnitchd -b
+
+# List OpenSnitch declarative and learned rules
+sudo find /var/lib/opensnitch/rules -maxdepth 1 -type f -name '*.json' -print
+
+# Initialize an AIDE database with an explicit configuration
+sudo aide --config <config> --init
+
+# Check filesystem integrity with an explicit AIDE configuration
+sudo aide --config <config> --check
+
+# List processes using a TCP port
+sudo lsof -nP -iTCP:<port> -sTCP:LISTEN
+
+# List open files under a path
+sudo lsof +D <path>
+
+$ ip: ip -o -4 addr show scope global | awk '{ sub(/\/.*/, "", $4); print $4 }'
+$ port: printf '%s\n' 22 80 443 14742 14743
+$ path: printf '%s\n' /etc /home /var/lib/download-staging
+$ config: printf '%s\n' /etc/aide.conf

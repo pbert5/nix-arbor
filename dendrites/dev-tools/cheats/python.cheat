@@ -1,0 +1,40 @@
+% dendritic, python, dev-tools
+
+# Run a script with an ephemeral, cached environment (uv)
+uv run <script.py>
+
+# Create/sync a project virtualenv from pyproject/uv.lock
+uv sync
+
+# Add a dependency to the current uv project
+uv add <package>
+
+# Run a one-off tool without installing it into the project (uv)
+uvx <tool>
+
+# Create a virtualenv the traditional way
+python3 -m venv .venv
+
+# Activate a virtualenv
+source .venv/bin/activate
+
+# Install requirements with pip
+python3 -m pip install -r requirements.txt
+
+# Start an interactive REPL with autocomplete and history (ipython)
+ipython
+
+# Lint and auto-fix with ruff
+ruff check --fix .
+
+# Format with black
+black .
+
+# Type-check with mypy
+mypy .
+
+# Type-check with pyright
+pyright
+
+$ package: printf '%s\n' "$(basename "$PWD")"
+$ tool: printf '%s\n' ruff black mypy pyright

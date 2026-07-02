@@ -1,24 +1,17 @@
-{ lib, pkgs, modulesPath, ... }:
+{
+  lib,
+  pkgs,
+  modulesPath,
+  ...
+}:
 let
   leaderKeysDir = ../inventory/keys/leaders;
-  leaderKeyFiles =
-    builtins.map
-      (name: leaderKeysDir + "/${name}")
-      (
-        builtins.attrNames
-          (
-            lib.filterAttrs
-              (_: type: type == "regular")
-              (builtins.readDir leaderKeysDir)
-          )
-      );
-  leaderAuthorizedKeys =
-    lib.concatMap
-      (path:
-        builtins.filter
-          (line: line != "")
-          (lib.splitString "\n" (builtins.readFile path)))
-      leaderKeyFiles;
+  leaderKeyFiles = builtins.map (name: leaderKeysDir + "/${name}") (
+    builtins.attrNames (lib.filterAttrs (_: type: type == "regular") (builtins.readDir leaderKeysDir))
+  );
+  leaderAuthorizedKeys = lib.concatMap (
+    path: builtins.filter (line: line != "") (lib.splitString "\n" (builtins.readFile path))
+  ) leaderKeyFiles;
 in
 {
   imports = [
@@ -26,6 +19,11 @@ in
   ];
 
   networking.hostName = lib.mkDefault "nbootstrap-live";
+  environment.etc."clusterctl-install-target".text = "nbootstrap-live-v1\n";
+
+  # The live image has no root ZFS pool to import; keep 26.05 evaluation quiet
+  # and avoid any forced import if ZFS tooling probes attached disks.
+  boot.zfs.forceImportRoot = false;
 
   services.openssh = {
     enable = true;

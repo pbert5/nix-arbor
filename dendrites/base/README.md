@@ -28,6 +28,7 @@ repo's managed systems.
 - enables automatic Nix GC and optimize jobs
 - enables ClamAV services
 - creates `/var/lib/download-staging` for ClamAV on-access and scheduled scans
+- keeps unsupported sockets and pipes from failing completed scheduled scans
 
 ## Selection
 

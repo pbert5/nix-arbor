@@ -51,6 +51,8 @@ Examples:
 - `storage/zfs`
 - `storage/tape`
 - `desktop/gnome`
+- `desktop/hyprland`
+- `desktop/hyprland-minimal`
 
 ### Leaf
 

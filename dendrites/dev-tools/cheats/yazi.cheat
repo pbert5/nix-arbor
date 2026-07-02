@@ -1,0 +1,15 @@
+% dendritic, yazi, tui
+
+# Open yazi in the current directory (repo alias 'y' cds to its final dir on exit)
+yazi
+
+# Open yazi at a specific path
+yazi <path>
+
+# Print the yazi version
+yazi --version
+
+# Clear yazi's image/video preview cache
+rm -rf ~/.cache/yazi
+
+$ path: printf '%s\n' "$PWD"

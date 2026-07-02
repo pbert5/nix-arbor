@@ -1,0 +1,32 @@
+% dendritic, system, workstation, diagnostics
+
+# Browse the Nix store closure of the current system as a tree
+nix-tree
+
+# Browse the closure of an arbitrary derivation or store path
+nix-tree --derivation <path>
+
+# Find what is keeping a store path alive (du-style closure breakdown)
+nix-du -s=500MB | dot -Tsvg > /tmp/nix-du.svg
+
+# Watch a build with a live derivation tree and full logs
+nom build <installable>
+
+# Scan the running system closure for known vulnerabilities
+vulnix --system
+
+# Scan a specific derivation for known vulnerabilities
+vulnix <drv>
+
+# Generate a software bill of materials for the current system
+sbomnix /run/current-system
+
+# Scan an SBOM with grype
+grype sbom:./sbom.cdx.json
+
+# Run a Lynis security audit of the host
+sudo lynis audit system
+
+$ drv: nix path-info --derivation /run/current-system 2>/dev/null
+$ path: printf '%s\n' /run/current-system ./result
+$ installable: printf '%s\n' .#nixosConfigurations.$(hostname).config.system.build.toplevel

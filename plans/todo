@@ -11,7 +11,7 @@
         - would need to be kept on most recent
         - notes in /work/flake/plans/yggdrasil.md
         - would want a private, and then public one on desktops/ certain devices
-    - [ ] Radicle
+    - [x] Radicle
         - accessed over ygdrasil, decentralized code host
         - 
     - [ ] nostr - strfry
@@ -21,10 +21,25 @@
     - Federated chat: Matrix, XMPP
     - [ ] opencanary
         - network honey pot
+    - [ ] nix tools
+        - nix topology
+        - nix-output-monitor
+        - optnix
+        - MCP-NixOS
+        - nix inspect
+        
+
+- add a foil to clusterctl identity generate-missing
+    - that looks for unused identites and burns them
+    - should have safety measures to ensure that they are realy unneded like check if access to anything is dependent on them
 
 
 
 - reinforce cyber sec and firewalls
+    - [x] fail2ban - ban repeat auth offenders on exposed services
+    - [ ] IDS (suricata or snort) - network intrusion detection
+    - [ ] rootkit checker (rkhunter or chkrootkit) - rootkit detection
+    - [x] aide - filesystem integrity monitoring (detect unexpected changes)
 - get easy way to push all other machines to update to most recent or specific commit of config
 
 
@@ -33,3 +48,16 @@
     - [ ] cdjns
     - [ ] libremesh
     - [ ] I2P
+
+- [x]set up nom correctly
+
+
+- it does look like deployrs is pushing a bunch of unneded stuff to r640-0
+    - i.e. google chrome, obs, discord, 
+    doesnt look like it actualy ended up on the r640-0 but it was super slowing down the deploy durring (  ℹ️ [deploy] [INFO] Running checks for flake in .)
+
+
+- [ ] add tests to verify the identity/key generation and implmentation and the need for the key pickup from lib
+- [ ] swap chrome opening in the rofi menu to open a specific profile as a new window, to bypasss annoyign go to open window behavior
+- [ ] set multiple displays to be on seperate workspace lists, ( maker sure that addign and removing displays wont brick this) bc if display 1/2 last used workspace 4, then the ctl-alt-right fails to give display 2/2 a new workspace
+- [ ] add nps, i have the cheat, not the command

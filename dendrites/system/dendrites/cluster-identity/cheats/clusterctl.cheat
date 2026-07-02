@@ -1,0 +1,85 @@
+% dendritic, clusterctl, cluster-identity
+
+# Show the identity matrix
+clusterctl identity matrix
+
+# Show missing identity material
+clusterctl identity matrix --only-missing
+
+# Show identities for one node
+clusterctl identity matrix --node <node>
+
+# Generate missing identities for one node
+clusterctl identity generate-missing --node <node>
+
+# Generate all missing identities from inventory
+clusterctl identity generate-missing --all
+
+# Generate one missing identity service for one node without publishing
+clusterctl identity generate-missing --node <node> --service <service> --no-publish
+
+# Rotate one existing identity and swap the inventory ledger to the next generation
+clusterctl identity rotate <node> <service>
+
+# Preview one identity rotation without changing inventory
+clusterctl identity rotate <node> <service> --dry-run
+
+# Publish identity records for one node
+clusterctl identity publish --node <node>
+
+# Publish one identity service for one node
+clusterctl identity publish --node <node> --service <service>
+
+# Resolve a conflict by appending a signed supersedence record
+clusterctl identity resolve --winner-event <winner_event_hash> --loser-event <loser_event_hash> --reason "<reason>"
+
+# Validate the local registry
+clusterctl registry validate
+
+# Show local registry materialization status
+clusterctl registry status
+
+# Reconcile registry state into the materialized output
+clusterctl registry reconcile
+
+# Fetch and materialize a trusted IPFS registry snapshot
+clusterctl registry fetch-ipfs
+
+# Notify one target host to refresh identity state
+clusterctl registry notify --target <node>
+
+# Deploy one host through the cluster deploy helper
+clusterctl deploy <node>
+
+# Deploy without publishing the deploying leader's identity ledger afterward
+clusterctl deploy <node> --no-publish-identities
+
+# Dry-run deploy one host through the cluster deploy helper
+clusterctl deploy <node> --dry-run
+
+# Preview boot-safety routing for the whole fleet
+clusterctl deploy all --dry-run
+
+# Deploy the fleet with boot-risky hosts forced through deploy-rs
+clusterctl deploy all
+
+# Preflight a bare-metal install without changing the target
+clusterctl install <node> --dry-run
+
+# Install an allowlisted bare-metal host after preflight
+clusterctl install <node> --confirm <installation_id>
+
+# Update all flake inputs, build-check, and commit flake.lock
+clusterctl update
+
+# Update one flake input, build-check, and commit flake.lock
+clusterctl update <input>
+
+# Bootstrap a host age key on a target host
+clusterctl host-age bootstrap <node>
+
+# Read a target host age public key
+clusterctl host-age public <node>
+
+$ node: nix eval --raw --apply 'hosts: builtins.concatStringsSep "\n" (builtins.attrNames hosts)' .#inventory.hosts 2>/dev/null
+$ service: nix eval --raw --apply 'services: builtins.concatStringsSep "\n" (builtins.attrNames services)' .#inventory.identities.services 2>/dev/null

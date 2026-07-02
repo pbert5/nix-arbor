@@ -11,6 +11,7 @@ the local file count low and links deeper when a topic needs room.
 | host bootstrap and fleet operations | [`cluster-ops/README.md`](./cluster-ops/README.md) |
 | storage fabric and large-data operations | [`storage-fabric/README.md`](./storage-fabric/README.md) |
 | media and homelab applications | [`media/README.md`](./media/README.md) |
+| chat/notification services | [`comm/README.md`](./comm/README.md) |
 | tape hardware and tape manager notes | [`tape-library/README.md`](./tape-library/README.md) |
 | public export and deployment overlays | [`repo-ops/README.md`](./repo-ops/README.md) |
 

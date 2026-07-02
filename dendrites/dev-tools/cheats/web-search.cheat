@@ -1,0 +1,51 @@
+% dendritic, web-search, browser, search
+
+# Search Google
+google <query>
+
+# Search DuckDuckGo
+ddg <query>
+
+# Search GitHub (code/repos/users)
+github <query>
+
+# Search YouTube
+youtube <query>
+
+# Search Stack Overflow
+stackoverflow <query>
+
+# Search Wikipedia
+wiki <query>
+
+# Search Wolfram Alpha
+wolframalpha <query>
+
+# Search npm registry
+npm_search <query>
+
+# Search PyPI (Python packages)
+pypi <query>
+
+# Search Reddit
+reddit <query>
+
+# Search Hacker News
+hn <query>
+
+# Search Google Scholar (academic papers)
+scholar <query>
+
+# Search Google Maps
+map <query>
+
+# Search Amazon
+amazon <query>
+
+# Search Ecosia (tree-planting search)
+ecosia <query>
+
+# Open Bing search
+bing <query>
+
+$ query: printf '%s\n' "your search query"

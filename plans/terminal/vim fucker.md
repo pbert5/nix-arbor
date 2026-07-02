@@ -1,0 +1,1 @@
+GVim (Graphical Vim) is the standalone GUI version of the popular Vim text editor. It combines Vim's legendary, keyboard-driven efficiency with standard GUI features like a toolbar, drop-down menus, scrollbars, and full mouse support.

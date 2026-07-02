@@ -1,0 +1,118 @@
+we are going to redesign the registry from the ground up,
+instead of the local git approach we will swap to ipfs/ipns and pubsub for update notifications
+
+IPFS for immutable registry snapshots and encrypted bundles
+  IPNS for stable leader-published "latest registry root" pointers
+  PubSub for update notifications
+  optional Tor onion mirrors for emergency/bootstrap access
+  optional IPFS Cluster later for pinning/availability coordination
+
+Followers know the trusted leader IPNS names from their small bootstrap seed ( and will be told them whenever they are deployed to as part of the nix). They resolve those names, fetch the registry snapshots, verify the signed events, then materialize local state into
+
+that way A fresh node only needs:
+
+trusted leader signing keys
+trusted leader IPNS names
+optional leader onion mirror addresses
+its own host age private key
+
+With just that, it can:
+
+find the latest registry
+fetch it from any IPFS peer
+verify leader-signed events
+decrypt bundles meant for itself
+learn Yggdrasil, SSH, Radicle, git-annex, and other identities
+become a full member
+
+
+Trust model
+
+IPFS does not decide truth.
+
+IPNS does not decide truth.
+
+PubSub does not decide truth.
+
+The local verifier decides truth using:
+
+trusted leader signatures
+leader authorization policy
+monotonic generations
+hash-chained events
+burn records
+node receipts
+age decryptability checks
+anti-rollback local state
+
+
+Conflict rules
+
+When leaders disagree:
+
+burned beats everything
+higher valid generation beats lower valid generation
+same generation with different payload is a conflict
+conflict means keep last-good state
+leader-policy changes require quorum
+host age key rotation requires quorum or recovery path
+
+So if two leaders publish different r640-0/yggdrasil generation 12 records, the node should not randomly choose one. It freezes that subject, keeps generation 11, and waits for a valid generation 13 or quorum repair.
+
+
+Private key rotation flow
+
+For a normal service key compromise:
+
+1. leader publishes burn event for old key
+2. leader generates new service identity
+3. leader encrypts private bundle to the target node age recipient
+4. bundle and manifest go into IPFS
+5. leader publishes staged registry event
+6. target node fetches, verifies, decrypts, installs
+7. target node signs receipt
+8. leader promotes new generation to active
+9. other nodes start using the new public identity
+
+
+
+tho of course the default  leader publishing will be built into the leaders rebuildproccess
+
+Every node keeps:
+
+/var/lib/cluster-identity/local-state/
+  highest registry checkpoint seen
+  accepted generation per node/service
+  burned fingerprints
+  trusted leader policy generation
+  last-good materialized state
+  pinned accepted CIDs
+
+This prevents rollback even if someone serves an old but validly signed registry snapshot.
+
+
+Implementation order
+Phase 1:
+  define signed event format, manifest format, and verifier rules
+
+Phase 2:
+  store registry snapshots and bundles in IPFS
+  publish leader heads through IPNS
+
+Phase 3:
+  add follower fetch/materialize timer
+  add local anti-rollback state
+  add pinning of accepted CIDs
+
+Phase 4:
+  add PubSub announcements
+
+Phase 5:
+  add Tor onion fallback mirrors
+
+Phase 6:
+  optionally add IPFS Cluster CRDT pin coordination
+
+
+
+the content will be d make the content format boring, signed, canonical JSON files, arranged as an IPFS directory/DAG.

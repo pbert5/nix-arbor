@@ -12,12 +12,12 @@
       "x-systemd.idle-timeout=600"
       "nfsvers=4.2"
     ];
-    source = "t320-0:/big/GameLibrary";
+    source = "t320-0-ygg:/big/GameLibrary";
     localPath = "/big/GameLibrary";
     export = {
       hosts = [
-        "r640-0"
-        "desktoptoodle"
+        "r640-0-ygg"
+        "desktoptoodle-ygg"
       ];
       options = [
         "rw"

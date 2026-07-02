@@ -1,0 +1,31 @@
+% dendritic, claude, claude-code
+
+# Start an interactive session in the current directory
+claude
+
+# Resume the most recent session
+claude --resume
+
+# Resume a specific session by ID
+claude --resume <session_id>
+
+# Run a one-shot prompt non-interactively and print the result
+claude -p "<prompt>"
+
+# Continue the last conversation in this directory
+claude --continue
+
+# List configured MCP servers (context7, mcp-nixos, serena are nix-managed)
+claude mcp list
+
+# Show the MCP server details for one server
+claude mcp get <mcp_server>
+
+# Open the Claude Code config
+claude config
+
+# Show the wrapped binary path used by VS Code's claudeProcessWrapper setting
+which claude
+
+$ session_id: find "$HOME/.claude/projects" -maxdepth 2 -name '*.jsonl' 2>/dev/null | xargs -n1 basename | sed 's/\.jsonl$//'
+$ mcp_server: printf '%s\n' context7 mcp-nixos serena

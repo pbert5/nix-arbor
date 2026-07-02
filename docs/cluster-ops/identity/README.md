@@ -31,18 +31,18 @@ rotation.
 Use `clusterctl identity generate-missing` from a leader when you want the tool
 to fill the auto-discoverable gaps directly into the declarative source files.
 Today that covers host-age recipients, Yggdrasil public identity, SSH host
-keys, and Radicle node IDs. Services whose public endpoint schema is still
-manual, such as `git-annex`, are reported but not auto-filled.
+keys, Radicle node IDs, and derived git-annex endpoints. Generation runs as the
+invoking user; its default publication phase automatically uses `sudo` when the
+live registry or leader signing key is root-only.
 
 Leader rebuilds also run a best-effort publish during activation through
 `system/cluster-identity`. Use the explicit command for repair, debugging, and
 immediate convergence after editing the ledger.
 
-Use `clusterctl identity smoke-test` when you want a real rollout validation
-against the live registry without touching transport-critical identities. The
-smoke test publishes synthetic staged and active identity events, verifies that
-they materialize on the selected verification hosts, then burns the synthetic
-records for cleanup.
+Use `clusterctl identity smoke-test` when you want a live IPFS/IPNS convergence
+check. It publishes the current signed snapshot, triggers follower fetches,
+then verifies that the selected hosts accepted the exact CID and root sequence.
+It does not create synthetic identities.
 
 ## Registry
 

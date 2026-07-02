@@ -1,0 +1,56 @@
+% dendritic, desktop, hyprland
+
+# Show the repo's Hyprland keybind reference (rofi menu)
+hypr-rofi-keybinds
+
+# Take a full-screen screenshot and copy it to the clipboard
+hypr-screenshot full
+
+# Take a region screenshot and copy it to the clipboard
+hypr-screenshot region
+
+# Open the repo's wallpaper picker (rofi menu over awww)
+hypr-rofi-wallpaper
+
+# Shift every monitor's active workspace set left or right
+hypr-shift-workspace-set LEFT
+hypr-shift-workspace-set RIGHT
+
+# List monitors and their active workspace
+hyprctl monitors
+
+# List clients (windows)
+hyprctl clients
+
+# List workspaces
+hyprctl workspaces
+
+# Reload the Hyprland config
+hyprctl reload
+
+# Dispatch a command directly (e.g. move focus, kill active window)
+hyprctl dispatch <dispatcher>
+
+# Show the active window
+hyprctl activewindow
+
+# Watch live Hyprland events (window focus, workspace changes)
+socat -u UNIX-CONNECT:"$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock" -
+
+# Set the wallpaper directly via awww
+awww img <image_path> --transition-type any --transition-duration 1.2
+
+# Restore the previously set wallpaper
+awww restore
+
+# Clear the wallpaper to a solid color
+awww clear 1e1e2eff
+
+# Show the current awww daemon state
+awww query
+
+# Lock the session (Super+L)
+hyprlock
+
+$ dispatcher: printf '%s\n' killactive togglefloating fullscreen pseudo workspace movefocus
+$ image_path: find "$HOME/Pictures/Wallpapers" "$HOME/Pictures" -maxdepth 2 -type f \( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.webp' \) 2>/dev/null

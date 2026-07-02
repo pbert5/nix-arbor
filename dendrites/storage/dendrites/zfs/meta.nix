@@ -8,4 +8,5 @@
   ];
   requires = [ "storage" ];
   conflicts = [ ];
+  cheatsheets.fileRegex = "^cheats/.*\\.cheat$";
 }

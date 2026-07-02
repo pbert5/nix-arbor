@@ -1,13 +1,13 @@
 diff -uNr a/src/linux/btop_collect.cpp b/src/linux/btop_collect.cpp
 --- a/src/linux/btop_collect.cpp	2026-06-14 10:25:24.150756080 -0500
 +++ b/src/linux/btop_collect.cpp	2026-06-14 10:25:40.505099562 -0500
-@@ -17,6 +17,7 @@
- */
- 
- #include <cstdlib>
+@@ -19,6 +19,7 @@
+ #include <algorithm>
+ #include <charconv>
+ #include <cmath>
 +#include <cstdio>
- #include <unordered_map>
- #include <unordered_set>
+ #include <cstdlib>
+ #include <filesystem>
  #include <fstream>
 @@ -1894,6 +1895,7 @@
  

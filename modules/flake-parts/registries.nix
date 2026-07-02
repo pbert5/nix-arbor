@@ -9,7 +9,7 @@ let
     inherit inputs lib;
   };
 
-  inventory = dendriticLib.normalizeInventory (
+  baseInventory = dendriticLib.normalizeInventory (
     import ../../inventory/inventory.nix { inherit inputs; }
   );
   registries = {
@@ -17,6 +17,13 @@ let
     fruits = dendriticLib.registries.mkFruitRegistry ../../fruits;
     homes = dendriticLib.registries.mkHomeRegistry ../../homes;
     hosts = dendriticLib.registries.mkHostRegistry ../../hosts;
+  };
+  cheatsheets = dendriticLib.cheatsheets.collect { inherit registries; };
+  inventory = baseInventory // {
+    identityRequirements = dendriticLib.identityRequirements.resolve {
+      dendriteRegistry = registries.dendrites;
+      inventory = baseInventory;
+    };
   };
   publishedUserModules = dendriticLib.users.publishNixosModules {
     homeRegistry = registries.homes;
@@ -40,7 +47,7 @@ in
 
   config.flake = {
     dendritic = {
-      inherit inventory registries;
+      inherit cheatsheets inventory registries;
       lib = dendriticLib;
     };
 

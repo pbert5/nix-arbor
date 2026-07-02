@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   disabledTapeServices = [
     "fossilsafe"
@@ -20,6 +25,10 @@ let
   steamBitlockerCompatData = "/home/example/.local/share/Steam/steamapps/compatdata-piss-boi";
   steamBitlockerLibraryCompatData = "/mnt/bitlocker/piss_boi/games/steamapps/compatdata";
   steamBitlockerCompatMountUnit = "mnt-bitlocker-piss_boi-games-steamapps-compatdata.mount";
+  vmHyprlandSession = {
+    command = "${lib.getExe pkgs.uwsm} start hyprland.desktop";
+    user = "ash";
+  };
 in
 {
   imports = [ ./ash-desktop.nix ];
@@ -45,48 +54,32 @@ in
   '';
   boot.kernelModules = [ "uvcvideo" ];
 
-  systemd.services =
-    {
-      NetworkManager-wait-online.enable = lib.mkForce false;
-      networkmanager-disable-broken-eno1-autoconnect = {
-        description = "Disable desktoptoodle's broken eno1 autoconnect profile";
-        after = [ "NetworkManager.service" ];
-        wants = [ "NetworkManager.service" ];
-        wantedBy = [ "multi-user.target" ];
-        serviceConfig = {
-          Type = "oneshot";
-        };
-        script = ''
-          if ${pkgs.networkmanager}/bin/nmcli connection show "Wired connection 1" >/dev/null 2>&1; then
-            ${pkgs.networkmanager}/bin/nmcli connection modify "Wired connection 1" connection.autoconnect no
-            ${pkgs.networkmanager}/bin/nmcli connection down "Wired connection 1" >/dev/null 2>&1 || true
-          fi
-        '';
+  systemd.services = {
+    NetworkManager-wait-online.enable = lib.mkForce false;
+    steam-bitlocker-compatdata-target = {
+      description = "Prepare native Proton compatdata for the piss_boi Steam library";
+      requires = [ "bitlocker-mount-pissBoi.service" ];
+      after = [
+        "bitlocker-mount-pissBoi.service"
+        "systemd-tmpfiles-setup.service"
+      ];
+      before = [ steamBitlockerCompatMountUnit ];
+      wantedBy = [ "multi-user.target" ];
+      path = [ pkgs.coreutils ];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
       };
-      steam-bitlocker-compatdata-target = {
-        description = "Prepare native Proton compatdata for the piss_boi Steam library";
-        requires = [ "bitlocker-mount-pissBoi.service" ];
-        after = [
-          "bitlocker-mount-pissBoi.service"
-          "systemd-tmpfiles-setup.service"
-        ];
-        before = [ steamBitlockerCompatMountUnit ];
-        wantedBy = [ "multi-user.target" ];
-        path = [ pkgs.coreutils ];
-        serviceConfig = {
-          Type = "oneshot";
-          RemainAfterExit = true;
-        };
-        script = ''
-          install -d -o ash -g users -m 0755 ${lib.escapeShellArg steamBitlockerCompatData}
-          install -d -o ash -g users -m 0755 ${lib.escapeShellArg steamBitlockerLibraryCompatData}
-        '';
-      };
-    }
-    // lib.genAttrs disabledTapeServices (_: {
-      enable = lib.mkForce false;
-      wantedBy = lib.mkForce [ ];
-    });
+      script = ''
+        install -d -o ash -g users -m 0755 ${lib.escapeShellArg steamBitlockerCompatData}
+        install -d -o ash -g users -m 0755 ${lib.escapeShellArg steamBitlockerLibraryCompatData}
+      '';
+    };
+  }
+  // lib.genAttrs disabledTapeServices (_: {
+    enable = lib.mkForce false;
+    wantedBy = lib.mkForce [ ];
+  });
 
   systemd.mounts = [
     {
@@ -122,6 +115,20 @@ in
     "video"
   ];
 
+  # Blue Microphone (USB) has auto-profile disabled; pin it to iec958-stereo
+  # which is how ALSA names the USB audio class capture on this device.
+  # The analog-stereo profile uses front:0 which cannot open the capture PCM.
+  services.pipewire.wireplumber.extraConfig = {
+    "10-blue-microphone-profile" = {
+      "monitor.alsa.rules" = [
+        {
+          matches = [ { "device.name" = "~alsa_card.usb-Generic_Blue_Microphones.*"; } ];
+          actions.update-props."device.profile" = "output:iec958-stereo+input:iec958-stereo";
+        }
+      ];
+    };
+  };
+
   environment.systemPackages = with pkgs; [
     alsa-utils
     libcamera
@@ -130,9 +137,38 @@ in
     v4l-utils
   ];
 
+  virtualisation.vmVariant = {
+    services.greetd.enable = lib.mkForce true;
+    services.displayManager.sddm.enable = lib.mkForce false;
+    programs.regreet.enable = lib.mkForce false;
+    services.greetd.settings.initial_session = vmHyprlandSession;
+    services.greetd.settings.default_session = vmHyprlandSession;
+
+    virtualisation = {
+      graphics = true;
+      cores = 6;
+      memorySize = 12288;
+      diskSize = 65536;
+      resolution = {
+        x = 1920;
+        y = 1080;
+      };
+    };
+
+    services.qemuGuest.enable = true;
+    services.xserver.videoDrivers = lib.mkForce [ "modesetting" ];
+    users.users.ash.hashedPassword = lib.mkForce null;
+    users.users.ash.password = lib.mkForce "ash";
+    virtualisation.appvm.user = "ash";
+  };
+
   systemd.tmpfiles.rules = [
     "L+ /home/example/games - - - - /srv/games"
     "L+ /home/example/piss_boi - - - - /mnt/bitlocker/piss_boi"
+    "d /home/example/.local 0755 ash users - -"
+    "d /home/example/.local/share 0755 ash users - -"
+    "d /home/example/.local/share/Steam 0755 ash users - -"
+    "d /home/example/.local/share/Steam/steamapps 0755 ash users - -"
     "d ${steamBitlockerCompatData} 0755 ash users - -"
   ];
 

@@ -1,0 +1,27 @@
+% dendritic, storage, rsync
+
+# Sync a directory to a remote host, preserving attrs and deleting extras
+rsync -avh --delete <source_path>/ <user>@<host>:<dest_path>/
+
+# Dry run a sync to preview what would change
+rsync -avh --delete --dry-run <source_path>/ <dest_path>/
+
+# Sync over ssh with compression, useful for slow links
+rsync -avzh -e ssh <source_path>/ <user>@<host>:<dest_path>/
+
+# Show progress for large transfers
+rsync -avh --progress <source_path>/ <dest_path>/
+
+# Resume an interrupted large-file transfer
+rsync -avh --partial --append-verify <source_path> <dest_path>
+
+# Sync excluding a pattern (e.g. .git directories)
+rsync -avh --exclude='.git/' <source_path>/ <dest_path>/
+
+# Mirror local to local, removing files no longer in source
+rsync -avh --delete <source_path>/ <dest_path>/
+
+$ source_path: printf '%s\n' "$PWD"
+$ dest_path: printf '%s\n' "$PWD"
+$ user: printf '%s\n' "$USER"
+$ host: printf '%s\n' "localhost"

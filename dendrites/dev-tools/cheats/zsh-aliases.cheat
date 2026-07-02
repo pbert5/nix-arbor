@@ -1,0 +1,77 @@
+% dendritic, shell, zsh
+
+# Switch this host to a same-release flake change live
+ns
+
+# Switch this host to a same-release flake change live, via nh (nicer diff/log output)
+nsh
+
+# Build the configured host's closure without switching or linking
+nb
+
+# Show this flake's outputs
+nf
+
+# Attach to the main tmux session, or create it if missing
+mox
+
+# Show the repo's tmux helper reference
+mux
+
+# Jump to a frequently visited directory (zoxide)
+z <name>
+
+# Open yazi at a path and cd to its final directory on exit
+y <path>
+
+# List directory contents (eza)
+ls
+ll
+la
+lt
+lla
+
+# Display an image in the terminal
+catimg <image>
+
+# Syntax-highlight a file (colorize plugin)
+ccat <file>
+
+# Auto-detect and highlight a file by extension
+colorize <file>
+
+# Copy a file's contents to the clipboard
+copyfile <file>
+
+# Copy the current working directory path to clipboard
+copypath
+
+# Copy a specific path to clipboard
+copypath <path>
+
+# Find what aliases exist for a command
+alias-finder <command>
+
+# Jump to a project directory (pj plugin)
+pj <project>
+
+# Fetch a .gitignore template by language
+gi <language>
+
+# Open the man page for the command currently typed (press Esc then h)
+# Esc+h → man <current-command>
+
+# Background a process (Ctrl+Z), then bring it forward again (Ctrl+Z)
+# fancy-ctrl-z: second Ctrl+Z runs fg
+
+# Press Enter on an empty line to open navi
+# magic-enter: blank Enter opens navi in every scope
+
+# zbell rings the terminal bell after commands taking longer than 15 seconds
+
+$ name: zoxide query -l 2>/dev/null | xargs -n1 basename
+$ path: printf '%s\n' "$PWD"
+$ image: find . -maxdepth 3 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.gif' -o -iname '*.bmp' \) 2>/dev/null
+$ file: find . -maxdepth 3 -type f 2>/dev/null | head -50
+$ command: alias | awk -F= '{print $1}' | sed 's/^alias //'
+$ project: printf '%s\n' $(ls ~/dev 2>/dev/null) $(ls ~/projects 2>/dev/null) $(ls ~/flake 2>/dev/null)

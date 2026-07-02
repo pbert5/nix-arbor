@@ -1,0 +1,61 @@
+% dendritic, lpass, lastpass, passwords
+
+# Log in to LastPass
+lpass login <email>
+
+# Log out of LastPass
+lpass logout
+
+# List all vault entries (grouped by folder)
+lpass ls
+
+# Show all fields for an entry
+lpass show <name>
+
+# Show only the password
+lpass show --password <name>
+
+# Show only the username
+lpass show --username <name>
+
+# Copy password to clipboard
+lpass show --clip --password <name>
+
+# Copy username to clipboard
+lpass show --clip --username <name>
+
+# Copy an entry's URL to clipboard
+lpass show --clip --url <name>
+
+# Add a new login entry interactively
+lpass add <name>
+
+# Add a new entry of a specific type
+lpass add --note <name>
+
+# Edit an existing entry
+lpass edit <name>
+
+# Duplicate an entry
+lpass duplicate <name>
+
+# Delete an entry (prompts for confirmation)
+lpass rm <name>
+
+# Generate a password for a new entry
+lpass generate <name> <length>
+
+# Generate a password without symbols
+lpass generate --no-symbols <name> <length>
+
+# Sync the local vault with the server
+lpass sync
+
+# Export all entries to CSV
+lpass export
+
+# Show vault status (logged in / out)
+lpass status
+
+$ name: lpass ls 2>/dev/null | grep -oE '^[^[]+' | sed 's/^[[:space:]]*//' | grep -v '^$'
+$ length: printf '%s\n' 16 24 32 48 64

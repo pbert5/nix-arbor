@@ -69,6 +69,26 @@ Sometimes the helper is not enough, and raw annex commands are clearer.
 | `git -C /srv/annex/cluster-data annex remotes` | inspect configured annex remotes |
 | `git -C /srv/annex/cluster-data remote -v` | inspect Git remotes |
 
+## Git-annex assistant guard
+
+The graphical `git-annex assistant` is disabled by default on fabric hosts. It
+can automatically sync and transfer content based on repository configuration,
+which is risky before wanted content, required content, remotes, `numcopies`,
+and available disk space have been verified.
+
+Attempting to run `git-annex assistant` prints a refusal and points to the
+extra safety information command:
+
+```sh
+git-annex assistant-safety-info
+```
+
+That command prints the verification checklist and the explicit opt-in command:
+
+```sh
+GIT_ANNEX_ALLOW_ASSISTANT=1 git-annex assistant
+```
+
 ## P2P git-annex commands
 
 The `storage/git-annex` dendrite installs Tor, Magic Wormhole, and the

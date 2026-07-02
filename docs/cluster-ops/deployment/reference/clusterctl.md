@@ -1,265 +1,142 @@
 # `clusterctl` Reference
 
-This page documents the current `clusterctl` CLI surface from
-[`tools/clusterctl/clusterctl/main.py`](/work/flake/tools/clusterctl/clusterctl/main.py).
-Use it when you want the exact command groups and flags, especially for
-deployment work.
+The flat, authoritative command list is
+[`clusterctl-commands.md`](./clusterctl-commands.md). This page records shared
+usage and the commands whose behavior needs more explanation.
 
-Run the flake-pinned tool like this:
+Run the flake-pinned tool with:
 
 ```bash
 nix run .#clusterctl -- [--flake PATH] <command> ...
 ```
 
-Global options:
+The package exposes three policy-enforced entry points backed by the same
+implementation:
 
-- `--flake PATH`
-  - flake root to evaluate; defaults to `.` or `CLUSTERCTL_FLAKE`
+- `clusterctl` performs operational changes and elevates only subprocesses
+  explicitly declared as requiring local root.
+- `clusterchk` permits read-only status, validation, and identity-matrix
+  commands. Identity checks use existing local state without privileged fetch
+  or status-cache writes.
+- `clusterplan` permits read-only commands plus supported previews. It forces
+  deploy, install, identity generation, and identity rotation into dry-run
+  mode and disables publication.
 
-## Top-Level Commands
-
-- `registry`
-  - `init`, `validate`, `reconcile`, `materialize`, `sync`, `push`, `notify`,
-    `status`, `remotes sync`, `resign-placeholders`
-- `identity`
-  - `publish`, `publish-public`, `publish-inventory`, `promote`, `burn`,
-    `status`, `matrix`, `generate-missing`, `smoke-test`, `apply`
-- `bundle`
-  - `publish`, `seal`
-- `receipt`
-  - `write`, `collect`
-- `deploy`
-- `host-age`
-  - `bootstrap`, `public`, `rotate`
-
-## Common Registry Paths
-
-Many subcommands share these options:
-
-- `--registry`
-  - defaults to `/var/lib/cluster-identity/registry`
-- `--out`
-  - defaults to `/run/cluster-identity`
-- `--policy`
-  - defaults to `/etc/cluster-identity/policy.json`
-
-Signing-aware commands may also accept:
-
-- `--signing-key PATH`
-- `--signature`
-
-## `deploy`
-
-Usage:
+For example:
 
 ```bash
-nix run .#clusterctl -- deploy HOST [HOST ...]
+nix run .#clusterchk -- registry status
+nix run .#clusterplan -- deploy desktoptoodle
+nix run .#clusterctl -- deploy desktoptoodle
 ```
 
-Host selectors:
+Private keys retain stable ownership. A root-owned signing or SOPS key causes
+only the signing/decryption subprocess to run through `sudo`; the surrounding
+CLI, flake checkout, Git operations, and Nix evaluation remain owned by the
+invoking user. `deploy --local-root` similarly elevates only the deploy
+subprocess rather than re-executing the whole CLI as root.
 
-- `r640-0`
-- `r640-0 desktoptoodle`
-- `r640-0,desktoptoodle`
-- `all`
+Before local elevation, `clusterctl` performs non-interactive sudo checks and
+reports whether the command is covered by command-specific `NOPASSWD` policy,
+an existing sudo credential timestamp is being reused, or an authentication
+prompt is expected. The checks neither invalidate cached credentials nor force
+a new prompt.
+
+Common registry options are:
+
+- `--registry`, default `/var/lib/cluster-identity/registry`
+- `--out`, default `/run/cluster-identity`
+- `--policy`, default `/etc/cluster-identity/policy.json`
+
+## Registry Status
+
+```bash
+clusterctl registry status
+clusterctl registry status --node r640-0
+```
+
+Status reports materialized record counts, conflicts, accepted IPNS
+checkpoints, CIDs and sequences, and the result of the latest fetch. It replaces
+the former separate `identity status` view.
+
+## Identity Rollout
+
+```bash
+clusterctl identity matrix
+clusterctl identity generate-missing --dry-run
+clusterctl identity generate-missing
+clusterctl identity publish
+```
+
+`matrix` derives required identities from the normalized flake inventory.
+`generate-missing` creates supported missing source records, and `publish`
+turns the normalized identity ledger into signed registry events.
+
+By default, `generate-missing` also publishes the records it creates. Generation
+runs as the invoking user so checkout files retain their ownership. When the
+registry, materialized output, or signing key is root-only, only the subsequent
+`identity publish` phase is re-invoked through `sudo`. Use `--no-publish` when
+you intentionally want to update the flake ledger without touching the live
+registry.
+
+## IPFS/IPNS Smoke Test
+
+```bash
+clusterctl identity smoke-test
+clusterctl identity smoke-test \
+  --verify-node r640-0 \
+  --verify-node desktoptoodle
+```
+
+The smoke test publishes the current signed snapshot through IPFS/IPNS,
+triggers follower fetches, and waits for each selected host to accept the exact
+published CID and root sequence in its anti-rollback checkpoint. It does not
+create synthetic identity events.
 
 Options:
 
-- `hosts`
-  - one or more host selectors; `all` expands to every exported inventory host
-- `--out PATH`
-  - materialized registry state used to resolve deployment candidates; defaults
-    to `/run/cluster-identity`
-- `--dry-run`
-  - print candidate addresses, the selected target, and the generated
-    `nix run .#deploy-rs -- .#HOST` command without executing it
+- `--verify-node HOST`, repeatable
+- `--poll-seconds N`, default `90`
+- `--poll-interval FLOAT`, default `2`
+- `--snapshot-dir PATH`
+- `--leader NAME`
+- `--signing-key PATH`
 
-Candidate order:
+## Internal Commands
 
-1. active Ygg address from `active.json`
-2. staged Ygg address from `staged.json`
-3. deprecated Ygg address from `deprecated.json`
-4. fallback `targetHost` from `inventory/host-bootstrap.nix`
-5. plain host name
+Commands marked `INTERNAL` in `--help` are implementation interfaces for
+activation and systemd:
 
-Examples:
+- `registry ensure-v1`
+- `registry fetch-ipfs`
+- `registry snapshot`
+- `registry publish-ipfs`
+- `registry ipns-key ensure`
+
+They remain callable for diagnostics, but they are not routine operator steps.
+
+## Emergency Repairs
+
+Commands marked `EMERGENCY REPAIR` bypass or reconstruct part of the normal
+declarative workflow:
+
+- `registry reconcile`
+- `bundle emergency-publish`
+- `host-age rotate`
+
+Prefer `bundle seal` over `bundle emergency-publish`; the emergency command
+transfers plaintext private key material over SSH.
+
+## Deployment and VMs
 
 ```bash
-nix run .#clusterctl -- deploy r640-0
-nix run .#clusterctl -- deploy r640-0 desktoptoodle t320-0
-nix run .#clusterctl -- deploy all --dry-run
+clusterctl deploy r640-0 desktoptoodle t320-0
+clusterctl deploy all --dry-run
+nix run .#host-vm -- desktoptoodle --fresh
 ```
 
-## `registry`
-
-Shared options: `--registry`, `--out`, `--policy`
-
-- `registry init`
-  - `--no-commit`
-- `registry validate`
-- `registry reconcile`
-- `registry materialize`
-- `registry sync`
-  - `--sync-remotes` / `--no-sync-remotes`
-  - `--prune-remotes`
-- `registry push`
-  - `--remote NAME` repeatable
-  - `--sync-remotes` / `--no-sync-remotes`
-  - `--prune-remotes`
-- `registry notify`
-  - `--target HOST` repeatable
-- `registry status`
-- `registry remotes sync`
-  - `--prune`
-- `registry resign-placeholders`
-  - `--signing-key PATH`
-  - `--signature`
-  - `--no-commit`
-
-## `identity`
-
-- `identity publish`
-  - common registry options
-  - `--service NAME` repeatable
-  - `--node HOST` repeatable
-  - `--generation N`
-  - `--state STATE`
-  - `--leader`
-  - `--leader-key`
-  - `--signing-key PATH`
-  - `--signature`
-  - `--allow-duplicate`
-  - `--no-commit`
-  - `--no-reconcile`
-  - `--fetch` / `--no-fetch`
-  - `--push` / `--no-push`
-  - `--remote NAME` repeatable
-  - `--notify`
-- `identity publish-public NODE SERVICE`
-  - common registry options
-  - `--generation N` required
-  - `--state STATE`, default `staged`
-  - `--from-inventory`
-  - `--allow-duplicate`
-  - public-field flags: `--ssh-host-key`, `--yggdrasil-public-key`,
-    `--yggdrasil-address`, `--deploy-host`, `--radicle-node-id`,
-    `--git-annex-endpoint`
-  - `--supersedes EVENT_ID` repeatable
-  - `--leader`
-  - `--leader-key`
-  - `--signing-key PATH`
-  - `--signature`
-  - `--no-commit`
-- `identity publish-inventory`
-  - common registry options
-  - `--service yggdrasil`
-  - `--generation N` required
-  - `--state STATE`, default `staged`
-  - `--leader`
-  - `--leader-key`
-  - `--signing-key PATH`
-  - `--signature`
-  - `--allow-duplicate`
-  - `--no-commit`
-- `identity promote NODE SERVICE`
-  - common registry options
-  - `--generation N` required
-  - `--leader`
-  - `--leader-key`
-  - `--signing-key PATH`
-  - `--signature`
-  - `--no-commit`
-- `identity burn NODE SERVICE`
-  - common registry options
-  - `--generation N` required
-  - `--fingerprint` required
-  - `--reason` required
-  - `--leader`
-  - `--leader-key`
-  - `--signing-key PATH`
-  - `--signature`
-  - `--no-commit`
-- `identity status [NODE]`
-  - common registry options
-- `identity matrix`
-  - `--node HOST` repeatable
-  - `--service NAME` repeatable
-  - `--only-missing`
-  - `--json`
-- `identity generate-missing`
-  - common registry options
-  - `--node HOST` repeatable
-  - `--service NAME` repeatable
-  - `--dry-run`
-  - `--publish` / `--no-publish`
-  - `--publish-push` / `--no-publish-push`
-  - `--notify`
-  - `--no-reconcile`
-  - `--leader`
-  - `--leader-key`
-  - `--signing-key PATH`
-  - `--signature`
-  - `--no-commit`
-- `identity smoke-test`
-  - common registry options
-  - `--node HOST` repeatable
-  - `--verify-node HOST` repeatable
-  - `--stress-rounds N`, default `3`
-  - `--poll-seconds N`, default `90`
-  - `--poll-interval FLOAT`, default `2.0`
-  - `--leader`
-  - `--leader-key`
-  - `--signing-key PATH`
-  - `--signature`
-- `identity apply`
-  - common registry options
-
-## `bundle`
-
-- `bundle publish NODE SERVICE`
-  - `--generation N` required
-  - `--source PATH` required
-  - `--target-path PATH` required
-- `bundle seal NODE SERVICE`
-  - common registry options
-  - `--generation N` required
-  - `--source PATH` required
-  - `--target-path PATH` required
-  - `--recipient`
-  - `--from-inventory`
-  - `--leader`
-  - `--leader-key`
-  - `--signing-key PATH`
-  - `--signature`
-  - `--no-commit`
-
-## `receipt`
-
-- `receipt write`
-  - common registry options
-  - `--node HOST` required
-  - `--service NAME` required
-  - `--generation N` required
-  - `--status`, default `node-activated`
-  - `--activated`
-  - `--signed-by-node`
-  - `--signing-key PATH`
-  - `--signature`
-  - `--path PATH`
-- `receipt collect NODE SERVICE`
-  - `--generation N` required
-  - `--registry PATH`, default `/var/lib/cluster-identity/registry`
-  - `--no-commit`
-
-## `host-age`
-
-- `host-age bootstrap HOST`
-  - `--source PATH`
-  - `--target-path PATH`, default
-    `/var/lib/cluster-identity/age/host.agekey`
-- `host-age public HOST`
-  - `--target-path PATH`, default
-    `/var/lib/cluster-identity/age/host.agekey`
-- `host-age rotate HOST`
-  - `--target-path PATH`, default
-    `/var/lib/cluster-identity/age/host.agekey`
+Named-host `deploy` resolves live identity candidates before invoking
+deploy-rs. `deploy all` performs boot-critical preflight comparison first:
+changed or unverifiable hosts use deploy-rs, while unchanged hosts retain
+Colmena fan-out. VM launching belongs to the dedicated `host-vm` app and is no
+longer a `clusterctl` command.

@@ -1,0 +1,19 @@
+% nix, topology, diagram, network
+
+# Render this flake's topology diagrams
+nix build .#topology.<system>.config.output -o ./topology-result
+
+# Render and open the host/service diagram
+nix build .#topology.<system>.config.output -o ./topology-result && xdg-open ./topology-result/main.svg
+
+# Render and open the network diagram
+nix build .#topology.<system>.config.output -o ./topology-result && xdg-open ./topology-result/network.svg
+
+# Evaluate one host's resolved topology interfaces (network, addresses, links)
+nix eval .#nixosConfigurations.<host>.config.topology.self.interfaces --apply 'ifaces: builtins.mapAttrs (_: i: { inherit (i) network addresses virtual physicalConnections; }) ifaces'
+
+# List the networks every host has been assigned to
+nix eval --json --apply 'cfgs: builtins.mapAttrs (_: c: builtins.attrValues (builtins.mapAttrs (_: i: i.network) c.config.topology.self.interfaces)) cfgs' .#nixosConfigurations
+
+$ system: nix eval --raw --impure --expr builtins.currentSystem 2>/dev/null
+$ host: nix eval --raw --apply 'hosts: builtins.concatStringsSep "\n" (builtins.attrNames hosts)' .#inventory.hosts 2>/dev/null

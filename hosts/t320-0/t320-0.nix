@@ -53,7 +53,10 @@ in
   boot.loader.grub.enable = lib.mkForce false;
   boot.loader.systemd-boot.enable = true;
   boot.loader.systemd-boot.configurationLimit = 10;
-  boot.loader.efi.canTouchEfiVariables = true;
+  # This machine already boots systemd-boot through EFI/BOOT/BOOTX64.EFI, and
+  # its firmware variable store is full of legacy OS entries. Keep deployment
+  # independent of EFI NVRAM writes.
+  boot.loader.efi.canTouchEfiVariables = false;
 
   # Import the healthy secondary data pool in addition to `big` (handled by storage/zfs dendrite).
   # The preserved `small` pool is intentionally not auto-imported because the

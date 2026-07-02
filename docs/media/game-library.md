@@ -6,7 +6,9 @@ on client hosts at `/srv/games`.
 ## Current Layout
 
 - `t320-0` enables `media/game-library/export` and serves `/big/GameLibrary`
-  over NFS.
+  over NFS on its cluster-identity Ygg alias `t320-0-ygg`.
+- The export opens NFSv4 TCP port `2049` only on the private Yggdrasil
+  interface. It is not exposed through the host's global firewall ports.
 - `t320-0` also runs the `romm` fruit. RomM stores its application state,
   configuration, database data, assets, resources, and local env files under
   `/var/lib/romm` on the root filesystem.
@@ -15,7 +17,7 @@ on client hosts at `/srv/games`.
 - RomM scan parallelism is set with `SCAN_WORKERS=10`, half of the 20 online CPU
   threads on `t320-0`.
 - `r640-0` and `desktoptoodle` enable `media/game-library` and mount that
-  export at `/srv/games`.
+  export from `t320-0-ygg:/big/GameLibrary` at `/srv/games`.
 - home-directory symlinks such as `/home/example/games` continue to point at
   `/srv/games`.
 - `desktoptoodle` also has a local Steam library on the BitLocker-mounted
@@ -52,6 +54,10 @@ on client hosts at `/srv/games`.
 - the client mount source and mount options
 - the backing dataset path on the source host
 - the allowed NFS client hosts and export options
+
+The current mount source and client allowlist intentionally use the
+cluster-identity `*-ygg` aliases instead of plain hostnames so NFS exports do
+not depend on DNS/Tailscale name resolution during server startup.
 
 Update that inventory entry if the source host, export path, or allowed clients
 change.

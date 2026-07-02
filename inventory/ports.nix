@@ -1,4 +1,10 @@
 {
+  clusterIdentityOnionMirror = {
+    allowedCidrs = [ "127.0.0.1/32" ];
+    bind = "127.0.0.1";
+    port = 17650;
+  };
+
   selfAssemblingClusterCache = {
     allowedCidrs = [
       "127.0.0.1/32"
@@ -64,6 +70,22 @@
     port = 8082;
   };
 
+  hydrui = {
+    allowedCidrs = [
+      "127.0.0.1/32"
+      "100.64.0.0/10"
+    ];
+    bind = "0.0.0.0";
+    firewallInterface = "tailscale0";
+    hosts = [
+      "127.0.0.1"
+      "localhost"
+      "desktoptoodle"
+    ];
+    port = 45870;
+    url = "http://desktoptoodle:45870";
+  };
+
   romm = {
     bind = "0.0.0.0";
     hosts = [ "t320-0" ];
@@ -76,6 +98,15 @@
     hosts = [ "t320-0" ];
     port = 9983;
     url = "http://t320-0:9983";
+  };
+
+  # Private Matrix homeserver — reachable only over Tailscale, no federation.
+  matrixContinuwuity = {
+    bind = "0.0.0.0";
+    firewallInterface = "tailscale0";
+    hosts = [ "r640-0" ];
+    port = 6167;
+    url = "http://r640-0:6167";
   };
 
   # SeaweedFS hot pool — all ports are private-overlay-only.

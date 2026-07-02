@@ -13,7 +13,14 @@
 #   small single  sdb        (ST3000DM008 3TB)
 #   fast  single  sdc        (Crucial MX500 1TB SSD)
 #   big   mirror  sdd + sde  (12TB + 12TB)
-{ config, lib, pkgs, modulesPath, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  modulesPath,
+  hostInventory,
+  ...
+}:
 
 {
   imports = [
@@ -34,15 +41,22 @@
   boot.kernelModules = [ "kvm-intel" ];
   boot.extraModulePackages = [ ];
 
-  fileSystems."/" = {
-    device = "/dev/disk/by-label/nixos-root";
-    fsType = "ext4";
-  };
+  # Preserve the existing label-based mounts while bare-metal installation is
+  # disabled. Disko owns these mounts only during an explicitly enabled install.
+  fileSystems = lib.mkIf (!(lib.attrByPath [ "org" "install" "enable" ] false hostInventory)) {
+    "/" = {
+      device = "/dev/disk/by-label/nixos-root";
+      fsType = "ext4";
+    };
 
-  fileSystems."/boot" = {
-    device = "/dev/disk/by-label/NIXBOOT";
-    fsType = "vfat";
-    options = [ "fmask=0077" "dmask=0077" ];
+    "/boot" = {
+      device = "/dev/disk/by-label/NIXBOOT";
+      fsType = "vfat";
+      options = [
+        "fmask=0077"
+        "dmask=0077"
+      ];
+    };
   };
 
   swapDevices = [ ];

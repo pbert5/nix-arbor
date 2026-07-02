@@ -4,5 +4,9 @@
   maturity = "stable";
   provides = [ "gnome-desktop" ];
   requires = [ "desktop" ];
-  conflicts = [ "desktop/cinnamon" ];
+  conflicts = [
+    "desktop/cinnamon"
+    "desktop/hyprland"
+    "desktop/hyprland-minimal"
+  ];
 }

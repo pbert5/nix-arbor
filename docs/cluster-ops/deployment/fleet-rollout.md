@@ -31,6 +31,10 @@ Use for:
 - root SSH changes
 - strict peer-lockdown enablement
 
+When this command is run from an operator-capable leader as a non-root user,
+`clusterctl` re-runs itself under `sudo` for the actual deploy so the leader's
+host-local root deploy key is available. Dry runs stay unprivileged.
+
 ### One Host, Routine Change
 
 ```bash
@@ -67,11 +71,24 @@ Use for:
 - converging the whole exported fleet after shared module or inventory changes
 - applying trust or identity changes cluster-wide from a leader
 
+`clusterctl` compares each host's current `boot.json` and generated `fstab`
+against the proposed NixOS closure before activation. Hosts with filesystem,
+kernel, initrd, kernel-parameter, or bootloader metadata changes are removed
+from the Colmena fan-out and deployed sequentially through deploy-rs. Hosts
+whose current state cannot be verified are treated as boot-risky too.
+
+The protected deploy-rs routes run first. If one fails, routine Colmena
+activation does not begin for the remaining hosts.
+
 Preview it first with:
 
 ```bash
 nix run .#clusterctl -- deploy all --dry-run
 ```
+
+The preview builds and inspects boot state, prints the selected route for every
+host, and runs Colmena `dry-activate` only for hosts classified as unchanged.
+It never invokes deploy-rs activation.
 
 ### Enrolled Host Plus Its Peers
 
@@ -103,6 +120,13 @@ After a rollout, check:
 
 ## Host Notes
 
+- `r640-0` boots from plain ext4 and uses ZFS for managed storage. Host-side
+  LVM scanning is disabled so retired Proxmox media and LVM signatures inside
+  backup zvols do not trigger failed auto-activation units.
+- `t320-0` boots systemd-boot through the removable-media fallback path
+  `EFI/BOOT/BOOTX64.EFI`. Its firmware NVRAM contains legacy boot entries and
+  has no room for another variable, so the host deliberately sets
+  `boot.loader.efi.canTouchEfiVariables = false`.
 - `t320-0` keeps some replicated ZFS backup datasets under `/big/backup/...`
   from its earlier TrueNAS layout. Those read-only parents can make plain
   `zfs mount -a` report child mountpoint-creation failures during activation,
