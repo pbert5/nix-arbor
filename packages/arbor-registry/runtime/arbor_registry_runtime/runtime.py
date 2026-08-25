@@ -183,6 +183,7 @@ class OrbitDBProvider(Provider):
         self.timeout = timeout
         self.encode = encode or (lambda record: record)
         self.decode = decode or (lambda record: record)
+        self.next_cursor: ProviderCursor | None = None
 
     def _request(self, request: dict[str, Any]) -> dict[str, Any]:
         request = dict(request)
@@ -236,11 +237,18 @@ class OrbitDBProvider(Provider):
         records = response.get("records")
         if not isinstance(records, list):
             raise ValueError("OrbitDB provider list response has no records")
+        next_cursor = response.get("nextCursor")
+        if not isinstance(next_cursor, str):
+            raise ValueError("OrbitDB provider list response has no next cursor")
+        self.next_cursor = next_cursor
         result = []
         for item in records:
             if not isinstance(item, dict) or not isinstance(item.get("hash"), str) or not isinstance(item.get("event"), dict):
                 raise ValueError("OrbitDB provider list response contains a malformed record")
-            result.append((item["hash"], self.decode(item["event"])))
+            cursor = item.get("sequence", item["hash"])
+            if not isinstance(cursor, (int, str)) or isinstance(cursor, bool):
+                raise ValueError("OrbitDB provider list response contains a malformed cursor")
+            result.append((cursor, self.decode(item["event"])))
         return result
 
 

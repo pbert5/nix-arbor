@@ -14,6 +14,7 @@ import { identify } from '@libp2p/identify'
 import { createFromPrivKey } from '@libp2p/peer-id-factory'
 import { generateKeyPair, marshalPrivateKey, unmarshalPrivateKey } from '@libp2p/crypto/keys'
 import { tcp } from '@libp2p/tcp'
+import { multiaddr } from '@multiformats/multiaddr'
 import { LevelBlockstore } from 'blockstore-level'
 import { LevelDatastore } from 'datastore-level'
 
@@ -70,11 +71,16 @@ export class TransportDaemon {
     if (!this.streams.length) throw new Error('at least one stream is required')
     this.addresses = { ...databaseAddresses }
     this.listen = listen
-    this.bootstrapPeers = bootstrapPeers
+    if (!Array.isArray(bootstrapPeers)) throw new Error('bootstrapPeers must be an array')
+    this.bootstrapPeers = bootstrapPeers.map(peer => {
+      if (typeof peer !== 'string' || !peer) throw new Error('bootstrap peer must be a non-empty multiaddr')
+      try { return multiaddr(peer) } catch { throw new Error('bootstrap peer must be a valid multiaddr') }
+    })
     this.databases = new Map()
     this.index = { version: 1, streams: Object.fromEntries(this.streams.map(s => [s, []])) }
     this.appendQueue = Promise.resolve()
     this.indexQueue = Promise.resolve()
+    this.lockPath = path.join(this.stateDir, 'transport-index.lock')
   }
 
   async start() {
@@ -88,10 +94,18 @@ export class TransportDaemon {
     this.datastore = new LevelDatastore(path.join(this.stateDir, 'helia-data')); await this.datastore.open()
     this.helia = new Helia({ libp2p: this.libp2p, blockstore: this.blockstore, datastore: this.datastore, blockBrokers: [bitswap()] })
     await this.helia.start()
+    await this.dialBootstrapPeers()
     const helia = this.helia
     const ipfs = { libp2p: orbitdbLibp2p(this.libp2p), pins: helia.pins, blockstore: { put: (cid, value, options) => helia.blockstore.put(cid, value, options), async *get(cid, options) { yield await helia.blockstore.get(cid, options) } } }
     this.orbitdb = await createOrbitDB({ ipfs, id: peerId.toString(), directory: path.join(this.stateDir, 'orbitdb') })
     for (const stream of this.streams) await this.open(stream)
+    for (const stream of this.streams) await this.refreshIndex(stream)
+  }
+
+  async dialBootstrapPeers() {
+    if (!this.bootstrapPeers.length) return true
+    const results = await Promise.allSettled(this.bootstrapPeers.map(peer => this.libp2p.dial(peer)))
+    return results.some(result => result.status === 'fulfilled')
   }
 
   async open(stream) {
@@ -103,13 +117,17 @@ export class TransportDaemon {
 
   async append(stream, event) {
     const operation = this.appendQueue.then(async () => {
-      if (!this.streams.includes(stream) || !event || typeof event !== 'object' || Array.isArray(event)) throw new Error('invalid stream or event')
-      const key = digest(event); const entries = this.index.streams[stream] ??= []
-      const existing = entries.find(item => item.key === key)
-      if (existing) return { hash: existing.hash, duplicate: true }
-      const hash = String(await (await this.open(stream)).add(event))
-      entries.push({ key, hash }); await this.saveIndex()
-      return { hash, duplicate: false }
+      return this.withIndexLock(async () => {
+        await this.reloadIndex()
+        if (!this.streams.includes(stream) || !event || typeof event !== 'object' || Array.isArray(event)) throw new Error('invalid stream or event')
+        await this.refreshIndex(stream)
+        const key = digest(event); const entries = this.index.streams[stream] ??= []
+        const existing = entries.find(item => item.key === key)
+        if (existing) return { hash: existing.hash, duplicate: true }
+        const hash = String(await (await this.open(stream)).add(event))
+        entries.push({ key, hash }); await this.saveIndex()
+        return { hash, duplicate: false }
+      })
     })
     this.appendQueue = operation.catch(() => {})
     return operation
@@ -117,9 +135,17 @@ export class TransportDaemon {
 
   async list(stream, cursor = 'v1:0', limit = 100) {
     if (!this.streams.includes(stream) || !Number.isInteger(limit) || limit < 1 || limit > MAX_PAGE) throw new Error('invalid list request')
-    const entries = validateIndex(this.index, this.streams).streams[stream] ?? []; const match = /^v1:(0|[1-9][0-9]*)$/.exec(cursor)
-    if (!match) throw new Error('invalid cursor')
-    const start = Number(match[1]); if (!Number.isSafeInteger(start) || start > Number.MAX_SAFE_INTEGER - limit) throw new Error('invalid cursor')
+    await this.refreshIndex(stream)
+    const entries = validateIndex(this.index, this.streams).streams[stream] ?? []
+    let start
+    const match = typeof cursor === 'string' && /^v1:(0|[1-9][0-9]*)$/.exec(cursor)
+    if (match) start = Number(match[1])
+    else if (typeof cursor === 'string') {
+      const position = entries.findIndex(item => item.hash === cursor)
+      if (position < 0) throw new Error('invalid cursor')
+      start = position + 1
+    } else throw new Error('invalid cursor')
+    if (!Number.isSafeInteger(start) || start > Number.MAX_SAFE_INTEGER - limit) throw new Error('invalid cursor')
     const selected = entries.slice(start, start + limit); const db = await this.open(stream)
     const records = []
     for (const [sequence, item] of selected.entries()) records.push({ hash: item.hash, event: await db.get(item.hash), sequence: start + sequence })
@@ -136,6 +162,40 @@ export class TransportDaemon {
     })
     this.indexQueue = write.catch(() => {})
     return write
+  }
+
+  async reloadIndex() {
+    try { this.index = validateIndex(JSON.parse(await fs.readFile(path.join(this.stateDir, 'transport-index.json'), 'utf8')), this.streams) } catch (cause) {
+      if (cause.code !== 'ENOENT') throw cause
+    }
+  }
+
+  async withIndexLock(operation) {
+    for (;;) {
+      try {
+        await fs.mkdir(this.lockPath)
+        break
+      } catch (cause) {
+        if (cause.code !== 'EEXIST') throw cause
+        await new Promise(resolve => setTimeout(resolve, 10))
+      }
+    }
+    try { return await operation() } finally { await fs.rm(this.lockPath, { recursive: true, force: true }) }
+  }
+
+  async refreshIndex(stream) {
+    const database = await this.open(stream)
+    const entries = this.index.streams[stream] ??= []
+    if (typeof database.iterator !== 'function') return
+    const known = new Set(entries.map(item => item.hash))
+    for await (const entry of database.iterator()) {
+      const hash = String(entry.hash)
+      if (!known.has(hash)) {
+        entries.push({ key: digest(entry.value), hash })
+        known.add(hash)
+      }
+    }
+    await this.saveIndex()
   }
   async handle(request) {
     try {
@@ -173,7 +233,7 @@ async function main() {
   const socketPath = process.env.ARBOR_REGISTRY_SOCKET ?? '/run/arbor-registryd/registry.sock'
   const streams = (process.env.ARBOR_REGISTRY_STREAMS ?? 'registry').split(',').filter(Boolean)
   const addresses = process.env.ARBOR_REGISTRY_DATABASE_ADDRESSES ? JSON.parse(process.env.ARBOR_REGISTRY_DATABASE_ADDRESSES) : {}
-  const daemon = new TransportDaemon({ stateDir, streams, databaseAddresses: addresses, listen: (process.env.ARBOR_REGISTRY_LISTEN ?? '').split(',').filter(Boolean) })
+  const daemon = new TransportDaemon({ stateDir, streams, databaseAddresses: addresses, listen: (process.env.ARBOR_REGISTRY_LISTEN ?? '').split(',').filter(Boolean), bootstrapPeers: (process.env.ARBOR_REGISTRY_BOOTSTRAP_PEERS ?? '').split(',').filter(Boolean) })
   const token = process.env.ARBOR_REGISTRY_SOCKET_TOKEN
   if (!token) throw new Error('ARBOR_REGISTRY_SOCKET_TOKEN is required')
   await daemon.start()

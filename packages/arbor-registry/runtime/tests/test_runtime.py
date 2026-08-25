@@ -102,7 +102,7 @@ class RuntimeTests(unittest.TestCase):
         class Handler(socketserver.StreamRequestHandler):
             def handle(self):
                 seen.update(json.loads(self.rfile.readline()))
-                self.wfile.write(json.dumps({"ok": True, "records": [{"hash": "h1", "event": {"id": 1}}]}).encode() + b"\n")
+                self.wfile.write(json.dumps({"ok": True, "records": [{"hash": "h1", "sequence": 7, "event": {"id": 1}}], "nextCursor": "v1:8"}).encode() + b"\n")
 
         path = Path(self.temp.name) / "registry.sock"
         server = socketserver.UnixStreamServer(str(path), Handler)
@@ -110,9 +110,10 @@ class RuntimeTests(unittest.TestCase):
         thread.start()
         try:
             provider = OrbitDBProvider(path, "membership", token="secret")
-            self.assertEqual(provider.fetch(0, 1), [("h1", {"id": 1})])
+            self.assertEqual(provider.fetch(0, 1), [(7, {"id": 1})])
             self.assertEqual(seen["cursor"], "v1:0")
             self.assertEqual(seen["token"], "secret")
+            self.assertEqual(provider.next_cursor, "v1:8")
         finally:
             server.shutdown()
             server.server_close()
