@@ -96,16 +96,17 @@ delivery, permissions, readiness, and a second rotation read. The
 server is populated over its HTTP API, `arbor-openbao-provider` fetches the
 value, and a systemd credential consumer reads the provider materialization.
 
-The separate `vault-upstream-vm` check is intentionally a fixture for the
-pinned upstream `systemd-vaultd`/`vault-agent` contract. Its seed service writes
-the upstream JSON secret format directly, so it verifies vaultd socket and
-credential delivery without claiming an OpenBao-to-provider-to-vaultd path.
-That stronger chain is not currently composable: upstream vault-agent owns the
-OpenBao fetch and systemd-vaultd consumes its JSON/socket protocol, while the
-Arbor provider writes scalar systemd credentials for the non-upstream path.
-Joining them requires a production adapter and a defined rotation protocol;
-the tests do not hide that boundary with a fake claim. Production auth remains
-external.
+Set `useUpstreamVaultd = true` and `useProviderBridge = true` to compose the
+runtime provider with the pinned upstream contract. The bridge groups all
+bindings for a service, waits for their initial provider files, and atomically
+writes `/run/systemd-vaultd/secrets/<service>.service.json` with mode `0400`.
+`vault-provider-bridge-vm` proves OpenBao, both provider fetches, the real
+upstream socket, and multiple `LoadCredential` values. Provider watchers retain
+`refreshInterval`; a changed value invokes the bridge before trying to restart
+the consumer. Rotation is implemented as a runtime command path but is not
+covered by the VM check yet. The default vault-agent mode remains unchanged;
+the bridge mode omits the upstream vault-agent template to avoid two writers.
+Runtime files and token contents remain outside Nix evaluation.
 
 Recovery authorization is deliberately stricter than ordinary envelope
 validation. Every approval must identify a trusted approver, role, and
