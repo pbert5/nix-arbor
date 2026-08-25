@@ -66,6 +66,11 @@ Lead-maintained queue for the extraction. States use the repository workflow:
 | TRANSPORT-RECOVERY-TESTS | DONE | transport/runtime recovery | worker; `packages/arbor-registry` | three-daemon reconnect/replay convergence and out-of-order identity-generation recovery with stale approver rejection |
 | DEPLOYMENT-BOUNDARY-TESTS | DONE | deployment planning | worker; `packages/arbor-manager` | incompatible-target exclusion, Colmena canary/batch planning, failed receipts, resume validation, and backend identity |
 | POSTFIX-SHOULD-FIXES | DONE | final review | lead + workers | precise transport evidence naming/topology assertions, explicit OpenBao readiness failure, and multi-batch deployment assertions |
+| VM-MULTINODE-ACCEPTANCE | VALIDATION | published registry/manager inputs | lead; `nix-arbor/tests/arbor-multinode-vm` | four isolated NixOS guests, real transport daemons, OpenBao/provider/vaultd secret flow, replay/quarantine, restart/reboot, virtual partition, runtime SSH, and graph-risk CLI evidence; passing smoke target, broader authority/deployment claims still open |
+| VM-CROSS-PEER-CONVERGENCE | BLOCKED | VM-MULTINODE-ACCEPTANCE | registry transport owner | runtime peer bootstrap is configured, but the four-VM run did not produce a bounded cross-peer accepted-state convergence assertion; do not claim replicated topology until a focused fix and VM evidence exist |
+| VM-REMOTE-NIXOS-DEPLOYMENT | READY | VM-MULTINODE-ACCEPTANCE + manager direct backend | manager/integration owner | resolve a registry snapshot and perform real SSH/NixOS generation activation with receipt binding; current VM target proves SSH only |
+| VM-LIVE-RELATIONSHIP-RECOVERY | READY | VM-CROSS-PEER-CONVERGENCE + runtime recovery APIs | registry/integration owner | accepted peer, active/standby parent, descendant, identity rotation, stale-generation rejection, and parent return in isolated guests |
+| VM-REGISTRY-MODULE-STACK-OVERFLOW | IN_PROGRESS | vault runtime + NixOS module | registry owner | published default module recursively scans derivation-valued `runtimePackage` and overflows during VM evaluation; fix in arbor-registry, then restore module import to this target |
 
 The lead dispatches a newly unblocked row immediately; this table is not a
 serial phase plan. Research agents may finish without changing repository

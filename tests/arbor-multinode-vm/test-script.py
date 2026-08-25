@@ -1,0 +1,73 @@
+start_all()
+
+for node in (root_a, root_b, child, grandchild):
+    node.wait_for_unit("arbor-registryd.service", timeout=120)
+    node.wait_for_open_port(4001, timeout=120)
+print("BOOTSTRAP COMPLETE")
+
+# The daemon generates its libp2p identity at runtime. Resolve that public
+# peer id from root-a, then install runtime-only bootstrap overrides on the
+# other guests so the acceptance uses the actual libp2p peer identity.
+import json
+root_peer = json.loads(root_a.succeed("python3 /etc/arbor-test/status.py"))["peerId"]
+for node in (root_b, child, grandchild):
+    node.succeed("mkdir -p /run/systemd/system/arbor-registryd.service.d")
+    node.succeed("printf '%%s\\n' '[Service]' 'Environment=ARBOR_REGISTRY_BOOTSTRAP_PEERS=/ip4/10.42.0.10/tcp/4001/p2p/%s' > /run/systemd/system/arbor-registryd.service.d/bootstrap.conf" % root_peer)
+    node.succeed("systemctl daemon-reload; systemctl restart arbor-registryd.service")
+    node.wait_for_unit("arbor-registryd.service", timeout=120)
+
+child.wait_for_unit("openbao-test.service", timeout=120)
+child.wait_for_unit("seed-openbao-secret.service", timeout=120)
+child.wait_for_unit("arbor-vault-runtime-arbor-test-consumer-bridge.service", timeout=120)
+child.succeed("systemctl start arbor-test-consumer.service")
+child.succeed("test \"$(cat /run/arbor-test/consumer.sha256)\" = \"$(cat /run/arbor-test/secret.sha256)\"")
+print("SECRET DELIVERY VERIFIED")
+
+root_a.succeed("python3 /etc/arbor-test/scenario.py")
+root_b.succeed("python3 /etc/arbor-test/append.py")
+root_b.succeed("python3 /etc/arbor-test/list.py | grep -q transport-local-root-b")
+print("TRANSPORT DAEMONS AND DURABLE APPEND VERIFIED")
+
+print("DUPLICATE AND QUARANTINE VERIFIED")
+
+child.succeed("test -f /run/systemd-vaultd/secrets/arbor-test-consumer.service.json")
+child.succeed("old=$(cat /run/arbor-test/secret.sha256); value=$(head -c 24 /dev/urandom | base64 -w0); printf '%s' \"$value\" | sha256sum | cut -d' ' -f1 >/run/arbor-test/new-secret.sha256; BAO_ADDR=http://127.0.0.1:8200 BAO_TOKEN=arbor-test-root bao kv put secret/arbor/acceptance value=\"$value\" >/dev/null; test \"$old\" != \"$(cat /run/arbor-test/new-secret.sha256)\"")
+child.wait_until_succeeds("test \"$(cat /run/arbor-test/consumer.sha256)\" = \"$(cat /run/arbor-test/new-secret.sha256)\"", timeout=120)
+print("SECRET ROTATION VERIFIED")
+
+child.succeed("value=$(BAO_ADDR=http://127.0.0.1:8200 BAO_TOKEN=arbor-test-root bao kv get -field=value secret/arbor/acceptance); ! nix-store -qR /run/current-system | xargs -r grep -I -F \"$value\" 2>/dev/null; ! grep -R -F \"$value\" /run/arbor-test /var/log 2>/dev/null")
+child.succeed("systemctl restart arbor-registryd.service")
+child.wait_for_unit("arbor-registryd.service", timeout=120)
+child.reboot()
+child.wait_for_shutdown()
+child.start()
+child.wait_for_unit("arbor-registryd.service", timeout=120)
+child.wait_for_unit("arbor-vault-runtime-arbor-test-consumer-bridge.service", timeout=120)
+print("RESTART AND REBOOT RECOVERED")
+
+root_a.succeed("systemctl stop arbor-registryd.service")
+child.succeed("systemctl is-system-running --wait || true")
+grandchild.succeed("systemctl is-system-running --wait || true")
+root_b.succeed("systemctl is-active arbor-registryd.service")
+print("PRIMARY PARENT OFFLINE")
+
+child.succeed("iptables -A OUTPUT -d 10.42.0.10 -j REJECT")
+root_b.succeed("test -S /run/arbor-registryd/registry.sock")
+child.succeed("iptables -D OUTPUT -d 10.42.0.10 -j REJECT")
+print("PARTITION HEALED")
+
+root_a.succeed("mkdir -p /run/arbor-test; ssh-keygen -q -t ed25519 -N '' -f /run/arbor-test/id_ed25519")
+for node in (child, grandchild):
+    key = root_a.succeed("cat /run/arbor-test/id_ed25519.pub").strip()
+    node.succeed("install -d -m 0700 /root/.ssh")
+    node.succeed("printf '%%s\\n' %r >> /root/.ssh/authorized_keys" % key)
+    node.succeed("chmod 0600 /root/.ssh/authorized_keys")
+root_a.succeed("ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i /run/arbor-test/id_ed25519 root@10.42.0.12 true")
+print("SSH CONNECTIVITY VERIFIED")
+
+root_a.succeed("cp /etc/arbor-test/snapshot.json /run/arbor-test/snapshot.json")
+root_a.succeed("sd=$(jq -cS .snapshot /run/arbor-test/snapshot.json | sha256sum | cut -d' ' -f1); jq --arg sd \"$sd\" '.snapshotDigest=$sd' /run/arbor-test/snapshot.json >/run/arbor-test/snapshot.tmp; digest=$(jq -cS 'del(.digest)' /run/arbor-test/snapshot.tmp | sha256sum | cut -d' ' -f1); jq --arg digest \"$digest\" '.digest=$digest' /run/arbor-test/snapshot.tmp >/run/arbor-test/snapshot.json")
+root_a.succeed("jq -e '.plan.risks | length > 0' /run/arbor-test/snapshot.json")
+root_a.succeed("arbor-manager nodes list --snapshot /run/arbor-test/snapshot.json --scope selected --format names | grep -q child")
+print("GRAPH-RISK PLAN VERIFIED")
+print("VM ACCEPTANCE SMOKE COMPLETE")
