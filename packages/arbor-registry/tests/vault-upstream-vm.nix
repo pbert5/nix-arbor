@@ -4,7 +4,10 @@
   pkgs,
 }:
 pkgs.testers.nixosTest {
-  name = "arbor-registry-vault-upstream";
+  # This is deliberately an upstream fixture: vault-agent renders the
+  # checked-in value into systemd-vaultd's JSON secret directory. It does not
+  # exercise arbor-openbao-provider; that path is covered by vault-provider-vm.
+  name = "arbor-registry-vault-upstream-fixture";
   nodes.machine =
     {
       config,

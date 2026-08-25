@@ -91,9 +91,21 @@ namespace. Token contents are never Nix option values, command-line arguments,
 or store inputs. The executable does not start OpenBao in production: live
 integration uses an externally managed endpoint or injected adapter command.
 The package check also starts an isolated OpenBao dev server and verifies HTTP
-delivery, permissions, readiness, and a second rotation read; production auth
-and systemd-vaultd behavior is covered by the pinned upstream contract and VM
-checks; production auth remains external.
+delivery, permissions, readiness, and a second rotation read. The
+`vault-provider-vm` check extends that path in a NixOS VM: a real OpenBao dev
+server is populated over its HTTP API, `arbor-openbao-provider` fetches the
+value, and a systemd credential consumer reads the provider materialization.
+
+The separate `vault-upstream-vm` check is intentionally a fixture for the
+pinned upstream `systemd-vaultd`/`vault-agent` contract. Its seed service writes
+the upstream JSON secret format directly, so it verifies vaultd socket and
+credential delivery without claiming an OpenBao-to-provider-to-vaultd path.
+That stronger chain is not currently composable: upstream vault-agent owns the
+OpenBao fetch and systemd-vaultd consumes its JSON/socket protocol, while the
+Arbor provider writes scalar systemd credentials for the non-upstream path.
+Joining them requires a production adapter and a defined rotation protocol;
+the tests do not hide that boundary with a fake claim. Production auth remains
+external.
 
 Recovery authorization is deliberately stricter than ordinary envelope
 validation. Every approval must identify a trusted approver, role, and
