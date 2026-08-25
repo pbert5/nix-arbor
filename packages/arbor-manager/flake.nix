@@ -138,6 +138,7 @@
           assert !rejectedDerivation.success;
           assert (import ./tests/node-selection.nix { inherit (nixpkgs) lib; });
           assert (import ./tests/snapshot.nix { inherit (nixpkgs) lib; });
+          assert (import ./tests/source-merge.nix { inherit (nixpkgs) lib; });
           assert (import ./tests/colmena.nix { inherit (nixpkgs) lib; });
           (import nixpkgs { inherit system; }).emptyFile;
       });

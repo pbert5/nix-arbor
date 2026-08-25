@@ -3,6 +3,8 @@ let
   nodeSelection = import ./node-selection.nix { inherit lib; };
   deploymentPlan = import ./deployment-plan.nix { inherit lib nodeSelection; };
   colmena = import ./colmena.nix { inherit lib; };
+  sourceMergeLib = import ./source-merge.nix { inherit lib; };
+  sourceMerge = sourceMergeLib.sourceMerge;
 
   publicMachineFields = [
     "identity"
@@ -274,6 +276,7 @@ in
     discover
     localSource
     registrySnapshot
+    sourceMerge
     ;
 
   inherit (nodeSelection) graph selectors select;

@@ -30,6 +30,13 @@ layout, and `registrySnapshot { digest = "sha256:..."; machines = { name = recor
 adapts an immutable accepted snapshot. Registry snapshot entries contribute
 public data only; trusted executable modules are selected by local composition.
 
+`sourceMerge` combines `registrySnapshot`, `committedLocal`, and an optional
+`sessionOverride` per machine field. The result has `sources`, `machines`, and
+a deterministic `digest`; each merged field records its layer and original
+provenance. Session overrides may use only named `trustedLocalModules` via
+`moduleSelectors`. Authority and identity-generation fields cannot be changed,
+and duplicate names within a source are rejected.
+
 ## Machine and deployment snapshots
 
 `lib.snapshot` provides pure inspection and export helpers. `inspectMachine`
