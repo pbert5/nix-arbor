@@ -90,12 +90,19 @@ accepted reconciliation, and materialized state.
 | ORBITDB-CROSS-GUEST-CONVERGENCE | INTEGRATION | DETERMINISTIC-INDEPENDENT-OPEN | registry transport + VM | bounded four-VM raw replication and multi-writer assertion passes; live relationship convergence remains separate |
 | CROSS-GUEST-VM-CONVERGENCE | INTEGRATION | DETERMINISTIC-INDEPENDENT-OPEN | VM integration | VM status proves one realm/address, then root-a→child and child→root-b raw events replicate within bounded waits |
 | ACCEPTED-STATE-CROSS-GUEST | DONE | CROSS-GUEST-VM-CONVERGENCE | registry reconciliation | bounded VM assertion proves a signed root-a record reaches child raw state, accepted history, and materialized projection |
+| RUNTIME-SCHEMA-PARITY | IN_PROGRESS | REGISTRY-RECONCILIATION | registry runtime | deliberate Python/Nix family alignment with live machine/service families |
+| RUNTIME-DYNAMIC-KEYRING | IN_PROGRESS | OPENBAO-RUNTIME-IDENTITY; ENROLLMENT-RECOVERY-LIFECYCLE | registry runtime | authority-derived node key discovery and issuer-generation binding |
+| RUNTIME-AUTHORITY-PARITY | READY | GRAPH-MODEL; AUTHORITY-ACCEPTANCE-BOUNDARY | registry runtime | relationship-derived parent/peer authority and non-amplification |
+| RUNTIME-CONTROL-SURFACE | IN_PROGRESS | RUNTIME-SCHEMA-PARITY; RUNTIME-DYNAMIC-KEYRING; RUNTIME-AUTHORITY-PARITY | registry runtime | packaged registryctl over durable Runtime and OrbitDBProvider |
+| FIRST-NODE-LOSS-TRANSPORT | READY | CROSS-GUEST-VM-CONVERGENCE | transport/VM integration | root-a offline while root-b writes and root-a later catches up |
+| MULTIPLE-BOOTSTRAP-PEERS | READY | TRANSPORT-BOOTSTRAP-CONTRACT | transport/VM integration | child has root-a and root-b bootstrap peers and survives either loss |
 | LIVE-RELATIONSHIP-ACCEPTANCE | IN_PROGRESS | ACCEPTED-STATE-CROSS-GUEST + RUNTIME-CONTROL-SURFACE | registry reconciliation | live signed peer, active/standby parent, and grandchild edges |
 | SERVICE-ENDPOINT-CROSS-GUEST | IN_PROGRESS | ACCEPTED-STATE-CROSS-GUEST + RUNTIME-CONTROL-SURFACE | registry runtime | live service and provider-neutral endpoint advertisement/resolution |
 | VM-SERVICE-ENDPOINT-INTEGRATION | BLOCKED | SERVICE-ENDPOINT-CROSS-GUEST | registry runtime | live service and provider-neutral endpoint advertisement/resolution in the VM network |
 | IDENTITY-RECOVERY-VM | BLOCKED | LIVE-RELATIONSHIP-ACCEPTANCE | registry runtime | runtime identity replacement, recovery authorization, stale-generation rejection, and grandchild survival |
 | REMOTE-NIXOS-ACTIVATION | BLOCKED | LIVE-RELATIONSHIP-ACCEPTANCE; published module path | manager/integration | registry-derived immutable plan and real SSH/NixOS activation with receipt |
 | REMOTE-NIXOS-ACTIVATION-FAILURE | BLOCKED | REMOTE-NIXOS-ACTIVATION | manager/integration | failure receipt, identity-bound retry/resume, and no false success |
+| DEPLOYMENT-RETRY-SEMANTICS | DONE | DEPLOYMENT-BOUNDARY-TESTS | manager | failed receipt results are valid resume candidates; prior successes are skipped |
 | COLMENA-VM | BLOCKED | REMOTE-NIXOS-ACTIVATION | deployment | serious real multi-guest Colmena attempt, or explicit VM-environment blocker |
 | FAILED-VAULT-CONSUMER-ROTATION | DONE | — | vault/runtime | VM masks the consumer during rotation, observes provider restart failure without advancing consumer state, then restores and verifies retry at the latest generation |
 | HARNESS-NORMAL-MODULE-PATH | DONE | REGISTRY-NIXOS-MODULE-RECURSION | VM integration | acceptance uses the published `vault-runtime-upstream` module export |

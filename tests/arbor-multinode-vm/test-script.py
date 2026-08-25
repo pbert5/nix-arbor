@@ -58,6 +58,16 @@ root_b.succeed("python3 /etc/arbor-test/append.py")
 root_b.wait_until_succeeds("python3 /etc/arbor-test/list.py | grep -q transport-local-root-b", timeout=30)
 print("CROSS-GUEST RAW ORBITDB REPLICATION AND MULTI-WRITER VERIFIED")
 
+# The original realm opener is intentionally unavailable for a write and then
+# restarted.  The surviving peers must continue exchanging raw events.
+root_a.succeed("systemctl stop arbor-registryd.service")
+root_b.succeed("ARBOR_TEST_RECORD_ID=transport-first-loss-root-b2 python3 /etc/arbor-test/append.py")
+child.wait_until_succeeds("python3 /etc/arbor-test/list.py | grep -q transport-first-loss-root-b2", timeout=30)
+root_a.succeed("systemctl start arbor-registryd.service")
+root_a.wait_for_unit("arbor-registryd.service", timeout=120)
+root_a.wait_until_succeeds("python3 /etc/arbor-test/list.py | grep -q transport-first-loss-root-b2", timeout=30)
+print("FIRST REALM CREATOR LOSS AND REJOIN CATCH-UP VERIFIED")
+
 print("LOCAL RECONCILIATION DUPLICATE AND QUARANTINE VERIFIED")
 
 child.succeed("test -f /run/systemd-vaultd/secrets/arbor-test-consumer.service.json")

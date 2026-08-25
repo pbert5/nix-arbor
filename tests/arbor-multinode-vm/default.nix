@@ -4,7 +4,12 @@ let
   lib = pkgs.lib;
   registry = inputs.arbor-registry;
   manager = inputs.arbor-manager;
-  runtime = registry.packages.${pkgs.system}.arbor-registry-runtime;
+  # Keep the promoted remote transport (realm/bootstrap semantics) while
+  # exercising the local runtime control-surface change until that component
+  # commit is promoted and the lock can be refreshed.
+  runtime = import ../../packages/arbor-registry/runtime/package.nix {
+    inherit (pkgs) lib python3Packages;
+  };
   transport = registry.packages.${pkgs.system}.arbor-registry-transport;
   managerCli = manager.packages.${pkgs.system}.arbor-manager;
   pythonRuntime = pkgs.python3.withPackages (ps: [ ps.pynacl ]);
@@ -95,8 +100,6 @@ let
         environment.etc."arbor-test/status.py".source = ./status.py;
         environment.etc."arbor-test/append.py".source = ./append.py;
         environment.etc."arbor-test/snapshot.json".text = snapshot;
-        environment.variables.PYTHONPATH = "${registry}/runtime";
-
         systemd.tmpfiles.rules = [
           "d /run/arbor-test 0700 root root -"
           "d /var/lib/arbor-registryd 0700 root root -"

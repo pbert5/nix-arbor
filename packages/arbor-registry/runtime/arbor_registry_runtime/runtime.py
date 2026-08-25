@@ -533,7 +533,7 @@ class OrbitDBProvider(Provider):
         """Return non-secret transport diagnostics for operator tooling."""
         response = self._request({"operation": "status"})
         result = {key: value for key, value in response.items() if key != "ok"}
-        if not isinstance(result.get("peerId"), str) or not isinstance(result.get("databaseAddresses"), list):
+        if not isinstance(result.get("peerId"), str) or not isinstance(result.get("databaseAddresses"), dict):
             raise ValueError("OrbitDB provider status response is malformed")
         return result
 
