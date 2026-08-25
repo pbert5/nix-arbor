@@ -5,6 +5,8 @@ let
   machines = {
     api = {
       machine = {
+        name = "api";
+        system = "x86_64-linux";
         targetHost = "api.example";
         targetPort = 2222;
         targetUser = "deploy";
@@ -17,6 +19,8 @@ let
     };
     worker = {
       machine = {
+        name = "worker";
+        system = "x86_64-linux";
         target = {
           targetHost = "worker.example";
           targetUser = "worker";
@@ -28,8 +32,8 @@ let
   };
   plan = manager.plan {
     nodes = {
-      api = { };
-      worker = { };
+      api = machines.api.machine;
+      worker = machines.worker.machine;
       excluded = {
         reachable = false;
       };
@@ -38,7 +42,10 @@ let
     selector = "local";
     backend = "colmena";
   };
-  hive = manager.rawHive { inherit machines plan; };
+  hive = manager.rawHive {
+    inherit machines plan;
+    snapshotDigest = plan.snapshotDigest;
+  };
   directPlan = manager.plan {
     nodes = {
       api = { };
@@ -61,7 +68,34 @@ assert
     "web"
     "blue"
   ];
-assert hive.meta == { };
+assert hive.meta.arbor.backend == "colmena";
+assert hive.meta.arbor.snapshotDigest == plan.snapshotDigest;
+assert hive.meta.arbor.selected == [ "api" ];
 assert directPlan.backend.backend == "direct";
 assert plan.backend.backend == "colmena";
+assert
+  !(builtins.tryEval (
+    builtins.deepSeq (manager.rawHive {
+      inherit machines plan;
+      snapshotDigest = "stale";
+    }) true
+  )).success;
+assert
+  !(builtins.tryEval (
+    builtins.deepSeq (manager.rawHive {
+      machines = machines // {
+        api.machine.targetHost = "stale.example";
+      };
+      inherit plan;
+      snapshotDigest = plan.snapshotDigest;
+    }) true
+  )).success;
+assert
+  !(builtins.tryEval (
+    builtins.deepSeq (manager.rawHive {
+      inherit machines;
+      plan = directPlan;
+      snapshotDigest = directPlan.snapshotDigest;
+    }) true
+  )).success;
 true

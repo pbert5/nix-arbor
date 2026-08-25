@@ -352,6 +352,7 @@ in
             raw = colmena.rawHive {
               inherit machines;
               plan = selectedPlan;
+              snapshotDigest = selectedPlan.snapshotDigest;
             };
           in
           {

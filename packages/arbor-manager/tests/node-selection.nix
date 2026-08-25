@@ -154,6 +154,14 @@ assert
       commands = [ [ "nixos-rebuild switch --flake '.#a-child'" ] ];
     }
   ];
+assert fails (
+  manager.plan {
+    nodes = reversed;
+    roots = [ "z-parent" ];
+    selector = "accessible";
+    canary = "a-child";
+  }
+);
 assert cyclePlan.names == [ ];
 assert
   cyclePlan.selection.blocked == [

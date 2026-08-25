@@ -122,6 +122,12 @@ in
           throw "Arbor Manager: canary must be a node name or null."
         else if !(builtins.elem canary selected) then
           throw "Arbor Manager: canary '${canary}' is not in the deployable selection."
+        else if
+          builtins.any (
+            parent: builtins.elem parent selected && builtins.elem canary (selection.graphValue.children parent)
+          ) selection.graphValue.names
+        then
+          throw "Arbor Manager: canary '${canary}' violates topological ordering; selected parent(s) must deploy first."
         else
           canary;
       chosenCanary =
