@@ -74,8 +74,9 @@ let
       source ? null,
     }:
     let
-      record = resolvedRecord machine;
-      sourceProvenance = sourceFor machine source;
+      rawRecord = resolvedRecord machine;
+      record = public rawRecord;
+      sourceProvenance = public (sourceFor machine source);
       fields = builtins.listToAttrs (
         map (field: {
           name = field;
@@ -83,7 +84,7 @@ let
             inherit field;
             source = sourceProvenance;
           };
-        }) (builtins.attrNames record)
+        }) (builtins.attrNames rawRecord)
       );
     in
     {

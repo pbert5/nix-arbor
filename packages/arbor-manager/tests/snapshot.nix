@@ -48,6 +48,8 @@ assert
 assert inspected.provenance.source.kind == "registry-snapshot";
 assert inspected.provenance.fields.metadata.source.digest == "sha256:registry";
 assert inspected.provenance.fields.metadata.field == "metadata";
+assert inspected.record.metadata.apiToken == "<redacted>";
+assert inspected.record.metadata.transform == "<redacted>";
 assert builtins.match ".*apiToken.*<redacted>.*" exported != null;
 assert builtins.match ".*transform.*<redacted>.*" exported != null;
 assert builtins.match ".*do-not-export.*" exported == null;

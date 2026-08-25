@@ -63,6 +63,19 @@ let
       registry = registry ++ registry;
     }) true
   );
+  rejectedNestedSecurity = builtins.tryEval (
+    builtins.deepSeq (manager.sourceMerge {
+      inherit registry local;
+      sessionOverride = [
+        {
+          name = "node";
+          record = {
+            metadata.identity = "unsafe";
+          };
+        }
+      ];
+    }) true
+  );
   rejectedModules = builtins.tryEval (
     builtins.deepSeq (manager.sourceMerge {
       inherit registry;
@@ -99,6 +112,7 @@ assert builtins.length machine.modules == 2;
 assert builtins.head machine.modules == ./fixtures/fixture/configuration.nix;
 assert !rejectedSecurity.success;
 assert !rejectedDuplicate.success;
+assert !rejectedNestedSecurity.success;
 assert !rejectedModules.success;
 assert merged.digest == mergedAgain.digest;
 true

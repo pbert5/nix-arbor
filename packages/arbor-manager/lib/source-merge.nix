@@ -10,6 +10,27 @@ let
     "identity-generation"
   ];
 
+  protectedField =
+    name:
+    builtins.elem (lib.toLower (builtins.replaceStrings [ "-" "_" ] [ "" "" ] name)) [
+      "authority"
+      "authorityroot"
+      "generation"
+      "identity"
+      "identitygeneration"
+    ];
+
+  protectedFieldsIn =
+    value:
+    if builtins.isAttrs value then
+      lib.concatMap (
+        name: (if protectedField name then [ name ] else [ ]) ++ protectedFieldsIn value.${name}
+      ) (builtins.attrNames value)
+    else if builtins.isList value then
+      lib.concatMap protectedFieldsIn value
+    else
+      [ ];
+
   equal = a: b: builtins.toJSON a == builtins.toJSON b;
 
   canonicalize =
@@ -133,7 +154,13 @@ let
         if session == null then
           true
         else
-          securityCheck name "session override" (registryRecord // localRecord) sessionRecord;
+          let
+            changed = protectedFieldsIn sessionRecord;
+          in
+          if changed != [ ] then
+            throw "Arbor Manager: session override '${name}' contains protected field(s): ${lib.concatStringsSep ", " (lib.unique changed)}."
+          else
+            true;
       layers = [
         {
           label = "registry";
