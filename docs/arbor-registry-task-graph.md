@@ -68,8 +68,8 @@ Lead-maintained queue for the extraction. States use the repository workflow:
 | POSTFIX-SHOULD-FIXES | DONE | final review | lead + workers | precise transport evidence naming/topology assertions, explicit OpenBao readiness failure, and multi-batch deployment assertions |
 | VM-MULTINODE-ACCEPTANCE | VALIDATION | published registry/manager inputs | lead; `nix-arbor/tests/arbor-multinode-vm` | four isolated NixOS guests, real transport daemons, OpenBao/provider/vaultd secret flow, replay/quarantine, restart/reboot, virtual partition, runtime SSH, and graph-risk CLI evidence; passing smoke target, broader authority/deployment claims still open |
 | VM-CROSS-PEER-CONVERGENCE | INTEGRATION | VM-MULTINODE-ACCEPTANCE | registry transport owner | raw cross-guest replication now passes with a shared realm; live relationship convergence remains a separate gate |
-| VM-REMOTE-NIXOS-DEPLOYMENT | READY | VM-MULTINODE-ACCEPTANCE + manager direct backend | manager/integration owner | resolve a registry snapshot and perform real SSH/NixOS generation activation with receipt binding; current VM target proves SSH only |
-| VM-LIVE-RELATIONSHIP-RECOVERY | READY | VM-CROSS-PEER-CONVERGENCE + runtime recovery APIs | registry/integration owner | accepted peer, active/standby parent, descendant, identity rotation, stale-generation rejection, and parent return in isolated guests |
+| VM-REMOTE-NIXOS-DEPLOYMENT | BLOCKED | LIVE-RELATIONSHIP-ACCEPTANCE + SERVICE-ENDPOINT-CROSS-GUEST + manager direct backend | manager/integration owner | current VM target proves SSH only; registry-derived target resolution and a real activation backend remain unimplemented |
+| VM-LIVE-RELATIONSHIP-RECOVERY | BLOCKED | LIVE-RELATIONSHIP-ACCEPTANCE + runtime recovery APIs | registry/integration owner | runtime relationship-authoring/graph API is not exposed by the packaged VM runtime; no live enrollment claim is made |
 | VM-REGISTRY-MODULE-STACK-OVERFLOW | DONE | vault runtime + NixOS module | registry owner | fixed and promoted as arbor-registry `823e02e`; normal published module path is exercised |
 
 ## Integrated VM acceptance queue
@@ -92,7 +92,7 @@ accepted reconciliation, and materialized state.
 | ACCEPTED-STATE-CROSS-GUEST | DONE | CROSS-GUEST-VM-CONVERGENCE | registry reconciliation | bounded VM assertion proves a signed root-a record reaches child raw state, accepted history, and materialized projection |
 | LIVE-RELATIONSHIP-ACCEPTANCE | READY | ACCEPTED-STATE-CROSS-GUEST | registry reconciliation | live signed peer, active/standby parent, and grandchild edges |
 | SERVICE-ENDPOINT-CROSS-GUEST | READY | ACCEPTED-STATE-CROSS-GUEST | registry runtime | live service and provider-neutral endpoint advertisement/resolution |
-| VM-SERVICE-ENDPOINT-INTEGRATION | BLOCKED | ORBITDB-CROSS-GUEST-CONVERGENCE | registry runtime | live service and provider-neutral endpoint advertisement/resolution in the VM network |
+| VM-SERVICE-ENDPOINT-INTEGRATION | BLOCKED | SERVICE-ENDPOINT-CROSS-GUEST | registry runtime | live service and provider-neutral endpoint advertisement/resolution in the VM network |
 | IDENTITY-RECOVERY-VM | BLOCKED | LIVE-RELATIONSHIP-ACCEPTANCE | registry runtime | runtime identity replacement, recovery authorization, stale-generation rejection, and grandchild survival |
 | REMOTE-NIXOS-ACTIVATION | BLOCKED | LIVE-RELATIONSHIP-ACCEPTANCE; published module path | manager/integration | registry-derived immutable plan and real SSH/NixOS activation with receipt |
 | REMOTE-NIXOS-ACTIVATION-FAILURE | BLOCKED | REMOTE-NIXOS-ACTIVATION | manager/integration | failure receipt, identity-bound retry/resume, and no false success |
