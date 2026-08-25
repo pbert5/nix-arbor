@@ -5,6 +5,7 @@ let
   colmena = import ./colmena.nix { inherit lib; };
   sourceMergeLib = import ./source-merge.nix { inherit lib; };
   sourceMerge = sourceMergeLib.sourceMerge;
+  hardware = import ./hardware.nix { inherit lib; };
 
   publicMachineFields = [
     "identity"
@@ -131,6 +132,9 @@ let
       cluster = sanitized.cluster or { };
       provenance = sanitized.provenance or { kind = "inline"; };
       precedence = sanitized.precedence or 0;
+      _hardware = hardware.validateHardware validatePublicValue "machine '${name}'.hardware" (
+        sanitized.hardware or null
+      );
     in
     assert lib.assertMsg (
       builtins.match "[a-zA-Z0-9][a-zA-Z0-9-]*" name != null
@@ -142,6 +146,7 @@ let
       builtins.match "[a-zA-Z0-9][a-zA-Z0-9-]*" hostname != null
     ) "Arbor Manager: machine '${name}' has an invalid hostname '${hostname}'.";
     assert _system;
+    assert _hardware;
     {
       inherit
         name
@@ -154,6 +159,7 @@ let
         ;
       enabled = sanitized.enabled or true;
     }
+    // lib.optionalAttrs (builtins.hasAttr "hardware" sanitized) { inherit (sanitized) hardware; }
     // lib.optionalAttrs (builtins.hasAttr "target" sanitized) { inherit (sanitized) target; }
     // lib.optionalAttrs (builtins.hasAttr "targetHost" sanitized) { inherit (sanitized) targetHost; }
     // lib.optionalAttrs (builtins.hasAttr "targetPort" sanitized) { inherit (sanitized) targetPort; }
@@ -205,7 +211,15 @@ let
     ) "Arbor Manager: registry snapshots require a non-empty digest.";
     lib.mapAttrsToList (name: record: {
       inherit name;
-      record = sanitizeMachineRecord name record;
+      record =
+        let
+          sanitized = sanitizeMachineRecord name record;
+          _hardware = hardware.validateHardware validatePublicValue "registry machine '${name}'.hardware" (
+            sanitized.hardware or null
+          );
+        in
+        assert _hardware;
+        sanitized;
       modules = [ ];
       provenance = {
         kind = "registry-snapshot";
@@ -278,6 +292,8 @@ in
     registrySnapshot
     sourceMerge
     ;
+
+  inherit (hardware) validateHardware;
 
   inherit (nodeSelection) graph selectors select;
   inherit (deploymentPlan) plan planFromSnapshot;

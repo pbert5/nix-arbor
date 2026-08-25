@@ -29,6 +29,24 @@ values. `localSource ./config/machines` adapts the conventional directory
 layout, and `registrySnapshot { digest = "sha256:..."; machines = { name = record; }; }`
 adapts an immutable accepted snapshot. Registry snapshot entries contribute
 public data only; trusted executable modules are selected by local composition.
+The optional `hardware` field must contain exactly one data-only form:
+
+```nix
+hardware.snapshot = {
+  format = "arbor/hardware";
+  version = 1;
+  facts = { memoryBytes = 17179869184; cpu = "x86_64-v3"; };
+};
+# or hardware.artifact = {
+#   digest = "sha256:<64 lowercase hex characters>";
+#   mediaType = "application/vnd.arbor.hardware+json";
+# };
+```
+
+Hardware artifacts are references only; Arbor Manager does not fetch or
+evaluate them. `hardware.modules` and executable values are rejected. Local
+`hardware-configuration.nix` and `configuration.nix` modules remain explicit
+members of a local source.
 
 `sourceMerge` combines `registrySnapshot`, `committedLocal`, and an optional
 `sessionOverride` per machine field. The result has `sources`, `machines`, and

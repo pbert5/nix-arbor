@@ -122,9 +122,14 @@ source and override provenance. Precedence is registry snapshot, then
 committed local machine definition, then explicit CLI/session override; Nix
 module priority rules still apply within a source's module list.
 
-Arbitrary executable Nix from the registry is forbidden. Hardware facts are
-structured or refer to a signed, immutable, content-addressed hardware
-snapshot.
+Arbitrary executable Nix from the registry is forbidden. Arbor Manager
+validates registry hardware as either structured snapshot metadata (`format`,
+positive `version`, and an attribute-set `facts` payload) or an immutable
+artifact reference with a `sha256:<64 lowercase hex>` content address. The
+forms are mutually exclusive, artifact references are not fetched or
+evaluated, and `hardware.modules` is rejected. Executable
+`hardware-configuration.nix` and `configuration.nix` modules remain explicit
+members of local sources.
 
 ## Runtime identity and secrets
 
