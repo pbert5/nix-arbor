@@ -71,6 +71,21 @@ def generate_keypair(key_dir: Path, issuer: str) -> RuntimeKey:
 
 
 class Provider(ABC):
+    """Append-only raw transport contract used by :class:`Runtime`.
+
+    Providers are deliberately transport-only.  ``append`` must durably
+    retain the exact record and may return its zero-based cursor.  Repeating
+    the same record must return the original cursor; a different record with
+    the same logical key remains a transport entry for the runtime to
+    quarantine.  ``fetch`` returns ``(cursor, record)`` pairs in strictly
+    increasing cursor order and must enforce its own bounded page size.
+
+    Validation, authority, reconciliation, and materialization stay in
+    ``Runtime`` so an external provider cannot grant trust by accepting a
+    record.  A network adapter can implement this contract later without
+    becoming part of Nix evaluation.
+    """
+
     @abstractmethod
     def append(self, record: dict[str, Any]) -> int: ...
 

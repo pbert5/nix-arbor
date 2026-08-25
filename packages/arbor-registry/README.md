@@ -25,6 +25,22 @@ suspended, severed, and standby states; standby edges are retained but are not
 included in active parent traversal. Multiple parents are valid. Parent cycles
 are reported by `validateGraph`; peer relationships are not parent cycles.
 
+The runtime Provider seam is intentionally raw and transport-only:
+
+```text
+append(record) -> durable zero-based cursor
+fetch(cursor, limit) -> ordered (cursor, record) page
+```
+
+An implementation must preserve exact-record replay idempotence, keep cursors
+monotonic, and bound each page. It must not validate authority or materialize
+state; `Runtime` performs signature, compatibility, lineage, quarantine, and
+reconciliation checks after transport ingestion. The current `FileProvider`
+is the executable local contract. A future OrbitDB/Helia adapter should map
+its stream/database and durable sequence details to this seam while keeping
+the reference daemon's transport-only boundary. It must not be required by
+Nix evaluation.
+
 The library is exposed as both `registry` and `lib` from the flake. Run:
 
 ```sh

@@ -5,7 +5,7 @@ from pathlib import Path
 
 from nacl.signing import SigningKey
 
-from arbor_registry_runtime import FileProvider, Runtime, RuntimeKey, canonical_json
+from arbor_registry_runtime import FileProvider, Provider, Runtime, RuntimeKey, canonical_json
 from arbor_registry_runtime.runtime import _key
 
 
@@ -56,6 +56,19 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual([r["recordId"] for r in self.runtime.accepted(1, 1)], ["two"])
         with self.assertRaises(ValueError):
             self.runtime.accepted(0, 1001)
+
+    def test_provider_contract_is_durable_idempotent_and_cursor_bounded(self):
+        provider = self.runtime.provider
+        self.assertIsInstance(provider, Provider)
+        first = self.envelope("one")
+        second = self.envelope("two")
+        self.assertEqual(provider.append(first), 0)
+        self.assertEqual(provider.append(first), 0)
+        self.assertEqual(provider.append(second), 1)
+        self.assertEqual(provider.fetch(0, 1), [(0, first)])
+        self.assertEqual(provider.fetch(1, 1000), [(1, second)])
+        with self.assertRaises(ValueError):
+            provider.fetch(0, 1001)
 
     def test_public_state_has_no_private_key_material(self):
         self.runtime.ingest([self.envelope("one")])
