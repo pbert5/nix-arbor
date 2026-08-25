@@ -5,7 +5,7 @@ from pathlib import Path
 
 from nacl.signing import SigningKey
 
-from arbor_registry_runtime import FileProvider, OrbitDBProvider, Provider, Runtime, RuntimeKey, canonical_json
+from arbor_registry_runtime import FileProvider, OrbitDBProvider, Provider, Runtime, RuntimeKey, canonical_json, generate_keypair
 from arbor_registry_runtime.runtime import _key
 
 
@@ -76,6 +76,22 @@ class RuntimeTests(unittest.TestCase):
         self.assertFalse(any(path.name.endswith(".private") for path in files))
         self.assertNotIn(bytes(self.key.signing_key).hex(), json.dumps(self.runtime.projection()))
         self.assertTrue(canonical_json({"b": 1, "a": 2}) == b'{"a":2,"b":1}')
+
+    def test_generate_keypair_refuses_implicit_overwrite_and_supports_explicit_rotation(self):
+        key_dir = Path(self.temp.name) / "identity"
+        first = generate_keypair(key_dir, "operator")
+        with self.assertRaises(FileExistsError):
+            generate_keypair(key_dir, "operator")
+        rotated = generate_keypair(key_dir, "operator", rotation=True)
+        self.assertNotEqual(first.public_key, rotated.public_key)
+
+    def test_generate_keypair_preserves_prior_generations(self):
+        key_dir = Path(self.temp.name) / "identity"
+        first = generate_keypair(key_dir, "operator", generation=1)
+        second = generate_keypair(key_dir, "operator", generation=2)
+        self.assertNotEqual(first.public_key, second.public_key)
+        self.assertTrue((key_dir / "operator.g1.private").exists())
+        self.assertTrue((key_dir / "operator.g2.private").exists())
 
     def test_orbitdb_provider_maps_bounded_socket_contract(self):
         import socketserver
