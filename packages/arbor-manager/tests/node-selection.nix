@@ -125,7 +125,10 @@ assert
     {
       name = "batches";
       names = [
-        [ "worker" "worker-2" ]
+        [
+          "worker"
+          "worker-2"
+        ]
         [ "worker-3" ]
       ];
       commands = [
