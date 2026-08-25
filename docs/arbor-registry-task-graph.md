@@ -94,7 +94,7 @@ accepted reconciliation, and materialized state.
 | RUNTIME-DYNAMIC-KEYRING | IN_PROGRESS | OPENBAO-RUNTIME-IDENTITY; ENROLLMENT-RECOVERY-LIFECYCLE | registry runtime | authority-derived node key discovery and issuer-generation binding |
 | RUNTIME-AUTHORITY-PARITY | READY | GRAPH-MODEL; AUTHORITY-ACCEPTANCE-BOUNDARY | registry runtime | relationship-derived parent/peer authority and non-amplification |
 | RUNTIME-CONTROL-SURFACE | IN_PROGRESS | RUNTIME-SCHEMA-PARITY; RUNTIME-DYNAMIC-KEYRING; RUNTIME-AUTHORITY-PARITY | registry runtime | packaged registryctl over durable Runtime and OrbitDBProvider |
-| FIRST-NODE-LOSS-TRANSPORT | READY | CROSS-GUEST-VM-CONVERGENCE | transport/VM integration | root-a offline while root-b writes and root-a later catches up |
+| FIRST-NODE-LOSS-TRANSPORT | DONE | CROSS-GUEST-VM-CONVERGENCE | transport/VM integration | root-a offline while root-b writes and root-a later catches up |
 | MULTIPLE-BOOTSTRAP-PEERS | READY | TRANSPORT-BOOTSTRAP-CONTRACT | transport/VM integration | child has root-a and root-b bootstrap peers and survives either loss |
 | LIVE-RELATIONSHIP-ACCEPTANCE | IN_PROGRESS | ACCEPTED-STATE-CROSS-GUEST + RUNTIME-CONTROL-SURFACE | registry reconciliation | live signed peer, active/standby parent, and grandchild edges |
 | SERVICE-ENDPOINT-CROSS-GUEST | IN_PROGRESS | ACCEPTED-STATE-CROSS-GUEST + RUNTIME-CONTROL-SURFACE | registry runtime | live service and provider-neutral endpoint advertisement/resolution |
