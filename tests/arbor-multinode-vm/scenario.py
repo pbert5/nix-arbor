@@ -1,34 +1,45 @@
+"""Bootstrap the VM registry through the packaged operator boundary."""
+
 import json
-import os
+import subprocess
 from pathlib import Path
 
-from arbor_registry_runtime import OrbitDBProvider, Runtime, generate_keypair, make_identity_generation
+
+ROOT = Path("/run/arbor-test")
+CONFIG = ROOT / "registryctl.json"
 
 
-def main():
-    root = Path("/run/arbor-test")
-    keys = root / "keys"
-    provider = OrbitDBProvider(Path("/run/arbor-registryd/registry.sock"), "registry", token=Path("/run/arbor-test/registry.token").read_text().strip())
-    root_key = generate_keypair(keys, "root-a")
-    (root / "root-a.public").write_text(root_key.public_key + "\n")
-    child_key = generate_keypair(keys, "child")
-    grandchild_key = generate_keypair(keys, "grandchild")
-    records = [
-        make_identity_generation(root_key, "root-a", 1, root_key.public_key),
-        make_identity_generation(root_key, "child", 1, child_key.public_key),
-        make_identity_generation(root_key, "grandchild", 1, grandchild_key.public_key),
-    ]
-    runtime = Runtime(root / "accepted", provider, {"root-a": root_key.public_key}, authority_issuers={"root-a"})
-    first = runtime.ingest(records)
-    duplicate = runtime.ingest([records[0]])
-    unsupported = dict(records[0], recordId="future", schema="future-schema")
-    rejected = runtime.ingest([unsupported])
-    assert all(item["status"] == "accepted" for item in first), first
-    assert duplicate[0]["status"] == "accepted", duplicate
-    assert rejected[0]["status"] == "quarantined", rejected
-    assert any(item["reason"] == "unknown-schema" for item in runtime.quarantine())
-    print(json.dumps({"accepted": len(runtime.accepted()), "quarantine": len(runtime.quarantine()), "duplicate": duplicate[0]["status"]}))
-    runtime.close()
+def ctl(*args: str) -> dict:
+    command = ["arbor-registryctl", "--config", str(CONFIG), "--format", "json", *args]
+    return json.loads(subprocess.check_output(command, text=True))
+
+
+def main() -> None:
+    keys = ROOT / "keys"
+    authorities = ROOT / "bootstrap-authorities.json"
+    ROOT.mkdir(mode=0o700, exist_ok=True)
+    keys.mkdir(mode=0o700, exist_ok=True)
+    authorities.write_text("{}\n", encoding="utf-8")
+    CONFIG.write_text(json.dumps({
+        "stateDir": str(ROOT / "accepted"),
+        "transportSocket": "/run/arbor-registryd/registry.sock",
+        "transportTokenFile": str(ROOT / "registry.token"),
+        "bootstrapAuthoritiesFile": str(authorities),
+        "identityDir": str(keys),
+        "providerCursorFile": str(ROOT / "provider-cursor.json"),
+        "authorityIssuers": ["root-a"],
+    }, sort_keys=True) + "\n", encoding="utf-8")
+    for issuer in ("root-a", "child", "grandchild"):
+        result = ctl("keygen", issuer)
+        (ROOT / f"{issuer}.public").write_text(result["publicKey"] + "\n", encoding="ascii")
+        if issuer == "root-a":
+            authorities.write_text(json.dumps({"root-a": result["publicKey"]}) + "\n", encoding="utf-8")
+    root_public = json.loads(authorities.read_text())["root-a"]
+    for identity in ("root-a", "child", "grandchild"):
+        public_key = (ROOT / f"{identity}.public").read_text().strip()
+        result = ctl("identity-generation", identity, public_key, "--issuer", "root-a")
+        assert result["status"] == "accepted", result
+    print(json.dumps({"accepted": len(ctl("accepted")), "status": ctl("status"), "root": root_public}, sort_keys=True))
 
 
 if __name__ == "__main__":

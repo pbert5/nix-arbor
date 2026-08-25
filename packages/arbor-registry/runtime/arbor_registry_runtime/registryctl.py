@@ -18,6 +18,8 @@ from .runtime import (
     Runtime,
     RuntimeKey,
     make_public_record,
+    make_identity_generation,
+    generate_keypair,
 )
 
 
@@ -151,6 +153,15 @@ def main(argv: list[str] | None = None) -> int:
     record.add_argument("payload", type=Path)
     record.add_argument("--issuer", required=True)
     record.add_argument("--generation", type=int, default=1)
+    keygen = sub.add_parser("keygen")
+    keygen.add_argument("issuer")
+    keygen.add_argument("--generation", type=int)
+    keygen.add_argument("--rotation", action="store_true")
+    identity = sub.add_parser("identity-generation")
+    identity.add_argument("identity")
+    identity.add_argument("public_key")
+    identity.add_argument("--issuer", required=True)
+    identity.add_argument("--generation", type=int, default=1)
     relationship = sub.add_parser("relationship-add")
     relationship.add_argument("record_id")
     relationship.add_argument("--from", dest="from_node", required=True)
@@ -174,7 +185,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     config = _config(args.config)
     as_json = args.format == "json"
-    if args.command == "submit":
+    if args.command == "keygen":
+        key = generate_keypair(Path(config["identityDir"]), args.issuer, generation=args.generation, rotation=args.rotation)
+        result = {"issuer": key.issuer, "generation": args.generation, "publicKey": key.public_key}
+    elif args.command == "submit":
         payload = _read_json(args.payload, None)
         result = _public_command(argparse.Namespace(**vars(args), **payload), config, args.schema, tuple(payload))
     else:
@@ -195,6 +209,10 @@ def main(argv: list[str] | None = None) -> int:
                            "state": args.state, "authorityRoot": args.authority_root}
                 key = _private_key(Path(config["identityDir"]), args.issuer, args.generation)
                 result = runtime.ingest([_record(key, "relationship", args.record_id, payload, args.generation)])[0]
+            elif args.command == "identity-generation":
+                key = _private_key(Path(config["identityDir"]), args.issuer)
+                record = make_identity_generation(key, args.identity, args.generation, args.public_key)
+                result = runtime.ingest([record])[0]
             else:
                 schemas = {"endpoint-publish": ("endpoint", ("node", "network", "address", "port", "purpose")),
                            "service-publish": ("service", ("name", "node", "protocol", "endpoint")),
