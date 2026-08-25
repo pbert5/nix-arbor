@@ -91,6 +91,31 @@ expected_digest=$(jq -r '.digest' <<<"$snapshot")
 actual_digest=$(jq -cS 'del(.digest)' <<<"$snapshot" | sha256sum | cut -d' ' -f1)
 [ "$expected_digest" = "$actual_digest" ] || die "digest does not match snapshot contents"
 
+# A valid digest proves snapshot integrity, not that its machine records are
+# safe to print. Keep this boundary independent of Nix evaluation so imported
+# snapshots cannot smuggle executable values, paths, or credentials into
+# offline inspection and export output.
+redact_filter='
+  def secret_key:
+    ascii_downcase
+    | gsub("[-_]"; "")
+    | test("secret|password|passphrase|token|credential|private|signingkey|apikey|authorization|accesskey|seed");
+  def unsafe_string:
+    test("^(/nix/store/|/run/|/var/run/)")
+    or test("-----BEGIN [^-]*PRIVATE KEY-----")
+    or test("^[A-Za-z][A-Za-z0-9+.-]*://[^/?#[:space:]]+:[^/?#[:space:]]+@")
+    or test("(^|[?&])(api[_-]?key|access[_-]?token|auth[_-]?token|credential|password|passphrase|secret|token)=[^&#[:space:]]+"; "i")
+    or test("^Bearer[[:space:]]+[^[:space:]]+$"; "i");
+  def redact:
+    if type == "object" then
+      with_entries(if (.key | secret_key) then .value = "<redacted>" else .value |= redact end)
+    elif type == "array" then map(redact)
+    elif type == "string" and unsafe_string then "<redacted>"
+    else .
+    end;
+  redact
+'
+
 refuse() { echo "arbor-manager: deployment application refused: $*" >&2; exit 3; }
 
 if [ "$command" = deployment-apply ] && [ "$dry_run" = true ]; then
@@ -117,8 +142,22 @@ if [ "$command" = deployment-apply ]; then
 fi
 
 machine_json() {
-  jq -e --arg name "$name" '.snapshot.nodes[$name] // error("unknown node")' <<<"$snapshot"
+  jq -e --arg name "$name" "$redact_filter | .snapshot.nodes[\$name] // error(\"unknown node\")" <<<"$snapshot"
 }
+
+# shellcheck disable=SC2016
+inspect_filter='
+  {
+    format: "arbor-manager/machine-inspect",
+    version: 1,
+    name: $name,
+    record: .,
+    provenance: {
+      source: (.provenance // {kind: "snapshot"}),
+      fields: (to_entries | map({key: .key, value: {field: .key, source: (if (.value | type) == "object" then (.value.provenance // {kind: "snapshot"}) else {kind: "snapshot"} end)}}) | from_entries)
+    }
+  }
+'
 
 if [ "$command" = machine ]; then
   record=$(machine_json) || die "unknown node '$name'"
@@ -129,16 +168,7 @@ if [ "$command" = machine ]; then
       jq -r 'to_entries[] | "\(.key)=\(.value|tostring)"' <<<"$record"
     fi
   else
-    inspected=$(jq -S --arg name "$name" '{
-      format: "arbor-manager/machine-inspect",
-      version: 1,
-      name: $name,
-      record: .,
-      provenance: {
-        source: (.provenance // {kind: "snapshot"}),
-        fields: (to_entries | map({key: .key, value: {field: .key, source: (if (.value | type) == "object" then (.value.provenance // {kind: "snapshot"}) else {kind: "snapshot"} end)}}) | from_entries)
-      }
-    }' <<<"$record")
+    inspected=$(jq -S --arg name "$name" "$redact_filter | $inspect_filter | redact" <<<"$record")
     if [ "$format" = json ]; then
       jq -S . <<<"$inspected"
     else

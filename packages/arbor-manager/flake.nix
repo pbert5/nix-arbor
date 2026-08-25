@@ -74,7 +74,18 @@
                     selected: ["api"],
                     excluded: [{name: "db", reasons: ["outside-selector"]}],
                       nodes: {
-                        api: {system: "x86_64-linux", profiles: ["server"], provenance: {kind: "test"}},
+                        api: {
+                          system: "x86_64-linux",
+                          profiles: ["server"],
+                          provenance: {kind: "test"},
+                          metadata: {
+                            apiToken: "cli-secret-token",
+                            runtimePath: "/run/credentials/arbor/api-token",
+                            storePath: "/nix/store/unsafe-secret",
+                            privateKey: "-----BEGIN OPENSSH PRIVATE KEY-----\\nsecret\\n-----END OPENSSH PRIVATE KEY-----",
+                            endpoint: "https://user:password@example.invalid/api?token=secret"
+                          }
+                        },
                         db: {system: "x86_64-linux", profiles: ["database"]}
                       },
                   },
@@ -95,7 +106,26 @@
                 ${cli}/bin/arbor-manager nodes list --snapshot "$work/snapshot.json" --scope selected --format ssh | grep -q '^root@api$'
                 ${cli}/bin/arbor-manager nodes list --snapshot "$work/snapshot.json" --scope selected --format colmena | grep -q '^api$'
                 ${cli}/bin/arbor-manager machine inspect --snapshot "$work/snapshot.json" --name api > "$work/inspect.json"
-                jq -e '.format == "arbor-manager/machine-inspect" and .record.system == "x86_64-linux"' "$work/inspect.json"
+                jq -e '
+                  .format == "arbor-manager/machine-inspect"
+                  and .record.system == "x86_64-linux"
+                  and .record.provenance.kind == "test"
+                  and .provenance.source.kind == "test"
+                  and .record.metadata.apiToken == "<redacted>"
+                  and .record.metadata.runtimePath == "<redacted>"
+                  and .record.metadata.storePath == "<redacted>"
+                  and .record.metadata.privateKey == "<redacted>"
+                  and .record.metadata.endpoint == "<redacted>"
+                ' "$work/inspect.json"
+                ${cli}/bin/arbor-manager machine export --snapshot "$work/snapshot.json" --name api > "$work/export.json"
+                jq -e '
+                  .metadata.apiToken == "<redacted>"
+                  and .metadata.runtimePath == "<redacted>"
+                  and .metadata.storePath == "<redacted>"
+                  and .metadata.privateKey == "<redacted>"
+                  and .metadata.endpoint == "<redacted>"
+                ' "$work/export.json"
+                if grep -Eq 'cli-secret-token|/run/credentials|/nix/store/unsafe-secret|OPENSSH PRIVATE KEY|user:password|token=secret' "$work/inspect.json" "$work/export.json"; then exit 1; fi
                 ${cli}/bin/arbor-manager deployment-plan --snapshot "$work/snapshot.json" --format text | grep -q 'deployment snapshot'
                 ${cli}/bin/arbor-manager deployment apply --snapshot "$work/snapshot.json" --dry-run --format json | jq -e '.status == "dry-run" and .applied == false'
                 if ${cli}/bin/arbor-manager deployment apply --snapshot "$work/snapshot.json" --acknowledgement wrong 2>"$work/refusal"; then exit 1; fi
