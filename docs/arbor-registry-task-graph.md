@@ -92,12 +92,13 @@ accepted reconciliation, and materialized state.
 | ACCEPTED-STATE-CROSS-GUEST | DONE | CROSS-GUEST-VM-CONVERGENCE | registry reconciliation | bounded VM assertion proves a signed root-a record reaches child raw state, accepted history, and materialized projection |
 | RUNTIME-SCHEMA-PARITY | IN_PROGRESS | REGISTRY-RECONCILIATION | registry runtime | deliberate Python/Nix family alignment with live machine/service families |
 | RUNTIME-DYNAMIC-KEYRING | IN_PROGRESS | OPENBAO-RUNTIME-IDENTITY; ENROLLMENT-RECOVERY-LIFECYCLE | registry runtime | authority-derived node key discovery and issuer-generation binding |
-| RUNTIME-AUTHORITY-PARITY | READY | GRAPH-MODEL; AUTHORITY-ACCEPTANCE-BOUNDARY | registry runtime | relationship-derived parent/peer authority and non-amplification |
-| RUNTIME-CONTROL-SURFACE | IN_PROGRESS | RUNTIME-SCHEMA-PARITY; RUNTIME-DYNAMIC-KEYRING; RUNTIME-AUTHORITY-PARITY | registry runtime | packaged registryctl over durable Runtime and OrbitDBProvider |
+| RUNTIME-AUTHORITY-PARITY | VALIDATION | GRAPH-MODEL; AUTHORITY-ACCEPTANCE-BOUNDARY | registry runtime | delegated parent/peer authority, provenance, standby, cycle, and non-amplification fixture coverage is passing; live VM validation and independent review remain |
+| RUNTIME-CONTROL-SURFACE | VALIDATION | RUNTIME-SCHEMA-PARITY; RUNTIME-DYNAMIC-KEYRING; RUNTIME-AUTHORITY-PARITY | registry runtime | packaged registryctl over durable Runtime and OrbitDBProvider; existing smoke remains transport-blocked at first-node loss |
 | FIRST-NODE-LOSS-TRANSPORT | DONE | CROSS-GUEST-VM-CONVERGENCE | transport/VM integration | root-a offline while root-b writes and root-a later catches up |
+| DISTRIBUTED-INDEX-LATE-EVENT | BLOCKED | FIRST-NODE-LOSS-TRANSPORT | transport/VM integration | surviving peers do not yet reliably expose a post-partition append through the existing OrbitDB index/list path |
 | MULTIPLE-BOOTSTRAP-PEERS | READY | TRANSPORT-BOOTSTRAP-CONTRACT | transport/VM integration | child has root-a and root-b bootstrap peers and survives either loss |
-| LIVE-RELATIONSHIP-ACCEPTANCE | IN_PROGRESS | ACCEPTED-STATE-CROSS-GUEST + RUNTIME-CONTROL-SURFACE | registry reconciliation | live signed peer, active/standby parent, and grandchild edges |
-| SERVICE-ENDPOINT-CROSS-GUEST | IN_PROGRESS | ACCEPTED-STATE-CROSS-GUEST + RUNTIME-CONTROL-SURFACE | registry runtime | live service and provider-neutral endpoint advertisement/resolution |
+| LIVE-RELATIONSHIP-ACCEPTANCE | BLOCKED | RUNTIME-AUTHORITY-PARITY + DISTRIBUTED-INDEX-LATE-EVENT | registry reconciliation | live signed peer, active/standby parent, and grandchild edges |
+| SERVICE-ENDPOINT-CROSS-GUEST | BLOCKED | RUNTIME-AUTHORITY-PARITY + RUNTIME-CONTROL-SURFACE | registry runtime | live service and provider-neutral endpoint advertisement/resolution |
 | VM-SERVICE-ENDPOINT-INTEGRATION | BLOCKED | SERVICE-ENDPOINT-CROSS-GUEST | registry runtime | live service and provider-neutral endpoint advertisement/resolution in the VM network |
 | IDENTITY-RECOVERY-VM | BLOCKED | LIVE-RELATIONSHIP-ACCEPTANCE | registry runtime | runtime identity replacement, recovery authorization, stale-generation rejection, and grandchild survival |
 | REMOTE-NIXOS-ACTIVATION | BLOCKED | LIVE-RELATIONSHIP-ACCEPTANCE; published module path | manager/integration | registry-derived immutable plan and real SSH/NixOS activation with receipt |

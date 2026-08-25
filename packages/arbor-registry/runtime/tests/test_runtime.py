@@ -8,7 +8,7 @@ from pathlib import Path
 
 from nacl.signing import SigningKey
 
-from arbor_registry_runtime import FileProvider, OrbitDBProvider, Provider, Runtime, RuntimeKey, canonical_json, generate_keypair
+from arbor_registry_runtime import FileProvider, OrbitDBProvider, Provider, Runtime, RuntimeKey, canonical_json, generate_keypair, make_public_record
 from arbor_registry_runtime.runtime import (
     approve_enrollment,
     make_identity_generation,
@@ -90,6 +90,62 @@ class RuntimeTests(unittest.TestCase):
         self.assertFalse(any(path.name.endswith(".private") for path in files))
         self.assertNotIn(bytes(self.key.signing_key).hex(), json.dumps(self.runtime.projection()))
         self.assertTrue(canonical_json({"b": 1, "a": 2}) == b'{"a":2,"b":1}')
+
+    def test_relationship_authority_matches_delegated_pure_model(self):
+        root_a = self.key
+        root_b = RuntimeKey("root-b", SigningKey.generate())
+        child = RuntimeKey("child", SigningKey.generate())
+        grandchild = RuntimeKey("grandchild", SigningKey.generate())
+        stranger = RuntimeKey("stranger", SigningKey.generate())
+        runtime = Runtime(
+            Path(self.temp.name) / "authority-state",
+            FileProvider(Path(self.temp.name) / "authority-raw" / "history.jsonl"),
+            {"root": root_a.public_key, "root-b": root_b.public_key},
+            authority_issuers={"root", "root-b"},
+        )
+
+        def edge(key, record_id, source, target, kind="parent", status="active", root="root", scope=("observe",)):
+            return make_public_record(
+                key,
+                "relationship" if kind != "peer" else "peer-relationship",
+                record_id,
+                {"from": source, "to": target, "kind": kind, "status": status,
+                 "authorityRoot": root, "scope": list(scope)},
+                issuer_generation=None if key.issuer in {"root", "root-b"} else 1,
+            )
+
+        base = [
+            make_identity_generation(root_a, "child", 1, child.public_key),
+            make_identity_generation(root_a, "grandchild", 1, grandchild.public_key),
+            make_identity_generation(root_a, "stranger", 1, stranger.public_key),
+            edge(root_a, "peer-root-root-b", "root", "root-b", "peer", root="root"),
+            edge(root_a, "root-child", "root", "child", scope=("observe",)),
+            edge(root_b, "root-b-child-standby", "root-b", "child", status="standby", root="root-b"),
+            edge(child, "child-grandchild", "child", "grandchild", root="root", scope=("observe",)),
+        ]
+        outcomes = runtime.ingest(base)
+        by_id = {item["recordKey"].split(":")[0]: item for item in outcomes}
+        self.assertEqual(by_id["peer-root-root-b"]["status"], "accepted")
+        self.assertEqual(by_id["root-child"]["status"], "accepted")
+        self.assertEqual(by_id["root-b-child-standby"]["status"], "accepted")
+        self.assertEqual(by_id["child-grandchild"]["status"], "accepted")
+
+        outcomes = runtime.ingest([
+            edge(stranger, "stranger-child", "stranger", "child", root="root"),
+            edge(child, "child-forged-root-b", "child", "grandchild", root="root-b"),
+            edge(child, "child-amplifies", "child", "grandchild", root="root", scope=("admin",)),
+        ])
+        by_id = {item["recordKey"].split(":")[0]: item for item in outcomes}
+        self.assertEqual(by_id["stranger-child"]["reason"], "unauthorized-relationship")
+        self.assertEqual(by_id["child-forged-root-b"]["reason"], "unauthorized-relationship")
+        self.assertEqual(by_id["child-amplifies"]["reason"], "unauthorized-capability")
+
+        outcomes = runtime.ingest([edge(grandchild, "grandchild-cycle", "grandchild", "root", root="root")])
+        by_id = {item["recordKey"].split(":")[0]: item for item in outcomes}
+        self.assertEqual(by_id["grandchild-cycle"]["reason"], "parent-cycle")
+        self.assertEqual(runtime.projection()["root-b-child-standby"]["payload"]["status"], "standby")
+        self.assertNotIn("stranger-child", runtime.projection())
+        runtime.close()
 
     def test_generate_keypair_refuses_implicit_overwrite_and_supports_explicit_rotation(self):
         key_dir = Path(self.temp.name) / "identity"

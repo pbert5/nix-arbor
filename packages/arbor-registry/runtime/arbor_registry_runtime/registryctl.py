@@ -49,6 +49,12 @@ def _write_json_atomic(path: Path, value: Any, *, mode: int = 0o600) -> None:
 def _private_key(path: Path, issuer: str, generation: int | None = None) -> RuntimeKey:
     suffix = f".g{generation}" if generation is not None else ""
     private = path / f"{issuer}{suffix}.private"
+    # Bootstrap authorities retain their legacy unsuffixed key.  Dynamically
+    # enrolled identities use generation-bound files.  This fallback keeps
+    # both command families interoperable without copying bootstrap secrets
+    # into generation slots.
+    if generation is not None and not private.exists():
+        private = path / f"{issuer}.private"
     encoded = private.read_text(encoding="ascii").strip()
     signing = SigningKey(base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)))
     return RuntimeKey(issuer, signing)
@@ -206,7 +212,7 @@ def main(argv: list[str] | None = None) -> int:
                 result = runtime.quarantine()
             elif args.command == "relationship-add":
                 payload = {"from": args.from_node, "to": args.to_node, "kind": args.kind,
-                           "state": args.state, "authorityRoot": args.authority_root}
+                           "status": args.state, "authorityRoot": args.authority_root}
                 key = _private_key(Path(config["identityDir"]), args.issuer, args.generation)
                 result = runtime.ingest([_record(key, "relationship", args.record_id, payload, args.generation)])[0]
             elif args.command == "identity-generation":
