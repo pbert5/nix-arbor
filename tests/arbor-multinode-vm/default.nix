@@ -4,13 +4,14 @@ let
   lib = pkgs.lib;
   registry = inputs.arbor-registry;
   manager = inputs.arbor-manager;
-  # Keep the promoted remote transport (realm/bootstrap semantics) while
-  # exercising the local runtime control-surface change until that component
-  # commit is promoted and the lock can be refreshed.
+  # Keep the promoted Registry module while exercising the local transport
+  # checkpoint until the late-event fix is promoted and the lock is refreshed.
   runtime = import ../../packages/arbor-registry/runtime/package.nix {
     inherit (pkgs) lib python3Packages;
   };
-  transport = registry.packages.${pkgs.system}.arbor-registry-transport;
+  transport = import ../../packages/arbor-registry/transport/package.nix {
+    inherit (pkgs) buildNpmPackage nodejs_22;
+  };
   managerCli = manager.packages.${pkgs.system}.arbor-manager;
   pythonRuntime = pkgs.python3.withPackages (ps: [ ps.pynacl ]);
   transportRealmId = "arbor-acceptance-vm-realm-v1";

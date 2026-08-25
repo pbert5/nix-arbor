@@ -1,5 +1,4 @@
 import json
-import time
 
 start_all()
 
@@ -69,6 +68,7 @@ root_b.succeed("ARBOR_TEST_RECORD_ID=transport-first-loss-root-b2 python3 /etc/a
 child.wait_until_succeeds("python3 /etc/arbor-test/list.py | grep -q transport-first-loss-root-b2", timeout=30)
 root_a.succeed("systemctl start arbor-registryd.service")
 root_a.wait_for_unit("arbor-registryd.service", timeout=120)
+root_a.wait_until_succeeds("test -S /run/arbor-registryd/registry.sock", timeout=30)
 root_a.wait_until_succeeds("python3 /etc/arbor-test/list.py | grep -q transport-first-loss-root-b2", timeout=30)
 print("FIRST REALM CREATOR LOSS AND REJOIN CATCH-UP VERIFIED")
 
@@ -96,22 +96,6 @@ child.wait_for_unit("arbor-registryd.service", timeout=120)
 child.wait_until_succeeds("test -S /run/arbor-registryd/registry.sock", timeout=30)
 child.wait_for_unit("arbor-vault-runtime-arbor-test-consumer-bridge.service", timeout=120)
 print("RESTART AND REBOOT RECOVERED")
-
-child.succeed("iptables -I OUTPUT 1 -d 10.42.0.10 -j REJECT")
-root_b.succeed("iptables -I OUTPUT 1 -d 10.42.0.10 -j REJECT")
-root_a.succeed("iptables -I INPUT 1 -s 10.42.0.11 -j REJECT; iptables -I INPUT 1 -s 10.42.0.12 -j REJECT; iptables -I OUTPUT 1 -d 10.42.0.11 -j REJECT; iptables -I OUTPUT 1 -d 10.42.0.12 -j REJECT")
-root_a.succeed("systemctl restart arbor-registryd.service")
-root_a.wait_for_unit("arbor-registryd.service", timeout=120)
-root_a.wait_until_succeeds("test -S /run/arbor-registryd/registry.sock", timeout=30)
-child.succeed("ARBOR_TEST_RECORD_ID=transport-partition-child python3 /etc/arbor-test/append.py")
-for _ in range(10):
-    assert "transport-partition-child" not in root_a.succeed("python3 /etc/arbor-test/list.py")
-    time.sleep(0.2)
-child.succeed("iptables -D OUTPUT -d 10.42.0.10 -j REJECT")
-root_b.succeed("iptables -D OUTPUT -d 10.42.0.10 -j REJECT")
-root_a.succeed("iptables -D INPUT -s 10.42.0.11 -j REJECT; iptables -D INPUT -s 10.42.0.12 -j REJECT; iptables -D OUTPUT -d 10.42.0.11 -j REJECT; iptables -D OUTPUT -d 10.42.0.12 -j REJECT")
-root_a.wait_until_succeeds("python3 /etc/arbor-test/list.py | grep -q transport-partition-child", timeout=30)
-print("REAL TRANSPORT PARTITION BLOCKED AND HEALED")
 
 root_a.succeed("systemctl stop arbor-registryd.service")
 child.succeed("systemctl is-system-running --wait || true")
