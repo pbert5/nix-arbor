@@ -41,6 +41,12 @@ let
     selector = "accessible";
     batchSize = 1;
   };
+  snapshotPlan = manager.planFromSnapshot {
+    snapshot = { inherit nodes; };
+    roots = [ "api" ];
+    selector = "accessible";
+    batchSize = 1;
+  };
 in
 assert manager.selectors.local g [ "api" ] == [ "api" ];
 assert
@@ -88,6 +94,8 @@ assert
     "worker"
   ];
 assert plan.backend.backend == "direct";
+assert snapshotPlan.names == plan.names;
+assert snapshotPlan.snapshotDigest == plan.snapshotDigest;
 assert (builtins.filter (risk: risk.kind == "critical-route") plan.risks) != [ ];
 assert
   plan.phases == [

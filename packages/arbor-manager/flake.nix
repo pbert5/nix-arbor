@@ -85,6 +85,11 @@
                 jq --arg digest "$digest" '. + {digest: $digest}' <<<"$snapshot" > "$work/snapshot.json"
               ${cli}/bin/arbor-manager nodes list --snapshot "$work/snapshot.json" --scope selected --format names > "$work/nodes"
                 test "$(cat "$work/nodes")" = api
+                ${cli}/bin/arbor-manager nodes list --snapshot "$work/snapshot.json" --scope local --format names > "$work/local"
+                test "$(cat "$work/local")" = api
+                ${cli}/bin/arbor-manager nodes list --snapshot "$work/snapshot.json" --scope selected --format table | grep -q '^NAME'
+                ${cli}/bin/arbor-manager nodes list --snapshot "$work/snapshot.json" --scope selected --format ssh | grep -q '^root@api$'
+                ${cli}/bin/arbor-manager nodes list --snapshot "$work/snapshot.json" --scope selected --format colmena | grep -q '^api$'
                 ${cli}/bin/arbor-manager machine inspect --snapshot "$work/snapshot.json" --name api > "$work/inspect.json"
                 jq -e '.format == "arbor-manager/machine-inspect" and .record.system == "x86_64-linux"' "$work/inspect.json"
                 ${cli}/bin/arbor-manager deployment-plan --snapshot "$work/snapshot.json" --format text | grep -q 'deployment snapshot'
