@@ -174,7 +174,9 @@ run_direct_backend() {
       type == "object" and .format == "arbor-manager/deployment-receipt" and .version == 1
       and .snapshotDigest == $snapshotDigest and .acknowledgementDigest == $acknowledgementDigest
       and (.results | type == "array")
-      and all(.results[]; (.phase | type == "string") and (.node | type == "string") and (.status == "succeeded") and (.provider | type == "object"))
+      and all(.results[]; (.phase | type == "string") and (.node | type == "string")
+        and ((.status == "succeeded" and (.provider | type == "object"))
+          or (.status == "failed" and (.error | type == "string"))))
       and ([.results[] | (.phase + "\u0000" + .node)] | length == (unique | length))
       and all(.results[]; . as $result | any($snapshot[0].plan.phases[]; .name == $result.phase and any(.names[]; (if type == "array" then .[] else . end) == $result.node)))
     ' "$resume_file" >/dev/null || refuse "resume receipt identity is not bound to this immutable snapshot and acknowledgement"
