@@ -17,9 +17,13 @@ print("INDEPENDENT TRANSPORT REALM AND DATABASE ADDRESS VERIFIED")
 # peer id from root-a, then install runtime-only bootstrap overrides on the
 # other guests so the acceptance uses the actual libp2p peer identity.
 root_peer = json.loads(root_a.succeed("python3 /etc/arbor-test/status.py"))["peerId"]
+root_b_peer = json.loads(root_b.succeed("python3 /etc/arbor-test/status.py"))["peerId"]
 for node in (root_b, child, grandchild):
+    peers = ["/ip4/10.42.0.10/tcp/4001/p2p/%s" % root_peer]
+    if node in (child, grandchild):
+        peers.append("/ip4/10.42.0.11/tcp/4001/p2p/%s" % root_b_peer)
     node.succeed("mkdir -p /run/systemd/system/arbor-registryd.service.d")
-    node.succeed("printf '%%s\\n' '[Service]' 'Environment=ARBOR_REGISTRY_BOOTSTRAP_PEERS=/ip4/10.42.0.10/tcp/4001/p2p/%s' > /run/systemd/system/arbor-registryd.service.d/bootstrap.conf" % root_peer)
+    node.succeed("printf '%%s\\n' '[Service]' 'Environment=ARBOR_REGISTRY_BOOTSTRAP_PEERS=%s' > /run/systemd/system/arbor-registryd.service.d/bootstrap.conf" % ",".join(peers))
     node.succeed("systemctl daemon-reload; systemctl restart arbor-registryd.service")
     node.wait_for_unit("arbor-registryd.service", timeout=120)
 
@@ -93,14 +97,19 @@ child.wait_until_succeeds("test -S /run/arbor-registryd/registry.sock", timeout=
 child.wait_for_unit("arbor-vault-runtime-arbor-test-consumer-bridge.service", timeout=120)
 print("RESTART AND REBOOT RECOVERED")
 
-child.succeed("iptables -A OUTPUT -d 10.42.0.10 -j REJECT")
-root_b.succeed("iptables -A OUTPUT -d 10.42.0.10 -j REJECT")
+child.succeed("iptables -I OUTPUT 1 -d 10.42.0.10 -j REJECT")
+root_b.succeed("iptables -I OUTPUT 1 -d 10.42.0.10 -j REJECT")
+root_a.succeed("iptables -I INPUT 1 -s 10.42.0.11 -j REJECT; iptables -I INPUT 1 -s 10.42.0.12 -j REJECT; iptables -I OUTPUT 1 -d 10.42.0.11 -j REJECT; iptables -I OUTPUT 1 -d 10.42.0.12 -j REJECT")
+root_a.succeed("systemctl restart arbor-registryd.service")
+root_a.wait_for_unit("arbor-registryd.service", timeout=120)
+root_a.wait_until_succeeds("test -S /run/arbor-registryd/registry.sock", timeout=30)
 child.succeed("ARBOR_TEST_RECORD_ID=transport-partition-child python3 /etc/arbor-test/append.py")
 for _ in range(10):
     assert "transport-partition-child" not in root_a.succeed("python3 /etc/arbor-test/list.py")
     time.sleep(0.2)
 child.succeed("iptables -D OUTPUT -d 10.42.0.10 -j REJECT")
 root_b.succeed("iptables -D OUTPUT -d 10.42.0.10 -j REJECT")
+root_a.succeed("iptables -D INPUT -s 10.42.0.11 -j REJECT; iptables -D INPUT -s 10.42.0.12 -j REJECT; iptables -D OUTPUT -d 10.42.0.11 -j REJECT; iptables -D OUTPUT -d 10.42.0.12 -j REJECT")
 root_a.wait_until_succeeds("python3 /etc/arbor-test/list.py | grep -q transport-partition-child", timeout=30)
 print("REAL TRANSPORT PARTITION BLOCKED AND HEALED")
 
