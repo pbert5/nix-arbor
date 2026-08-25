@@ -28,7 +28,7 @@ root_b.succeed("python3 /etc/arbor-test/append.py")
 root_b.succeed("python3 /etc/arbor-test/list.py | grep -q transport-local-root-b")
 print("TRANSPORT DAEMONS AND DURABLE APPEND VERIFIED")
 
-print("DUPLICATE AND QUARANTINE VERIFIED")
+print("LOCAL RECONCILIATION DUPLICATE AND QUARANTINE VERIFIED")
 
 child.succeed("test -f /run/systemd-vaultd/secrets/arbor-test-consumer.service.json")
 child.succeed("old=$(cat /run/arbor-test/secret.sha256); value=$(head -c 24 /dev/urandom | base64 -w0); printf '%s' \"$value\" | sha256sum | cut -d' ' -f1 >/run/arbor-test/new-secret.sha256; BAO_ADDR=http://127.0.0.1:8200 BAO_TOKEN=arbor-test-root bao kv put secret/arbor/acceptance value=\"$value\" >/dev/null; test \"$old\" != \"$(cat /run/arbor-test/new-secret.sha256)\"")
@@ -49,12 +49,12 @@ root_a.succeed("systemctl stop arbor-registryd.service")
 child.succeed("systemctl is-system-running --wait || true")
 grandchild.succeed("systemctl is-system-running --wait || true")
 root_b.succeed("systemctl is-active arbor-registryd.service")
-print("PRIMARY PARENT OFFLINE")
+print("PRIMARY TRANSPORT DAEMON STOPPED; STANDBY TRANSPORT REMAINS UP")
 
 child.succeed("iptables -A OUTPUT -d 10.42.0.10 -j REJECT")
 root_b.succeed("test -S /run/arbor-registryd/registry.sock")
 child.succeed("iptables -D OUTPUT -d 10.42.0.10 -j REJECT")
-print("PARTITION HEALED")
+print("HARNESS FIREWALL PARTITION APPLIED AND HEALED; DATA CONVERGENCE NOT ASSERTED")
 
 root_a.succeed("mkdir -p /run/arbor-test; ssh-keygen -q -t ed25519 -N '' -f /run/arbor-test/id_ed25519")
 for node in (child, grandchild):

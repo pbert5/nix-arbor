@@ -72,6 +72,30 @@ Lead-maintained queue for the extraction. States use the repository workflow:
 | VM-LIVE-RELATIONSHIP-RECOVERY | READY | VM-CROSS-PEER-CONVERGENCE + runtime recovery APIs | registry/integration owner | accepted peer, active/standby parent, descendant, identity rotation, stale-generation rejection, and parent return in isolated guests |
 | VM-REGISTRY-MODULE-STACK-OVERFLOW | IN_PROGRESS | vault runtime + NixOS module | registry owner | published default module recursively scans derivation-valued `runtimePackage` and overflows during VM evaluation; fix in arbor-registry, then restore module import to this target |
 
+## Integrated VM acceptance queue
+
+These rows are the active lead queue for the four-guest acceptance objective.
+They intentionally distinguish transport reachability from replicated raw data,
+accepted reconciliation, and materialized state.
+
+| ID | State | Dependencies | Owner / write set | Deliverable |
+|---|---|---|---|---|
+| REGISTRY-NIXOS-MODULE-RECURSION | DONE | — | registry; arbor-registry | `823e02e` skips derivation metadata during public-value scans; focused package-valued module regression and component checks pass |
+| ORBITDB-CROSS-GUEST-CONVERGENCE | BLOCKED | — | registry transport | bounded VM assertion for remote raw replication and accepted/materialized convergence; current daemon exposes only local append/list evidence |
+| VM-SERVICE-ENDPOINT-INTEGRATION | BLOCKED | ORBITDB-CROSS-GUEST-CONVERGENCE | registry runtime | live service and provider-neutral endpoint advertisement/resolution in the VM network |
+| LIVE-RELATIONSHIP-ACCEPTANCE | BLOCKED | ORBITDB-CROSS-GUEST-CONVERGENCE | registry reconciliation | live signed peer, active parent, standby/recovery parent, and grandchild edges with accepted provenance |
+| IDENTITY-RECOVERY-VM | BLOCKED | LIVE-RELATIONSHIP-ACCEPTANCE | registry runtime | runtime identity replacement, recovery authorization, stale-generation rejection, and grandchild survival |
+| REMOTE-NIXOS-ACTIVATION | BLOCKED | LIVE-RELATIONSHIP-ACCEPTANCE; published module path | manager/integration | registry-derived immutable plan and real SSH/NixOS activation with receipt |
+| REMOTE-NIXOS-ACTIVATION-FAILURE | BLOCKED | REMOTE-NIXOS-ACTIVATION | manager/integration | failure receipt, identity-bound retry/resume, and no false success |
+| COLMENA-VM | BLOCKED | REMOTE-NIXOS-ACTIVATION | deployment | serious real multi-guest Colmena attempt, or explicit VM-environment blocker |
+| FAILED-VAULT-CONSUMER-ROTATION | READY | — | vault/runtime | consumer refresh failure, safe failure reporting, restore/retry, and current-generation proof |
+| HARNESS-NORMAL-MODULE-PATH | DONE | REGISTRY-NIXOS-MODULE-RECURSION | VM integration | acceptance uses the published `vault-runtime-upstream` module export |
+| SECRET-LEAK-REGRESSION | DONE (existing smoke) | — | security test | runtime sentinel absence from closure, public state, logs, and receipts; broaden when deployment exists |
+| ACCEPTANCE-REVIEW | REVIEW | integrated VM implementation | independent reviewer | adversarial harness review; not yet performed |
+| DISTRIBUTED-SYSTEMS-REVIEW | REVIEW | integrated VM implementation | independent reviewer | convergence, partition, replay, and recovery review; not yet performed |
+| SECURITY-REVIEW-VM | REVIEW | integrated VM implementation | independent reviewer | identity, authority, credentials, and secret-boundary review; not yet performed |
+| NIX-DEPLOYMENT-REVIEW | REVIEW | integrated VM implementation | independent reviewer | module, store, snapshots, SSH, activation, and Colmena review; not yet performed |
+
 The lead dispatches a newly unblocked row immediately; this table is not a
 serial phase plan. Research agents may finish without changing repository
 state; mutable workers own one branch/worktree and report commits.
