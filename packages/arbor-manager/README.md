@@ -87,8 +87,9 @@ strings.
 `lib.plan` turns a selection into an inspectable deployment plan. It includes a
 canonical snapshot and SHA-256 digest, backend recommendation (`direct` or
 `colmena`), critical-route and state risks, canary/batch phases, acknowledgement
-digest, and copyable names/commands. The backend strings are interfaces only:
-Arbor Manager does not open SSH connections or execute Colmena.
+digest, and copyable names/commands. The backend strings are interfaces until
+an operator explicitly supplies a direct backend executable to the CLI. The
+Nix library still never opens connections or executes Colmena.
 
 When a plan selects the Colmena backend, `lib.rawHive` projects the same
 resolved machine records into a raw Colmena hive. Only `plan.names` become
@@ -121,18 +122,24 @@ scopes. Formats are `table`, `names`, `json`, `ssh`, and `colmena`; JSON is
 the default. `ssh` and `colmena` are display-only projections. The CLI is
 intentionally offline. `deployment plan` and `deployment apply --dry-run` only
 display the immutable plan. A real `deployment apply` requires the digest (or
-token) in the deployment snapshot:
+token) in the deployment snapshot and an explicit backend executable:
 
 ```console
 $ nix run .#arbor-manager -- deployment apply --snapshot deployment.json \
-    --acknowledgement <digest>
-arbor-manager: deployment application refused: offline CLI has no deployment backend; SSH and Colmena networking are intentionally unavailable
+    --acknowledgement <digest> --backend-executable ./my-deployer
 ```
 
-Before that final backend refusal, the CLI verifies the wrapper digest, the
-embedded snapshot digest, the plan backend/phases, and the acknowledgement.
-Missing, stale, or edited acknowledgements are refused with exit status 3.
-No SSH or Colmena networking is implemented.
+The executable is invoked once per node in each immutable plan phase, in phase
+order, with no shell interpretation. It receives JSON on stdin containing the
+snapshot and acknowledgement digests, phase, node, and endpoint metadata
+(`targetHost`, `targetPort`, and `targetUser`, with `hostname` as the host
+fallback). It must return a JSON object on stdout and use exit status zero for
+success. The CLI returns structured per-node results and treats a non-zero exit
+or invalid JSON as a failed node. It verifies the wrapper and snapshot digests,
+immutable plan phases, and acknowledgement before starting; phase names must
+be unique members of `snapshot.selected`. If no backend executable is
+supplied, apply retains an explicit refusal with exit status 3. No SSH or
+Colmena networking is built into the CLI.
 
 ```nix
 plan = lib.plan {

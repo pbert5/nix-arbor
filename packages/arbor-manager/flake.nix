@@ -53,6 +53,15 @@
           let
             pkgs = import nixpkgs { inherit system; };
             cli = mkCli system;
+            mockBackend = pkgs.writeShellScript "arbor-manager-mock-backend" ''
+              set -euo pipefail
+              request=$(cat)
+              test "$(jq -r .endpoint.host <<<"$request")" = api.example
+              test "$(jq -r .endpoint.port <<<"$request")" = 2222
+              test "$(jq -r .endpoint.user <<<"$request")" = deploy
+              printf '%s\n' "$request" >>"$MOCK_LOG"
+              jq -n --arg node "$(jq -r .node <<<"$request")" '{status: "mock-ok", node: $node}'
+            '';
           in
           pkgs.runCommand "arbor-manager-cli-check"
             {
@@ -76,6 +85,10 @@
                       nodes: {
                         api: {
                           system: "x86_64-linux",
+                          hostname: "api.example",
+                          targetHost: "api.example",
+                          targetPort: 2222,
+                          targetUser: "deploy",
                           profiles: ["server"],
                           provenance: {kind: "test"},
                           metadata: {
@@ -89,7 +102,7 @@
                         db: {system: "x86_64-linux", profiles: ["database"]}
                       },
                   },
-                  plan: {backend: "direct", phases: []},
+                  plan: {backend: "direct", phases: [{name: "canary", names: ["api"], commands: ["mock"]}]},
                   acknowledgement: null
                 }')
                 snapshot_digest=$(printf '%s' "$snapshot" | jq -cS '.snapshot' | sha256sum | cut -d' ' -f1)
@@ -103,7 +116,7 @@
                 ${cli}/bin/arbor-manager nodes list --snapshot "$work/snapshot.json" --scope local --format names > "$work/local"
                 test "$(cat "$work/local")" = api
                 ${cli}/bin/arbor-manager nodes list --snapshot "$work/snapshot.json" --scope selected --format table | grep -q '^NAME'
-                ${cli}/bin/arbor-manager nodes list --snapshot "$work/snapshot.json" --scope selected --format ssh | grep -q '^root@api$'
+                ${cli}/bin/arbor-manager nodes list --snapshot "$work/snapshot.json" --scope selected --format ssh | grep -q '^deploy@api.example$'
                 ${cli}/bin/arbor-manager nodes list --snapshot "$work/snapshot.json" --scope selected --format colmena | grep -q '^api$'
                 ${cli}/bin/arbor-manager machine inspect --snapshot "$work/snapshot.json" --name api > "$work/inspect.json"
                 jq -e '
@@ -130,8 +143,14 @@
                 ${cli}/bin/arbor-manager deployment apply --snapshot "$work/snapshot.json" --dry-run --format json | jq -e '.status == "dry-run" and .applied == false'
                 if ${cli}/bin/arbor-manager deployment apply --snapshot "$work/snapshot.json" --acknowledgement wrong 2>"$work/refusal"; then exit 1; fi
                 grep -q 'acknowledgement does not match the immutable plan and snapshot' "$work/refusal"
-                if ${cli}/bin/arbor-manager deployment apply --snapshot "$work/snapshot.json" --acknowledgement "$acknowledgement_digest" 2>"$work/backend-refusal"; then exit 1; fi
-                grep -q 'offline CLI has no deployment backend' "$work/backend-refusal"
+                if ${cli}/bin/arbor-manager deployment apply --snapshot "$work/snapshot.json" --acknowledgement "$acknowledgement_digest" 2>"$work/no-backend"; then exit 1; fi
+                grep -q 'no deployment backend configured' "$work/no-backend"
+                if MOCK_LOG="$work/mock.log" ${cli}/bin/arbor-manager deployment apply --snapshot "$work/snapshot.json" --acknowledgement "$acknowledgement_digest" --backend-executable ${mockBackend} > "$work/applied.json" 2> "$work/backend-error"; then :; else cat "$work/backend-error"; cat "$work/applied.json"; exit 1; fi
+                jq -e '.status == "applied" and .applied == true and (.results | length) == 1 and .results[0].status == "succeeded" and .results[0].provider.status == "mock-ok"' "$work/applied.json"
+                test "$(wc -l < "$work/mock.log")" -eq 1
+                before_dry_run=$(wc -l < "$work/mock.log")
+                if ${cli}/bin/arbor-manager deployment apply --snapshot "$work/snapshot.json" --acknowledgement "$acknowledgement_digest" --backend-executable ${mockBackend} --dry-run > "$work/dry-run.json"; then :; else exit 1; fi
+                test "$(wc -l < "$work/mock.log")" -eq "$before_dry_run"
                 touch "$out"
             '';
         fixtures =

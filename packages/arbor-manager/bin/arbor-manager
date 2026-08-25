@@ -13,7 +13,7 @@ Usage:
   arbor-manager deployment-plan --snapshot FILE [--format json|text]
   arbor-manager deployment plan --snapshot FILE [--format json|text]
   arbor-manager deployment apply --snapshot FILE [--acknowledgement DIGEST|TOKEN]
-    [--dry-run] [--format json|text]
+    [--backend-executable FILE] [--dry-run] [--format json|text]
 
 All commands are offline and read an immutable deployment snapshot.
 EOF
@@ -42,6 +42,7 @@ name=
 scope=all
 acknowledgement=
 dry_run=false
+backend_executable=
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -50,6 +51,7 @@ while [ "$#" -gt 0 ]; do
     --name) [ "$#" -ge 2 ] || die "--name requires a node"; name=$2; shift 2 ;;
     --scope) [ "$#" -ge 2 ] || die "--scope requires a value"; scope=$2; shift 2 ;;
     --acknowledgement|--acknowledgement-token) [ "$#" -ge 2 ] || die "$1 requires a value"; acknowledgement=$2; shift 2 ;;
+    --backend-executable) [ "$#" -ge 2 ] || die "--backend-executable requires a file"; backend_executable=$2; shift 2 ;;
     --dry-run) dry_run=true; shift ;;
     -h|--help) usage; exit 0 ;;
     *) die "unknown option '$1'" ;;
@@ -118,6 +120,71 @@ redact_filter='
 
 refuse() { echo "arbor-manager: deployment application refused: $*" >&2; exit 3; }
 
+run_direct_backend() {
+  [ -n "$backend_executable" ] || refuse "no deployment backend configured; provide --backend-executable or use --dry-run"
+  [ -f "$backend_executable" ] && [ -x "$backend_executable" ] || refuse "backend executable '$backend_executable' is not an executable file"
+  [ "$(jq -r '.plan.backend' <<<"$snapshot")" = direct ] || refuse "direct backend executable cannot apply backend '$(jq -r '.plan.backend' <<<"$snapshot")'"
+
+  work=$(mktemp -d)
+  trap 'rm -rf "$work"' RETURN
+  phase_count=$(jq '.plan.phases | length' <<<"$snapshot")
+  selected=$(jq -c '.snapshot.selected' <<<"$snapshot")
+  planned=$(jq -c '[.plan.phases[].names[]]' <<<"$snapshot")
+  jq -e --argjson selected "$selected" --argjson planned "$planned" '
+    ($planned | length) == ($planned | unique | length)
+    and all($planned[]; . as $target | any($selected[]; . == $target))
+  ' <<<"$snapshot" >/dev/null || refuse "deployment phases contain duplicate or unselected targets"
+
+  results='[]'
+  phase=0
+  while [ "$phase" -lt "$phase_count" ]; do
+    phase_name=$(jq -r --argjson phase "$phase" '.plan.phases[$phase].name // ("phase-" + ($phase + 1 | tostring))' <<<"$snapshot")
+    names=$(jq -c --argjson phase "$phase" '.plan.phases[$phase].names' <<<"$snapshot")
+    node_count=$(jq 'length' <<<"$names")
+    node=0
+    while [ "$node" -lt "$node_count" ]; do
+      node_name=$(jq -r --argjson node "$node" '.[$node]' <<<"$names")
+      request=$(jq -S -c --arg phase "$phase_name" --arg node "$node_name" '
+        .snapshot.nodes[$node] as $record
+        | ($record.target // {}) as $target
+        | {
+            protocol: "arbor-manager/direct-backend-request",
+            version: 1,
+            snapshotDigest: .snapshotDigest,
+            acknowledgementDigest: .acknowledgement.digest,
+            phase: $phase,
+            node: $node,
+            endpoint: {
+              host: ($record.targetHost // $target.targetHost // $record.hostname // $node),
+              port: ($record.targetPort // $target.targetPort // null),
+              user: ($record.targetUser // $target.targetUser // null)
+            }
+          }
+      ' <<<"$snapshot")
+      request_file=$work/request-$phase-$node.json
+      output_file=$work/output-$phase-$node.json
+      result_file=$work/result-$phase-$node.json
+      printf '%s\n' "$request" >"$request_file"
+      if "$backend_executable" <"$request_file" >"$output_file"; then
+        if jq -e -cS 'select(type == "object")' "$output_file" >/dev/null 2>&1; then
+          jq -n -cS --arg phase "$phase_name" --arg node "$node_name" --slurpfile request "$request_file" --slurpfile provider "$output_file" '{phase: $phase, node: $node, endpoint: $request[0].endpoint, status: "succeeded", provider: $provider[0]}' >"$result_file"
+        else
+          jq -n -cS --arg phase "$phase_name" --arg node "$node_name" '{phase: $phase, node: $node, status: "failed", error: "backend returned invalid JSON"}' >"$result_file"
+        fi
+      else
+        exit_code=$?
+        jq -n -cS --arg phase "$phase_name" --arg node "$node_name" --argjson exitCode "$exit_code" '{phase: $phase, node: $node, status: "failed", error: "backend exited unsuccessfully", exitCode: $exitCode}' >"$result_file"
+      fi
+      results=$(jq -cS --slurpfile result "$result_file" '. + [$result[0]]' <<<"$results")
+      node=$((node + 1))
+    done
+    phase=$((phase + 1))
+  done
+
+  jq -S --argjson results "$results" '{status: (if all($results[]; .status == "succeeded") then "applied" else "failed" end), applied: (all($results[]; .status == "succeeded")), snapshotDigest, acknowledgementDigest: .acknowledgement.digest, results: $results}' <<<"$snapshot"
+  jq -e 'all(.results[]; .status == "succeeded")' <<<"$(jq -S --argjson results "$results" '{results: $results}' <<<"$snapshot")" >/dev/null
+}
+
 if [ "$command" = deployment-apply ] && [ "$dry_run" = true ]; then
   if [ "$format" = json ]; then
     jq -S '{status: "dry-run", applied: false, snapshotDigest, plan, acknowledgement}' <<<"$snapshot"
@@ -138,7 +205,13 @@ if [ "$command" = deployment-apply ]; then
   if [ "$acknowledgement" != "$expected_ack" ] && [ "$acknowledgement" != "$expected_token" ]; then
     refuse "acknowledgement does not match the immutable plan and snapshot (expected digest $expected_ack)"
   fi
-  refuse "offline CLI has no deployment backend; SSH and Colmena networking are intentionally unavailable"
+  if [ "$format" = json ]; then
+    run_direct_backend
+  else
+    results=$(run_direct_backend)
+    jq -r '"deployment " + .status, "snapshot=" + .snapshotDigest, (.results[] | "  " + .phase + ":" + .node + "=" + .status)' <<<"$results"
+  fi
+  exit 0
 fi
 
 machine_json() {
