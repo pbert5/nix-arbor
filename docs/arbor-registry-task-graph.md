@@ -42,11 +42,11 @@ Lead-maintained queue for the extraction. States use the repository workflow:
 | RUNTIME-REVIEW-FIX | DONE | security/distributed review | worker; registry runtime | compatibility, lineage, malformed/conflict quarantine and locking |
 | SECURITY-BOUNDARY-FIX | DONE (model boundary) | security review | worker; registry/manager | recovery/vault identifiers, recursive protections, redacted inspection |
 | FINAL-GAP-AUDIT | DONE WITH FOLLOW-UPS | all integrated work | lead + reviewers | checks pass; live OrbitDB/OpenBao/systemd-vaultd/CLI execution remains explicitly incomplete |
-| ORBITDB-ADAPTER | IN_PROGRESS | runtime Provider boundary | worker; `packages/arbor-registry/runtime` | legacy transport audit and bounded provider/adapter contract |
-| EXPLICIT-PEER-EDGES | IN_PROGRESS | graph model | worker; `packages/arbor-registry/lib` | explicit peer records and selectors |
+| ORBITDB-ADAPTER | DONE (contract) | runtime Provider boundary | worker; `packages/arbor-registry/runtime` | legacy transport audit and bounded provider/adapter contract; live OrbitDB remains follow-up |
+| EXPLICIT-PEER-EDGES | DONE | graph model | worker; `packages/arbor-registry/lib` | explicit peer records, cohorts, and selectors |
 | ARBOR-CLI | IN_PROGRESS | snapshot/selector/planner APIs | worker; `packages/arbor-manager` | offline inspect/list/export/plan CLI |
-| VAULT-RUNTIME-TEST | READY | vault boundary | waiting for worker capacity | mock readiness/rotation contract |
-| ACCEPTANCE-HARNESS | READY | runtime + manager APIs | waiting for worker capacity | end-to-end synthetic scenario evidence |
+| VAULT-RUNTIME-TEST | IN_PROGRESS | vault boundary | worker; `packages/arbor-registry` | mock readiness/rotation contract |
+| ACCEPTANCE-HARNESS | IN_PROGRESS | runtime + manager APIs | integration-test; repository tests | end-to-end synthetic scenario evidence |
 
 The lead dispatches a newly unblocked row immediately; this table is not a
 serial phase plan. Research agents may finish without changing repository
