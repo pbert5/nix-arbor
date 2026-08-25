@@ -5,7 +5,7 @@ from pathlib import Path
 
 from nacl.signing import SigningKey
 
-from arbor_registry_runtime import FileProvider, Provider, Runtime, RuntimeKey, canonical_json
+from arbor_registry_runtime import FileProvider, OrbitDBProvider, Provider, Runtime, RuntimeKey, canonical_json
 from arbor_registry_runtime.runtime import _key
 
 
@@ -76,6 +76,31 @@ class RuntimeTests(unittest.TestCase):
         self.assertFalse(any(path.name.endswith(".private") for path in files))
         self.assertNotIn(bytes(self.key.signing_key).hex(), json.dumps(self.runtime.projection()))
         self.assertTrue(canonical_json({"b": 1, "a": 2}) == b'{"a":2,"b":1}')
+
+    def test_orbitdb_provider_maps_bounded_socket_contract(self):
+        import socketserver
+        import threading
+
+        seen = {}
+
+        class Handler(socketserver.StreamRequestHandler):
+            def handle(self):
+                seen.update(json.loads(self.rfile.readline()))
+                self.wfile.write(json.dumps({"ok": True, "records": [{"hash": "h1", "event": {"id": 1}}]}).encode() + b"\n")
+
+        path = Path(self.temp.name) / "registry.sock"
+        server = socketserver.UnixStreamServer(str(path), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            provider = OrbitDBProvider(path, "membership", token="secret")
+            self.assertEqual(provider.fetch(0, 1), [("h1", {"id": 1})])
+            self.assertEqual(seen["cursor"], "v1:0")
+            self.assertEqual(seen["token"], "secret")
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join()
 
     def test_envelope_compatibility_and_unsafe_values_are_quarantined(self):
         cases = {
