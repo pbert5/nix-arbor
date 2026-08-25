@@ -11,6 +11,9 @@ Usage:
     [--scope all|local|selected|excluded|roots|children|descendants|parents|ancestors|peers|accessible]
     [--format table|names|json|ssh|colmena]
   arbor-manager deployment-plan --snapshot FILE [--format json|text]
+  arbor-manager deployment plan --snapshot FILE [--format json|text]
+  arbor-manager deployment apply --snapshot FILE [--acknowledgement DIGEST|TOKEN]
+    [--dry-run] [--format json|text]
 
 All commands are offline and read an immutable deployment snapshot.
 EOF
@@ -28,12 +31,17 @@ if [ "$command" = nodes ]; then
 elif [ "$command" = machine ]; then
   subcommand=${1:-}
   shift || true
+elif [ "$command" = deployment ]; then
+  subcommand=${1:-}
+  shift || true
 fi
 
 snapshot_file=
 format=json
 name=
 scope=all
+acknowledgement=
+dry_run=false
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -41,6 +49,8 @@ while [ "$#" -gt 0 ]; do
     --format) [ "$#" -ge 2 ] || die "--format requires a value"; format=$2; shift 2 ;;
     --name) [ "$#" -ge 2 ] || die "--name requires a node"; name=$2; shift 2 ;;
     --scope) [ "$#" -ge 2 ] || die "--scope requires a value"; scope=$2; shift 2 ;;
+    --acknowledgement|--acknowledgement-token) [ "$#" -ge 2 ] || die "$1 requires a value"; acknowledgement=$2; shift 2 ;;
+    --dry-run) dry_run=true; shift ;;
     -h|--help) usage; exit 0 ;;
     *) die "unknown option '$1'" ;;
   esac
@@ -60,6 +70,13 @@ case "$command" in
     case "$scope" in all|local|selected|excluded|roots|children|descendants|parents|ancestors|peers|accessible) ;; *) die "unknown node scope '$scope'" ;; esac
     ;;
   deployment-plan) command=deployment-plan ;;
+  deployment)
+    case "$subcommand" in
+      plan) command=deployment-plan ;;
+      apply) command=deployment-apply ;;
+      *) die "unknown deployment command '$subcommand'" ;;
+    esac
+    ;;
   *) usage; exit 2 ;;
 esac
 
@@ -73,6 +90,31 @@ actual_snapshot_digest=$(jq -cS '.snapshot' <<<"$snapshot" | sha256sum | cut -d'
 expected_digest=$(jq -r '.digest' <<<"$snapshot")
 actual_digest=$(jq -cS 'del(.digest)' <<<"$snapshot" | sha256sum | cut -d' ' -f1)
 [ "$expected_digest" = "$actual_digest" ] || die "digest does not match snapshot contents"
+
+refuse() { echo "arbor-manager: deployment application refused: $*" >&2; exit 3; }
+
+if [ "$command" = deployment-apply ] && [ "$dry_run" = true ]; then
+  if [ "$format" = json ]; then
+    jq -S '{status: "dry-run", applied: false, snapshotDigest, plan, acknowledgement}' <<<"$snapshot"
+  else
+    jq -r '"deployment dry-run", "snapshot=" + .snapshotDigest, "backend=" + (.plan.backend // "unknown"), "selected=" + (.snapshot.selected | join(", "))' <<<"$snapshot"
+  fi
+  exit 0
+fi
+
+if [ "$command" = deployment-apply ]; then
+  [ -n "$acknowledgement" ] || refuse "acknowledgement is required; use --dry-run to inspect the plan"
+  [ "$(jq -r '.plan.backend // empty' <<<"$snapshot")" != "" ] || refuse "snapshot has no immutable deployment plan"
+  expected_ack=$(jq -r '.acknowledgement.digest // empty' <<<"$snapshot")
+  expected_token=$(jq -r '.acknowledgement.token // empty' <<<"$snapshot")
+  [ -n "$expected_ack" ] || refuse "snapshot has no immutable acknowledgement digest"
+  actual_plan_digest=$(jq -cS '{snapshotDigest, phases: .plan.phases, backend: .plan.backend}' <<<"$snapshot" | sha256sum | cut -d' ' -f1)
+  [ "$actual_plan_digest" = "$expected_ack" ] || refuse "immutable acknowledgement digest is inconsistent with the plan and snapshot"
+  if [ "$acknowledgement" != "$expected_ack" ] && [ "$acknowledgement" != "$expected_token" ]; then
+    refuse "acknowledgement does not match the immutable plan and snapshot (expected digest $expected_ack)"
+  fi
+  refuse "offline CLI has no deployment backend; SSH and Colmena networking are intentionally unavailable"
+fi
 
 machine_json() {
   jq -e --arg name "$name" '.snapshot.nodes[$name] // error("unknown node")' <<<"$snapshot"

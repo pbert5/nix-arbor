@@ -112,13 +112,27 @@ api
 $ nix run .#arbor-manager -- machine inspect --snapshot deployment.json --name api
 $ nix run .#arbor-manager -- machine export --snapshot deployment.json --name api --format json
 $ nix run .#arbor-manager -- deployment-plan --snapshot deployment.json --format text
+$ nix run .#arbor-manager -- deployment plan --snapshot deployment.json --format text
 ```
 
 `nodes list` supports `all`, `local`, `selected`, `excluded`, `roots`,
 `children`, `descendants`, `parents`, `ancestors`, `peers`, and `accessible`
 scopes. Formats are `table`, `names`, `json`, `ssh`, and `colmena`; JSON is
 the default. `ssh` and `colmena` are display-only projections. The CLI is
-intentionally read-only and has no SSH, Colmena, or deployment execution path.
+intentionally offline. `deployment plan` and `deployment apply --dry-run` only
+display the immutable plan. A real `deployment apply` requires the digest (or
+token) in the deployment snapshot:
+
+```console
+$ nix run .#arbor-manager -- deployment apply --snapshot deployment.json \
+    --acknowledgement <digest>
+arbor-manager: deployment application refused: offline CLI has no deployment backend; SSH and Colmena networking are intentionally unavailable
+```
+
+Before that final backend refusal, the CLI verifies the wrapper digest, the
+embedded snapshot digest, the plan backend/phases, and the acknowledgement.
+Missing, stale, or edited acknowledgements are refused with exit status 3.
+No SSH or Colmena networking is implemented.
 
 ```nix
 plan = lib.plan {

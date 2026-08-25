@@ -73,14 +73,18 @@
                     selector: "local",
                     selected: ["api"],
                     excluded: [{name: "db", reasons: ["outside-selector"]}],
-                    nodes: {
-                      api: {system: "x86_64-linux", profiles: ["server"], provenance: {kind: "test"}},
-                      db: {system: "x86_64-linux", profiles: ["database"]}
-                    }
-                  }
+                      nodes: {
+                        api: {system: "x86_64-linux", profiles: ["server"], provenance: {kind: "test"}},
+                        db: {system: "x86_64-linux", profiles: ["database"]}
+                      },
+                  },
+                  plan: {backend: "direct", phases: []},
+                  acknowledgement: null
                 }')
                 snapshot_digest=$(printf '%s' "$snapshot" | jq -cS '.snapshot' | sha256sum | cut -d' ' -f1)
                 snapshot=$(jq --arg digest "$snapshot_digest" '. + {snapshotDigest: $digest}' <<<"$snapshot")
+                acknowledgement_digest=$(printf '%s' "$snapshot" | jq -cS '{snapshotDigest, phases: .plan.phases, backend: .plan.backend}' | sha256sum | cut -d' ' -f1)
+                snapshot=$(jq --arg digest "$acknowledgement_digest" '.acknowledgement = {digest: $digest, token: ("arbor-manager/v1:" + .snapshotDigest + ":" + $digest)}' <<<"$snapshot")
                 digest=$(printf '%s' "$snapshot" | jq -cS 'del(.digest)' | sha256sum | cut -d' ' -f1)
                 jq --arg digest "$digest" '. + {digest: $digest}' <<<"$snapshot" > "$work/snapshot.json"
               ${cli}/bin/arbor-manager nodes list --snapshot "$work/snapshot.json" --scope selected --format names > "$work/nodes"
@@ -93,6 +97,11 @@
                 ${cli}/bin/arbor-manager machine inspect --snapshot "$work/snapshot.json" --name api > "$work/inspect.json"
                 jq -e '.format == "arbor-manager/machine-inspect" and .record.system == "x86_64-linux"' "$work/inspect.json"
                 ${cli}/bin/arbor-manager deployment-plan --snapshot "$work/snapshot.json" --format text | grep -q 'deployment snapshot'
+                ${cli}/bin/arbor-manager deployment apply --snapshot "$work/snapshot.json" --dry-run --format json | jq -e '.status == "dry-run" and .applied == false'
+                if ${cli}/bin/arbor-manager deployment apply --snapshot "$work/snapshot.json" --acknowledgement wrong 2>"$work/refusal"; then exit 1; fi
+                grep -q 'acknowledgement does not match the immutable plan and snapshot' "$work/refusal"
+                if ${cli}/bin/arbor-manager deployment apply --snapshot "$work/snapshot.json" --acknowledgement "$acknowledgement_digest" 2>"$work/backend-refusal"; then exit 1; fi
+                grep -q 'offline CLI has no deployment backend' "$work/backend-refusal"
                 touch "$out"
             '';
         fixtures =

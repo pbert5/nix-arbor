@@ -66,6 +66,10 @@ assert
 assert deployment.format == "arbor-manager/deployment-snapshot";
 assert deployment.snapshotDigest == plan.snapshotDigest;
 assert deployment.digest == (snapshot.digest (builtins.removeAttrs deployment [ "digest" ]));
+assert deployment.plan.backend == plan.backend.backend;
+assert deployment.plan.phases == plan.phases;
+assert deployment.acknowledgement.digest == plan.acknowledgement.digest;
+assert deployment.acknowledgement.token == plan.acknowledgement.token;
 assert
   (builtins.head (
     manager.registrySnapshot {

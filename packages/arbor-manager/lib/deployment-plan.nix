@@ -203,6 +203,12 @@ rec {
           inherit snapshotDigest phases;
           backend = recommendation.backend;
         };
+        token = "arbor-manager/v1:${snapshotDigest}:${
+          jsonDigest {
+            inherit snapshotDigest phases;
+            backend = recommendation.backend;
+          }
+        }";
         names = lib.concatStringsSep "\n" selected;
         commands = lib.concatMap (phase: phase.commands) phases;
       };

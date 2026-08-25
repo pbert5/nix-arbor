@@ -110,6 +110,11 @@ let
         inherit source;
         inherit snapshot;
         snapshotDigest = if plan ? snapshotDigest then plan.snapshotDigest else digest snapshot;
+        plan = {
+          backend = if plan ? backend then plan.backend.backend else "direct";
+          phases = plan.phases or [ ];
+        };
+        acknowledgement = plan.acknowledgement or null;
       };
     in
     body // { digest = digest body; };
