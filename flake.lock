@@ -79,11 +79,11 @@
         "systemd-vaultd": "systemd-vaultd"
       },
       "locked": {
-        "lastModified": 1787670499,
-        "narHash": "sha256-JqI5hBUcGusciMpvXORkVplQ+sQ4AX88PuSqhBFV5ig=",
+        "lastModified": 1787680662,
+        "narHash": "sha256-FYWeQhUP+2MGA8nJBqWiXOU02nNVdEdCdxuDMpZ5Gyc=",
         "owner": "pbert5",
         "repo": "arbor-registry",
-        "rev": "ce54e005662725bebb407ec63188824c0b0a4322",
+        "rev": "16029ceb17b464cc725a1151527e495470259ff0",
         "type": "github"
       },
       "original": {
