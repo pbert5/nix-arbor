@@ -44,12 +44,18 @@ pkgs.testers.nixosTest {
           RemainAfterExit = true;
         };
         script = ''
+          ready=false
           for attempt in $(seq 1 100); do
             if ${pkgs.curl}/bin/curl --fail --silent http://127.0.0.1:8200/v1/sys/health >/dev/null; then
+              ready=true
               break
             fi
             sleep 0.1
           done
+          if [ "$ready" != true ]; then
+            echo "OpenBao did not become ready; cannot seed the provider test secret" >&2
+            exit 1
+          fi
           install -d -m 0700 /run/arbor-test
           printf '%s\n' arbor-test-root >/run/arbor-test/token
           chmod 0600 /run/arbor-test/token
