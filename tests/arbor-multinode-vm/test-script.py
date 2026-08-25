@@ -1,4 +1,5 @@
 import json
+import time
 
 start_all()
 
@@ -52,19 +53,26 @@ child.reboot()
 child.wait_for_shutdown()
 child.start()
 child.wait_for_unit("arbor-registryd.service", timeout=120)
+child.wait_until_succeeds("test -S /run/arbor-registryd/registry.sock", timeout=30)
 child.wait_for_unit("arbor-vault-runtime-arbor-test-consumer-bridge.service", timeout=120)
 print("RESTART AND REBOOT RECOVERED")
+
+child.succeed("iptables -A OUTPUT -d 10.42.0.10 -j REJECT")
+root_b.succeed("iptables -A OUTPUT -d 10.42.0.10 -j REJECT")
+child.succeed("ARBOR_TEST_RECORD_ID=transport-partition-child python3 /etc/arbor-test/append.py")
+for _ in range(10):
+    assert "transport-partition-child" not in root_a.succeed("python3 /etc/arbor-test/list.py")
+    time.sleep(0.2)
+child.succeed("iptables -D OUTPUT -d 10.42.0.10 -j REJECT")
+root_b.succeed("iptables -D OUTPUT -d 10.42.0.10 -j REJECT")
+root_a.wait_until_succeeds("python3 /etc/arbor-test/list.py | grep -q transport-partition-child", timeout=30)
+print("REAL TRANSPORT PARTITION BLOCKED AND HEALED")
 
 root_a.succeed("systemctl stop arbor-registryd.service")
 child.succeed("systemctl is-system-running --wait || true")
 grandchild.succeed("systemctl is-system-running --wait || true")
 root_b.succeed("systemctl is-active arbor-registryd.service")
 print("PRIMARY TRANSPORT DAEMON STOPPED; STANDBY TRANSPORT REMAINS UP")
-
-child.succeed("iptables -A OUTPUT -d 10.42.0.10 -j REJECT")
-root_b.succeed("test -S /run/arbor-registryd/registry.sock")
-child.succeed("iptables -D OUTPUT -d 10.42.0.10 -j REJECT")
-print("HARNESS FIREWALL PARTITION APPLIED AND HEALED; DATA CONVERGENCE NOT ASSERTED")
 
 root_a.succeed("mkdir -p /run/arbor-test; ssh-keygen -q -t ed25519 -N '' -f /run/arbor-test/id_ed25519")
 for node in (child, grandchild):

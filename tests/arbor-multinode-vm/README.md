@@ -32,13 +32,14 @@ reconciliation remains a separate follow-up gate.
 
 The duplicate/quarantine assertions currently run against the packaged local
 reconciliation runtime on one guest; they are not cross-guest accepted-state
-assertions. The firewall section likewise proves only the VM harness can block
-and heal a route. The test deliberately generates transport keys, registry socket tokens, SSH
+assertions. The partition section blocks a real child event from root-a and
+then proves delivery after healing; it does not claim accepted-state behavior.
+The test deliberately generates transport keys, registry socket tokens, SSH
 keys, and the OpenBao value at VM runtime. No cluster identity or credential
 is committed to the flake. The test only uses the NixOS test driver's private
 network.
 
-The passing run observed locally took 36.94 seconds after the Nix build
+The passing run observed locally took 44.55 seconds after the Nix build
 inputs were cached. Each guest is configured with 1536 MiB RAM and a 1 GiB
 ephemeral test disk; four guests therefore need roughly 6 GiB of available
 guest memory plus QEMU/Nix overhead.
