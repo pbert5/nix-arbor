@@ -1,4 +1,7 @@
 import json
+import stat
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -7,6 +10,7 @@ from nacl.signing import SigningKey
 
 from arbor_registry_runtime import FileProvider, OrbitDBProvider, Provider, Runtime, RuntimeKey, canonical_json, generate_keypair
 from arbor_registry_runtime.runtime import _key
+from arbor_registry_runtime.openbao_provider import _json_value
 
 
 class RuntimeTests(unittest.TestCase):
@@ -184,6 +188,38 @@ class RuntimeTests(unittest.TestCase):
         self.assertIn("rollback:2", accepted_keys)
         self.assertNotIn("rollback:1", accepted_keys)
         self.assertIn("anti-rollback", {item["reason"] for item in self.runtime.quarantine()})
+
+
+class OpenBaoProviderTests(unittest.TestCase):
+    def test_mock_command_materializes_atomic_0600_value_and_digest_readiness(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            provider = root / "provider.py"
+            provider.write_text(
+                "import json, sys\n"
+                "request = json.loads(sys.stdin.readline())\n"
+                "print(json.dumps({'data': {request['field']: 'runtime-secret'}}))\n",
+                encoding="utf-8",
+            )
+            output, ready = root / "credentials" / "db", root / "ready" / "db"
+            result = subprocess.run([
+                sys.executable, "-m", "arbor_registry_runtime.openbao_provider",
+                "--path", "kv/data/arbor/db", "--field", "url",
+                "--output", str(output), "--ready", str(ready),
+                "--provider-command", sys.executable, str(provider),
+            ], check=False, stderr=subprocess.PIPE)
+            self.assertEqual(result.returncode, 0, result.stderr.decode())
+            self.assertEqual(output.read_text(), "runtime-secret")
+            self.assertEqual(stat.S_IMODE(output.stat().st_mode), 0o600)
+            self.assertEqual(stat.S_IMODE(ready.stat().st_mode), 0o644)
+            self.assertNotIn("runtime-secret", ready.read_text())
+            self.assertEqual(len(ready.read_text().strip()), 64)
+
+    def test_openbao_shapes_require_string_field(self):
+        self.assertEqual(_json_value({"data": {"url": "x"}}, "url"), "x")
+        self.assertEqual(_json_value({"data": {"data": {"url": "x"}}}, "url"), "x")
+        with self.assertRaises(ValueError):
+            _json_value({"data": {"url": 1}}, "url")
 
 
 if __name__ == "__main__":

@@ -101,7 +101,8 @@ in
 assert valid.config.systemd.services.systemd-vaultd != { };
 assert api.LoadCredential == [ "db-url:/run/arbor-vaultd/credentials/api" ];
 assert api.Restart == "on-failure";
-assert valid.config.systemd.services.api.after == [ "systemd-vaultd.service" ];
+assert valid.config.systemd.services.api.after == [ "arbor-vault-runtime-api.service" ];
+assert valid.config.systemd.services.arbor-vault-runtime-api.serviceConfig.Type == "simple";
 assert failed != [ ];
 assert builtins.any (assertion: !assertion.assertion) invalidIdentifier.config.assertions;
 pkgs.emptyFile
