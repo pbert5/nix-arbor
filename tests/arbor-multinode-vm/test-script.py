@@ -49,6 +49,13 @@ child.succeed("old=$(cat /run/arbor-test/secret.sha256); value=$(head -c 24 /dev
 child.wait_until_succeeds("test \"$(cat /run/arbor-test/consumer.sha256)\" = \"$(cat /run/arbor-test/new-secret.sha256)\"", timeout=120)
 print("SECRET ROTATION VERIFIED")
 
+child.succeed("old_consumer=$(cat /run/arbor-test/consumer.sha256); mkdir -p /run/systemd/system/arbor-test-consumer.service.d; printf '%s\\n' '[Service]' 'ExecStart=' 'ExecStart=/run/current-system/sw/bin/false' >/run/systemd/system/arbor-test-consumer.service.d/fail-refresh.conf; systemctl daemon-reload; value=$(head -c 24 /dev/urandom | base64 -w0); printf '%s' \"$value\" | sha256sum | cut -d' ' -f1 >/run/arbor-test/failed-secret.sha256; BAO_ADDR=http://127.0.0.1:8200 BAO_TOKEN=arbor-test-root bao kv put secret/arbor/acceptance value=\"$value\" >/dev/null; printf '%s' \"$old_consumer\" >/run/arbor-test/consumer-before-failed-refresh.sha256")
+child.wait_until_succeeds("journalctl -u arbor-vault-runtime-api.service --no-pager | grep -q 'restart command failed'", timeout=30)
+child.succeed("test \"$(cat /run/arbor-test/consumer.sha256)\" = \"$(cat /run/arbor-test/consumer-before-failed-refresh.sha256)\"")
+child.succeed("systemctl revert arbor-test-consumer.service; systemctl daemon-reload; systemctl restart arbor-test-consumer.service")
+child.wait_until_succeeds("test \"$(cat /run/arbor-test/consumer.sha256)\" = \"$(cat /run/arbor-test/failed-secret.sha256)\"", timeout=120)
+print("FAILED CONSUMER REFRESH REPORTED WITHOUT FALSE SUCCESS; RETRY RECOVERED")
+
 child.succeed("value=$(BAO_ADDR=http://127.0.0.1:8200 BAO_TOKEN=arbor-test-root bao kv get -field=value secret/arbor/acceptance); ! nix-store -qR /run/current-system | xargs -r grep -I -F \"$value\" 2>/dev/null; ! grep -R -F \"$value\" /run/arbor-test /var/log 2>/dev/null")
 child.succeed("systemctl restart arbor-registryd.service")
 child.wait_for_unit("arbor-registryd.service", timeout=120)

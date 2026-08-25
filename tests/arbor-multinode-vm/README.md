@@ -20,6 +20,7 @@ It starts the packaged Arbor Registry OrbitDB/Helia transport daemon on every
 guest and exercises the real OpenBao HTTP →
 `arbor-openbao-provider` → systemd-vaultd bridge on `child`. It checks
 duplicate handling, quarantine, runtime secret delivery and rotation,
+consumer refresh failure/retry with no false success,
 transport restart, a guest reboot, parent-service loss, a virtual firewall
 partition, graph-risk planning, and real SSH connectivity.
 

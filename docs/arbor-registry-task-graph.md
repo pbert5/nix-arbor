@@ -97,7 +97,7 @@ accepted reconciliation, and materialized state.
 | REMOTE-NIXOS-ACTIVATION | BLOCKED | LIVE-RELATIONSHIP-ACCEPTANCE; published module path | manager/integration | registry-derived immutable plan and real SSH/NixOS activation with receipt |
 | REMOTE-NIXOS-ACTIVATION-FAILURE | BLOCKED | REMOTE-NIXOS-ACTIVATION | manager/integration | failure receipt, identity-bound retry/resume, and no false success |
 | COLMENA-VM | BLOCKED | REMOTE-NIXOS-ACTIVATION | deployment | serious real multi-guest Colmena attempt, or explicit VM-environment blocker |
-| FAILED-VAULT-CONSUMER-ROTATION | READY | — | vault/runtime | consumer refresh failure, safe failure reporting, restore/retry, and current-generation proof |
+| FAILED-VAULT-CONSUMER-ROTATION | DONE | — | vault/runtime | VM masks the consumer during rotation, observes provider restart failure without advancing consumer state, then restores and verifies retry at the latest generation |
 | HARNESS-NORMAL-MODULE-PATH | DONE | REGISTRY-NIXOS-MODULE-RECURSION | VM integration | acceptance uses the published `vault-runtime-upstream` module export |
 | SECRET-LEAK-REGRESSION | DONE (existing smoke) | — | security test | runtime sentinel absence from closure, public state, logs, and receipts; broaden when deployment exists |
 | ACCEPTANCE-REVIEW | REVIEW | integrated VM implementation | independent reviewer | adversarial harness review; not yet performed |
