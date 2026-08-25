@@ -314,3 +314,25 @@ test('malformed replicated entries are quarantined and skipped', async () => {
     assert.match(await fs.readFile(path.join(root, 'transport-quarantine.jsonl'), 'utf8'), /malformed-replicated-entry/)
   } finally { await fs.rm(root, { recursive: true, force: true }) }
 })
+
+test('late CRDT-order insertion remains visible after a saved cursor', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'arbor-registryd-late-index-'))
+  const daemon = new TransportDaemon({ stateDir: root })
+  daemon.index.streams.registry = [{ key: 'key-a', hash: 'hash-a', order: '0:a' }]
+  daemon.open = async () => ({
+    iterator: async function * () {
+      yield { hash: 'hash-b', value: { id: 'b' }, clock: { time: 1, id: 'b' } }
+      yield { hash: 'hash-a', value: { id: 'a' }, clock: { time: 2, id: 'a' } }
+    },
+    get: async hash => ({ id: hash }),
+  })
+  try {
+    await daemon.withIndexLock(async () => {
+      await daemon.refreshIndex('registry')
+      await daemon.saveIndex()
+    })
+    assert.deepEqual(daemon.index.streams.registry.map(item => item.hash), ['hash-a', 'hash-b'])
+    const page = await daemon.list('registry', 'v2-after:hash-a', 10)
+    assert.deepEqual(page.records.map(item => item.hash), ['hash-b'])
+  } finally { await fs.rm(root, { recursive: true, force: true }) }
+})
