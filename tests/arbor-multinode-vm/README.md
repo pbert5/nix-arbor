@@ -27,13 +27,16 @@ All guests receive the same public per-test transport realm ID and protocol
 epoch. Each independently derives the same OrbitDB registry address; the test
 then performs bounded raw replication in both directions (`root-a` to `child`
 and `child` to `root-b`) and appends from multiple guests. This proves network,
-libp2p, OrbitDB, and raw transport convergence. Accepted/materialized Arbor
-reconciliation remains a separate follow-up gate.
+libp2p, OrbitDB, and raw transport convergence. It also sends one signed
+root-a record through child’s provider, reconciliation runtime, and
+materialized projection. Live relationship enrollment remains a separate
+follow-up gate.
 
 The duplicate/quarantine assertions currently run against the packaged local
-reconciliation runtime on one guest; they are not cross-guest accepted-state
-assertions. The partition section blocks a real child event from root-a and
-then proves delivery after healing; it does not claim accepted-state behavior.
+reconciliation runtime on one guest; the signed-record assertion is the
+cross-guest accepted/materialized proof. The partition section blocks a real
+child event from root-a and then proves delivery after healing; it does not
+claim accepted-state behavior during the partition.
 The test deliberately generates transport keys, registry socket tokens, SSH
 keys, and the OpenBao value at VM runtime. No cluster identity or credential
 is committed to the flake. The test only uses the NixOS test driver's private

@@ -90,6 +90,7 @@ let
           transport
         ];
         environment.etc."arbor-test/scenario.py".source = ./scenario.py;
+        environment.etc."arbor-test/accepted.py".source = ./accepted.py;
         environment.etc."arbor-test/list.py".source = ./list.py;
         environment.etc."arbor-test/status.py".source = ./status.py;
         environment.etc."arbor-test/append.py".source = ./append.py;

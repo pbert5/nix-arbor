@@ -10,6 +10,7 @@ def main():
     keys = root / "keys"
     provider = OrbitDBProvider(Path("/run/arbor-registryd/registry.sock"), "registry", token=Path("/run/arbor-test/registry.token").read_text().strip())
     root_key = generate_keypair(keys, "root-a")
+    (root / "root-a.public").write_text(root_key.public_key + "\n")
     child_key = generate_keypair(keys, "child")
     grandchild_key = generate_keypair(keys, "grandchild")
     records = [

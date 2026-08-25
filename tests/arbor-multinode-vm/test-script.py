@@ -31,8 +31,11 @@ child.succeed("test \"$(cat /run/arbor-test/consumer.sha256)\" = \"$(cat /run/ar
 print("SECRET DELIVERY VERIFIED")
 
 root_a.succeed("python3 /etc/arbor-test/scenario.py")
+root_public = root_a.succeed("cat /run/arbor-test/root-a.public").strip()
 root_a.succeed("ARBOR_TEST_RECORD_ID=transport-remote-root-a python3 /etc/arbor-test/append.py")
 child.wait_until_succeeds("python3 /etc/arbor-test/list.py | grep -q transport-remote-root-a", timeout=30)
+child.succeed("ARBOR_TEST_ROOT_PUBLIC=%r python3 /etc/arbor-test/accepted.py" % root_public)
+print("CROSS-GUEST SIGNED RECORD ACCEPTED AND MATERIALIZED")
 child.succeed("ARBOR_TEST_RECORD_ID=transport-remote-child python3 /etc/arbor-test/append.py")
 root_b.wait_until_succeeds("python3 /etc/arbor-test/list.py | grep -q transport-remote-child", timeout=30)
 root_b.succeed("python3 /etc/arbor-test/append.py")
