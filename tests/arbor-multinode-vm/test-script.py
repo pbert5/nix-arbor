@@ -1,3 +1,5 @@
+import json
+
 start_all()
 
 for node in (root_a, root_b, child, grandchild):
@@ -5,10 +7,14 @@ for node in (root_a, root_b, child, grandchild):
     node.wait_for_open_port(4001, timeout=120)
 print("BOOTSTRAP COMPLETE")
 
+statuses = [json.loads(node.succeed("python3 /etc/arbor-test/status.py")) for node in (root_a, root_b, child, grandchild)]
+assert all(status["realmId"] == "arbor-acceptance-vm-realm-v1" for status in statuses)
+assert len({status["databaseAddresses"]["registry"] for status in statuses}) == 1
+print("INDEPENDENT TRANSPORT REALM AND DATABASE ADDRESS VERIFIED")
+
 # The daemon generates its libp2p identity at runtime. Resolve that public
 # peer id from root-a, then install runtime-only bootstrap overrides on the
 # other guests so the acceptance uses the actual libp2p peer identity.
-import json
 root_peer = json.loads(root_a.succeed("python3 /etc/arbor-test/status.py"))["peerId"]
 for node in (root_b, child, grandchild):
     node.succeed("mkdir -p /run/systemd/system/arbor-registryd.service.d")
@@ -24,9 +30,13 @@ child.succeed("test \"$(cat /run/arbor-test/consumer.sha256)\" = \"$(cat /run/ar
 print("SECRET DELIVERY VERIFIED")
 
 root_a.succeed("python3 /etc/arbor-test/scenario.py")
+root_a.succeed("ARBOR_TEST_RECORD_ID=transport-remote-root-a python3 /etc/arbor-test/append.py")
+child.wait_until_succeeds("python3 /etc/arbor-test/list.py | grep -q transport-remote-root-a", timeout=30)
+child.succeed("ARBOR_TEST_RECORD_ID=transport-remote-child python3 /etc/arbor-test/append.py")
+root_b.wait_until_succeeds("python3 /etc/arbor-test/list.py | grep -q transport-remote-child", timeout=30)
 root_b.succeed("python3 /etc/arbor-test/append.py")
-root_b.succeed("python3 /etc/arbor-test/list.py | grep -q transport-local-root-b")
-print("TRANSPORT DAEMONS AND DURABLE APPEND VERIFIED")
+root_b.wait_until_succeeds("python3 /etc/arbor-test/list.py | grep -q transport-local-root-b", timeout=30)
+print("CROSS-GUEST RAW ORBITDB REPLICATION AND MULTI-WRITER VERIFIED")
 
 print("LOCAL RECONCILIATION DUPLICATE AND QUARANTINE VERIFIED")
 

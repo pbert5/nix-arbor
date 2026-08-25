@@ -8,6 +8,7 @@ let
   transport = registry.packages.${pkgs.system}.arbor-registry-transport;
   managerCli = manager.packages.${pkgs.system}.arbor-manager;
   pythonRuntime = pkgs.python3.withPackages (ps: [ ps.pynacl ]);
+  transportRealmId = "arbor-acceptance-vm-realm-v1";
 
   topology = {
     root-a = {
@@ -113,6 +114,8 @@ let
               "ARBOR_REGISTRY_STATE_DIR=/var/lib/arbor-registryd"
               "ARBOR_REGISTRY_SOCKET=/run/arbor-registryd/registry.sock"
               "ARBOR_REGISTRY_LISTEN=/ip4/0.0.0.0/tcp/4001"
+              "ARBOR_REGISTRY_REALM_ID=${transportRealmId}"
+              "ARBOR_REGISTRY_PROTOCOL_EPOCH=1"
               "ARBOR_REGISTRY_BOOTSTRAP_PEERS=${lib.concatStringsSep "," bootstrap}"
             ];
           };

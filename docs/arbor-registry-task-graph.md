@@ -61,16 +61,16 @@ Lead-maintained queue for the extraction. States use the repository workflow:
 | TRANSPORT-REPLAY-RECOVERY-HARDENING | DONE | distributed review | lead; registry transport | duplicate-event convergence, unreadable-record cursor retry, bounded quarantine, private state permissions |
 | FINAL-POSTFIX-REVIEW | DONE | provider/transport hardening | independent security + Nix reviewers | cursor/authority/secret-key/vault-template MUST findings fixed and independently re-reviewed |
 | SECURITY-DEPLOYMENT-FIX-ROUND-2 | DONE | final security/deployment review | lead; registry runtime + manager CLI | HTTPS boundary, redacted unsafe quarantine, strict endpoint/receipt validation, process-group timeout, stable transport cursors |
-| REMOTE-MAIN-PROMOTION | DONE | standalone component sync | lead + worker | arbor-manager `66bcab5`, arbor-registry `ce54e00`; root lock refreshed and normal remote checks passed |
+| REMOTE-MAIN-PROMOTION | DONE | standalone component sync | lead + worker | arbor-manager `66bcab5`, arbor-registry `16029ce`; root lock refreshed and normal remote checks passed |
 | UPSTREAM-VAULTD-VM | DONE (fixture) | upstream contract | integration-test; `packages/arbor-registry` | NixOS VM proves systemd-vaultd waits on the rendered JSON credential and delivers it through LoadCredential |
 | TRANSPORT-RECOVERY-TESTS | DONE | transport/runtime recovery | worker; `packages/arbor-registry` | three-daemon reconnect/replay convergence and out-of-order identity-generation recovery with stale approver rejection |
 | DEPLOYMENT-BOUNDARY-TESTS | DONE | deployment planning | worker; `packages/arbor-manager` | incompatible-target exclusion, Colmena canary/batch planning, failed receipts, resume validation, and backend identity |
 | POSTFIX-SHOULD-FIXES | DONE | final review | lead + workers | precise transport evidence naming/topology assertions, explicit OpenBao readiness failure, and multi-batch deployment assertions |
 | VM-MULTINODE-ACCEPTANCE | VALIDATION | published registry/manager inputs | lead; `nix-arbor/tests/arbor-multinode-vm` | four isolated NixOS guests, real transport daemons, OpenBao/provider/vaultd secret flow, replay/quarantine, restart/reboot, virtual partition, runtime SSH, and graph-risk CLI evidence; passing smoke target, broader authority/deployment claims still open |
-| VM-CROSS-PEER-CONVERGENCE | BLOCKED | VM-MULTINODE-ACCEPTANCE | registry transport owner | runtime peer bootstrap is configured, but the four-VM run did not produce a bounded cross-peer accepted-state convergence assertion; do not claim replicated topology until a focused fix and VM evidence exist |
+| VM-CROSS-PEER-CONVERGENCE | INTEGRATION | VM-MULTINODE-ACCEPTANCE | registry transport owner | raw cross-guest replication now passes with a shared realm; accepted-state convergence remains a separate gate |
 | VM-REMOTE-NIXOS-DEPLOYMENT | READY | VM-MULTINODE-ACCEPTANCE + manager direct backend | manager/integration owner | resolve a registry snapshot and perform real SSH/NixOS generation activation with receipt binding; current VM target proves SSH only |
 | VM-LIVE-RELATIONSHIP-RECOVERY | READY | VM-CROSS-PEER-CONVERGENCE + runtime recovery APIs | registry/integration owner | accepted peer, active/standby parent, descendant, identity rotation, stale-generation rejection, and parent return in isolated guests |
-| VM-REGISTRY-MODULE-STACK-OVERFLOW | IN_PROGRESS | vault runtime + NixOS module | registry owner | published default module recursively scans derivation-valued `runtimePackage` and overflows during VM evaluation; fix in arbor-registry, then restore module import to this target |
+| VM-REGISTRY-MODULE-STACK-OVERFLOW | DONE | vault runtime + NixOS module | registry owner | fixed and promoted as arbor-registry `823e02e`; normal published module path is exercised |
 
 ## Integrated VM acceptance queue
 
@@ -81,9 +81,18 @@ accepted reconciliation, and materialized state.
 | ID | State | Dependencies | Owner / write set | Deliverable |
 |---|---|---|---|---|
 | REGISTRY-NIXOS-MODULE-RECURSION | DONE | — | registry; arbor-registry | `823e02e` skips derivation metadata during public-value scans; focused package-valued module regression and component checks pass |
-| ORBITDB-CROSS-GUEST-CONVERGENCE | BLOCKED | — | registry transport | bounded VM assertion for remote raw replication and accepted/materialized convergence; current daemon exposes only local append/list evidence |
+| ORBITDB-MANIFEST-ROOT-CAUSE | DONE | — | registry transport | `@orbitdb/core` 4.0.0 default IPFS ACL writes only the creator identity, so independent name opens produce different ACL blocks and manifest CIDs; focused regression added |
+| ORBITDB-WRITER-SEMANTICS | DONE | ORBITDB-MANIFEST-ROOT-CAUSE | registry transport | realm-mode raw ACL is `write: ["*"]`; independent peers append in both directions while Arbor authorization remains above transport |
+| TRANSPORT-REALM-DESIGN | DONE | ORBITDB-MANIFEST-ROOT-CAUSE | protocol/runtime | public per-registry realm ID plus protocol epoch deterministically scopes stream names and manifests; it is not a leader or authority |
+| TRANSPORT-ACL-BOUNDARY | DONE | ORBITDB-WRITER-SEMANTICS | security/runtime | raw OrbitDB writes are permissive by design; signed record validation and accepted-state authorization remain the security boundary |
+| TRANSPORT-BOOTSTRAP-CONTRACT | DONE | TRANSPORT-REALM-DESIGN; TRANSPORT-ACL-BOUNDARY | registry transport | `ARBOR_REGISTRY_REALM_ID`/epoch derive a common address; bootstrap metadata persists and conflicts fail closed; status exposes non-secret diagnostics |
+| DETERMINISTIC-INDEPENDENT-OPEN | DONE | TRANSPORT-BOOTSTRAP-CONTRACT | registry transport | separate state directories and identities independently open one realm address; restart preserves it |
+| ORBITDB-CROSS-GUEST-CONVERGENCE | INTEGRATION | DETERMINISTIC-INDEPENDENT-OPEN | registry transport + VM | bounded four-VM raw replication and multi-writer assertion passes; accepted/materialized cross-guest state is not yet asserted |
+| CROSS-GUEST-VM-CONVERGENCE | INTEGRATION | DETERMINISTIC-INDEPENDENT-OPEN | VM integration | VM status proves one realm/address, then root-a→child and child→root-b raw events replicate within bounded waits |
+| ACCEPTED-STATE-CROSS-GUEST | BLOCKED | CROSS-GUEST-VM-CONVERGENCE | registry reconciliation | needs VM-side live provider/reconciler assertions distinguishing raw, accepted history, and materialized state |
+| LIVE-RELATIONSHIP-ACCEPTANCE | BLOCKED | ACCEPTED-STATE-CROSS-GUEST | registry reconciliation | live signed peer, active/standby parent, and grandchild edges |
+| SERVICE-ENDPOINT-CROSS-GUEST | BLOCKED | ACCEPTED-STATE-CROSS-GUEST | registry runtime | live service and provider-neutral endpoint advertisement/resolution |
 | VM-SERVICE-ENDPOINT-INTEGRATION | BLOCKED | ORBITDB-CROSS-GUEST-CONVERGENCE | registry runtime | live service and provider-neutral endpoint advertisement/resolution in the VM network |
-| LIVE-RELATIONSHIP-ACCEPTANCE | BLOCKED | ORBITDB-CROSS-GUEST-CONVERGENCE | registry reconciliation | live signed peer, active parent, standby/recovery parent, and grandchild edges with accepted provenance |
 | IDENTITY-RECOVERY-VM | BLOCKED | LIVE-RELATIONSHIP-ACCEPTANCE | registry runtime | runtime identity replacement, recovery authorization, stale-generation rejection, and grandchild survival |
 | REMOTE-NIXOS-ACTIVATION | BLOCKED | LIVE-RELATIONSHIP-ACCEPTANCE; published module path | manager/integration | registry-derived immutable plan and real SSH/NixOS activation with receipt |
 | REMOTE-NIXOS-ACTIVATION-FAILURE | BLOCKED | REMOTE-NIXOS-ACTIVATION | manager/integration | failure receipt, identity-bound retry/resume, and no false success |

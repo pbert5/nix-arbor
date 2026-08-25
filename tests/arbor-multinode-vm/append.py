@@ -1,9 +1,10 @@
 import json
 import socket
+import os
 from pathlib import Path
 
 token = Path("/run/arbor-test/registry.token").read_text().strip()
-event = {"recordId": "transport-local-root-b", "recordVersion": 1, "kind": "transport-acceptance"}
+event = {"recordId": os.environ.get("ARBOR_TEST_RECORD_ID", "transport-local-root-b"), "recordVersion": 1, "kind": "transport-acceptance"}
 request = {"operation": "append", "stream": "registry", "token": token, "event": event}
 with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
     connection.connect("/run/arbor-registryd/registry.sock")
