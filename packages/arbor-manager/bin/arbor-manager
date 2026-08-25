@@ -1,0 +1,157 @@
+#!/usr/bin/env bash
+# shellcheck disable=SC2016
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'EOF'
+Usage:
+  arbor-manager machine export --snapshot FILE --name NODE [--format json|text]
+  arbor-manager machine inspect --snapshot FILE --name NODE [--format json|text]
+  arbor-manager nodes list --snapshot FILE
+    [--scope all|local|selected|excluded|roots|children|descendants|parents|ancestors|peers|accessible]
+    [--format table|names|json|ssh|colmena]
+  arbor-manager deployment-plan --snapshot FILE [--format json|text]
+
+All commands are offline and read an immutable deployment snapshot.
+EOF
+}
+
+die() { echo "arbor-manager: $*" >&2; exit 2; }
+
+command=${1:-}
+shift || true
+action=$command
+if [ "$command" = nodes ]; then
+  subcommand=${1:-}
+  shift || true
+  [ "$subcommand" = list ] || { usage; exit 2; }
+elif [ "$command" = machine ]; then
+  subcommand=${1:-}
+  shift || true
+fi
+
+snapshot_file=
+format=json
+name=
+scope=all
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --snapshot) [ "$#" -ge 2 ] || die "--snapshot requires a file"; snapshot_file=$2; shift 2 ;;
+    --format) [ "$#" -ge 2 ] || die "--format requires a value"; format=$2; shift 2 ;;
+    --name) [ "$#" -ge 2 ] || die "--name requires a node"; name=$2; shift 2 ;;
+    --scope) [ "$#" -ge 2 ] || die "--scope requires a value"; scope=$2; shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    *) die "unknown option '$1'" ;;
+  esac
+done
+
+[ -n "$snapshot_file" ] || die "--snapshot is required"
+[ -r "$snapshot_file" ] || die "cannot read snapshot '$snapshot_file'"
+case "$format" in json|text|table|names|ssh|colmena) ;; *) die "unknown format '$format'" ;; esac
+
+case "$command" in
+  machine)
+    [ "$subcommand" = export ] || [ "$subcommand" = inspect ] || die "unknown machine command '$subcommand'"
+    action=$subcommand
+    [ -n "$name" ] || die "machine commands require --name"
+    ;;
+  nodes)
+    case "$scope" in all|local|selected|excluded|roots|children|descendants|parents|ancestors|peers|accessible) ;; *) die "unknown node scope '$scope'" ;; esac
+    ;;
+  deployment-plan) command=deployment-plan ;;
+  *) usage; exit 2 ;;
+esac
+
+snapshot=$(jq -e -cS 'select(.format == "arbor-manager/deployment-snapshot" and .version == 1 and (.snapshot | type) == "object")' "$snapshot_file") || die "invalid deployment snapshot"
+
+# Hashes are checked against canonical JSON, which is the representation used
+# by lib.snapshot.  This makes the CLI reject edited or partially copied files.
+expected_snapshot_digest=$(jq -r '.snapshotDigest' <<<"$snapshot")
+actual_snapshot_digest=$(jq -cS '.snapshot' <<<"$snapshot" | sha256sum | cut -d' ' -f1)
+[ "$expected_snapshot_digest" = "$actual_snapshot_digest" ] || die "snapshotDigest does not match snapshot contents"
+expected_digest=$(jq -r '.digest' <<<"$snapshot")
+actual_digest=$(jq -cS 'del(.digest)' <<<"$snapshot" | sha256sum | cut -d' ' -f1)
+[ "$expected_digest" = "$actual_digest" ] || die "digest does not match snapshot contents"
+
+machine_json() {
+  jq -e --arg name "$name" '.snapshot.nodes[$name] // error("unknown node")' <<<"$snapshot"
+}
+
+if [ "$command" = machine ]; then
+  record=$(machine_json) || die "unknown node '$name'"
+  if [ "$action" = export ]; then
+    if [ "$format" = json ]; then
+      jq -S . <<<"$record"
+    else
+      jq -r 'to_entries[] | "\(.key)=\(.value|tostring)"' <<<"$record"
+    fi
+  else
+    inspected=$(jq -S --arg name "$name" '{
+      format: "arbor-manager/machine-inspect",
+      version: 1,
+      name: $name,
+      record: .,
+      provenance: {
+        source: (.provenance // {kind: "snapshot"}),
+        fields: (to_entries | map({key: .key, value: {field: .key, source: (if (.value | type) == "object" then (.value.provenance // {kind: "snapshot"}) else {kind: "snapshot"} end)}}) | from_entries)
+      }
+    }' <<<"$record")
+    if [ "$format" = json ]; then
+      jq -S . <<<"$inspected"
+    else
+      jq -r '"machine \(.name)", (.record | to_entries[] | "  \(.key)=\(.value|tostring)"), "provenance=" + (.provenance.source | tostring)' <<<"$inspected"
+    fi
+  fi
+elif [ "$command" = nodes ]; then
+  case "$scope" in
+    all) names_filter='.snapshot.nodes | keys' ;;
+    local|roots) names_filter='.snapshot.roots' ;;
+    selected) names_filter='.snapshot.selected' ;;
+    excluded) names_filter='.snapshot.excluded | map(.name) | sort' ;;
+    children|descendants|parents|ancestors|peers|accessible)
+      # shellcheck disable=SC2016
+      names_filter='.
+        | .snapshot as $s
+        | ($s.nodes // {}) as $nodes
+        | ($s.roots // []) as $roots
+        | def rel($name; $kind):
+            if $kind == "children" then
+              (($nodes[$name].children // []) + ([$nodes | to_entries[] | select((.value.parents // []) | index($name)) | .key]) | unique | sort)
+            else
+              (($nodes[$name].parents // []) + ([$nodes | to_entries[] | select((.value.children // []) | index($name)) | .key]) | unique | sort)
+            end;
+          def walk($frontier; $seen; $kind):
+            if ($frontier | length) == 0 then $seen
+            else
+              ([$frontier[] as $name | rel($name; $kind)[]] | unique) as $next
+              | walk([$next[] | select(($seen | index(.)) | not)]; ($seen + $next) | unique; $kind)
+            end;
+          if "SCOPE" == "children" then [$roots[] as $r | rel($r; "children")[]] | unique | sort
+          elif "SCOPE" == "parents" then [$roots[] as $r | rel($r; "parents")[]] | unique | sort
+          elif "SCOPE" == "descendants" then (walk($roots; []; "children") - $roots) | sort
+          elif "SCOPE" == "ancestors" then (walk($roots; []; "parents") - $roots) | sort
+          elif "SCOPE" == "accessible" then (walk($roots; $roots; "children") + walk($roots; $roots; "parents") | unique | sort)
+          else
+            ([$roots[] as $r | rel($r; "children")[]] + [$roots[] as $r | rel($r; "parents")[]] | unique | sort)
+          end'
+      names_filter=${names_filter//SCOPE/$scope} ;;
+  esac
+  names=$(jq -c "$names_filter" <<<"$snapshot")
+  if [ "$format" = json ]; then
+    jq -S --argjson names "$names" '{scope: $scope, names: $names}' --arg scope "$scope" <<<"$snapshot"
+  elif [ "$format" = table ]; then
+    printf 'NAME\tHOST\tSYSTEM\tSTATE\n'
+    jq -r --argjson names "$names" '.snapshot.nodes as $nodes | $names[] | . as $name | $nodes[$name] as $node | [$name, ($node.targetHost // $node.hostname // "-"), ($node.system // "-"), ($node.state // "active")] | @tsv' <<<"$snapshot" | column -t -s $'\t'
+  elif [ "$format" = ssh ]; then
+    jq -r --argjson names "$names" '.snapshot.nodes as $nodes | $names[] | . as $name | $nodes[$name] as $node | (($node.targetUser // "root") + "@" + ($node.targetHost // $node.hostname // $name))' <<<"$snapshot"
+  else
+    jq -r '.[]' <<<"$names"
+  fi
+else
+  if [ "$format" = json ]; then
+    jq -S . <<<"$snapshot"
+  else
+    jq -r '"deployment snapshot \(.snapshotDigest)", "selector=\(.snapshot.selector)", "selected=\(.snapshot.selected | join(", "))", "excluded=\(.snapshot.excluded | map(.name + ":" + (.reasons | join(","))) | join("; "))"' <<<"$snapshot"
+  fi
+fi

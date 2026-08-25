@@ -11,6 +11,20 @@
         "aarch64-linux"
       ];
       forAllSystems = nixpkgs.lib.genAttrs systems;
+      mkCli =
+        system:
+        let
+          pkgs = import nixpkgs { inherit system; };
+        in
+        pkgs.writeShellApplication {
+          name = "arbor-manager";
+          runtimeInputs = [
+            pkgs.coreutils
+            pkgs.jq
+            pkgs.util-linux
+          ];
+          text = builtins.readFile ./bin/arbor-manager;
+        };
       managerLib = import ./lib { inherit (nixpkgs) lib; };
       snapshot = import ./lib/snapshot.nix { inherit (nixpkgs) lib; };
       lib = managerLib // {
@@ -19,8 +33,63 @@
     in
     {
       inherit lib;
+      packages = forAllSystems (system: {
+        arbor-manager = mkCli system;
+        default = mkCli system;
+      });
+      apps = forAllSystems (system: {
+        arbor-manager = {
+          type = "app";
+          program = "${mkCli system}/bin/arbor-manager";
+        };
+        default = {
+          type = "app";
+          program = "${mkCli system}/bin/arbor-manager";
+        };
+      });
       formatter = forAllSystems (system: (import nixpkgs { inherit system; }).nixfmt-tree);
       checks = forAllSystems (system: {
+        cli =
+          let
+            pkgs = import nixpkgs { inherit system; };
+            cli = mkCli system;
+          in
+          pkgs.runCommand "arbor-manager-cli-check"
+            {
+              nativeBuildInputs = [
+                pkgs.coreutils
+                pkgs.jq
+              ];
+            }
+            ''
+                work=$(mktemp -d)
+                trap 'rm -rf "$work"' EXIT
+                snapshot=$(jq -cnS '{
+                  format: "arbor-manager/deployment-snapshot",
+                  version: 1,
+                  source: "test",
+                  snapshot: {
+                    roots: ["api"],
+                    selector: "local",
+                    selected: ["api"],
+                    excluded: [{name: "db", reasons: ["outside-selector"]}],
+                    nodes: {
+                      api: {system: "x86_64-linux", profiles: ["server"], provenance: {kind: "test"}},
+                      db: {system: "x86_64-linux", profiles: ["database"]}
+                    }
+                  }
+                }')
+                snapshot_digest=$(printf '%s' "$snapshot" | jq -cS '.snapshot' | sha256sum | cut -d' ' -f1)
+                snapshot=$(jq --arg digest "$snapshot_digest" '. + {snapshotDigest: $digest}' <<<"$snapshot")
+                digest=$(printf '%s' "$snapshot" | jq -cS 'del(.digest)' | sha256sum | cut -d' ' -f1)
+                jq --arg digest "$digest" '. + {digest: $digest}' <<<"$snapshot" > "$work/snapshot.json"
+              ${cli}/bin/arbor-manager nodes list --snapshot "$work/snapshot.json" --scope selected --format names > "$work/nodes"
+                test "$(cat "$work/nodes")" = api
+                ${cli}/bin/arbor-manager machine inspect --snapshot "$work/snapshot.json" --name api > "$work/inspect.json"
+                jq -e '.format == "arbor-manager/machine-inspect" and .record.system == "x86_64-linux"' "$work/inspect.json"
+                ${cli}/bin/arbor-manager deployment-plan --snapshot "$work/snapshot.json" --format text | grep -q 'deployment snapshot'
+                touch "$out"
+            '';
         fixtures =
           let
             fixtureInputs = { inherit nixpkgs; };

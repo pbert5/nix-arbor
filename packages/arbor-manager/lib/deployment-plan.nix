@@ -87,7 +87,43 @@ let
       "nixos-rebuild switch --flake '.#${name}'";
 
 in
-{
+rec {
+  planFromSnapshot =
+    {
+      snapshot,
+      roots ? null,
+      selector ? "local",
+      backend ? null,
+      canary ? null,
+      batchSize ? 1,
+      allowStandby ? false,
+      allowSuspended ? false,
+    }:
+    let
+      nodes =
+        if snapshot ? snapshot && snapshot.snapshot ? nodes then
+          snapshot.snapshot.nodes
+        else if snapshot ? nodes then
+          snapshot.nodes
+        else if snapshot ? machines then
+          snapshot.machines
+        else
+          throw "Arbor Manager: snapshot must contain nodes, machines, or snapshot.nodes.";
+      selectedRoots = if roots == null then builtins.attrNames nodes else roots;
+    in
+    plan {
+      inherit
+        nodes
+        selector
+        backend
+        canary
+        batchSize
+        allowStandby
+        allowSuspended
+        ;
+      roots = selectedRoots;
+    };
+
   plan =
     {
       nodes,

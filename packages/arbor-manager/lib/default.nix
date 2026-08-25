@@ -280,7 +280,7 @@ in
     ;
 
   inherit (nodeSelection) graph selectors select;
-  inherit (deploymentPlan) plan;
+  inherit (deploymentPlan) plan planFromSnapshot;
   inherit (colmena) rawHive;
 
   mkMachines =
