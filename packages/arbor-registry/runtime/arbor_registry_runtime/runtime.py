@@ -24,8 +24,10 @@ from nacl.signing import SigningKey, VerifyKey
 
 
 SCHEMAS = frozenset({
-    "node-identity", "identity-generation", "relationship", "capability", "service", "endpoint",
-    "enrollment", "revocation", "recovery-authorization", "receipt",
+    "node-identity", "identity-generation", "relationship", "peer-relationship", "capability",
+    "machine-facts", "hardware-snapshot", "configuration-intent", "endpoint", "name", "service",
+    "trusted-peer", "reachability", "compatibility", "enrollment", "revocation",
+    "recovery-authorization", "receipt",
 })
 ProviderCursor: TypeAlias = int | str
 _SECRET_NAMES = {"secret", "password", "passphrase", "token", "credential", "private", "privatekey", "signingkey", "apikey", "accesskey", "accesstoken", "seed"}
@@ -215,6 +217,28 @@ def make_lifecycle_record(
         "recordId": record_id, "generation": generation, "predecessor": predecessor,
         "issuer": issuer_key.issuer, "schema": schema, "payload": payload,
     }
+    return {**unsigned, "signature": issuer_key.sign(unsigned)}
+
+
+def make_public_record(
+    issuer_key: RuntimeKey,
+    schema: str,
+    record_id: str,
+    payload: dict[str, Any],
+    *,
+    generation: int = 1,
+    issuer_generation: int | None = None,
+) -> dict[str, Any]:
+    """Create a signed public advertisement with optional identity binding."""
+    if schema not in {"machine-facts", "hardware-snapshot", "configuration-intent", "endpoint", "name", "service", "trusted-peer", "reachability", "compatibility", "relationship"}:
+        raise ValueError("schema is not a public advertisement family")
+    unsigned = {
+        "protocolEpoch": 1, "wireVersion": 1, "schemaVersion": 1,
+        "recordVersion": generation, "recordId": record_id, "generation": generation,
+        "predecessor": None, "issuer": issuer_key.issuer, "schema": schema, "payload": payload,
+    }
+    if issuer_generation is not None:
+        unsigned["issuerGeneration"] = issuer_generation
     return {**unsigned, "signature": issuer_key.sign(unsigned)}
 
 
@@ -505,6 +529,14 @@ class OrbitDBProvider(Provider):
             raise ValueError("OrbitDB provider append response has no valid cursor")
         return result
 
+    def status(self) -> dict[str, Any]:
+        """Return non-secret transport diagnostics for operator tooling."""
+        response = self._request({"operation": "status"})
+        result = {key: value for key, value in response.items() if key != "ok"}
+        if not isinstance(result.get("peerId"), str) or not isinstance(result.get("databaseAddresses"), list):
+            raise ValueError("OrbitDB provider status response is malformed")
+        return result
+
     def fetch(self, cursor: ProviderCursor = 0, limit: int = 100) -> list[tuple[ProviderCursor, dict[str, Any]]]:
         if isinstance(cursor, int):
             if cursor < 0:
@@ -567,6 +599,7 @@ class Runtime:
         _secure_directory(self.state_dir)
         self.provider = provider
         self.public_keys = dict(public_keys)
+        self.dynamic_generations: dict[tuple[str, int], str] = {}
         self.authority_issuers = set(authority_issuers) if authority_issuers is not None else (
             {"root"} if "root" in self.public_keys else set()
         )
@@ -633,8 +666,17 @@ class Runtime:
             return "quarantined", "framing-limit"
         if _unsafe_value(_without_signature(record)):
             return "quarantined", "unsafe-value"
+        issuer_generation = record.get("issuerGeneration")
+        if record["issuer"] not in self.authority_issuers:
+            if isinstance(issuer_generation, bool) or not isinstance(issuer_generation, int) or issuer_generation < 1:
+                return "quarantined", "missing-issuer-generation"
+            public_key = self.dynamic_generations.get((record["issuer"], issuer_generation))
+            if public_key is None:
+                return "quarantined", "unknown-issuer-generation"
+        else:
+            public_key = self.public_keys.get(record["issuer"])
         try:
-            verify = VerifyKey(_unb64(self.public_keys[record["issuer"]]))
+            verify = VerifyKey(_unb64(public_key))
             verify.verify(unsigned, _unb64(record["signature"]))
         except (KeyError, ValueError, TypeError, binascii.Error, BadSignatureError):
             return "quarantined", "invalid-signature"
@@ -670,6 +712,35 @@ class Runtime:
             if not isinstance(payload.get("subject"), str) or not isinstance(payload.get("digest"), str):
                 return "quarantined", "malformed-receipt"
         return "accepted", None
+
+    def _discover_dynamic_keys(self, records: Iterable[dict[str, Any]]) -> None:
+        """Learn node keys only from self-consistent authority-signed identity records."""
+        candidates = list(records)
+        rows = self.db.execute("SELECT envelope FROM records").fetchall()
+        candidates.extend(json.loads(raw) for (raw,) in rows)
+        for record in candidates:
+            if not isinstance(record, dict) or record.get("schema") not in {"node-identity", "identity-generation"}:
+                continue
+            issuer = record.get("issuer")
+            payload = record.get("payload")
+            if issuer not in self.authority_issuers or not isinstance(payload, dict):
+                continue
+            authority_key = self.public_keys.get(issuer)
+            public_key = payload.get("publicKey")
+            identity = payload.get("identity")
+            generation = payload.get("generation", record.get("generation"))
+            if not isinstance(authority_key, str) or not isinstance(public_key, str) or not isinstance(identity, str):
+                continue
+            if isinstance(generation, bool) or not isinstance(generation, int) or generation < 1:
+                continue
+            try:
+                VerifyKey(_unb64(authority_key)).verify(
+                    canonical_json(_without_signature(record)), _unb64(record["signature"])
+                )
+                VerifyKey(_unb64(public_key))
+            except (KeyError, ValueError, TypeError, binascii.Error, BadSignatureError):
+                continue
+            self.dynamic_generations[(identity, generation)] = public_key
 
     def _recovery_approval_reason(self, payload: dict[str, Any]) -> str | None:
         identity = payload.get("identity")
@@ -716,6 +787,8 @@ class Runtime:
         return None
 
     def ingest(self, records: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+        records = list(records)
+        self._discover_dynamic_keys(records)
         outcomes = []
         for record in records:
             if isinstance(record, dict) and "recordId" in record and "recordVersion" in record:
@@ -824,6 +897,14 @@ class Runtime:
             payload = record.get("payload", {})
             identity = payload.get("identity") if isinstance(payload, dict) else None
             generation = payload.get("generation") if isinstance(payload, dict) else None
+            if record["issuer"] not in self.authority_issuers:
+                issuer_generation = record.get("issuerGeneration")
+                latest_issuer_generation = max(
+                    (generation for (issuer, generation) in self.dynamic_generations if issuer == record["issuer"]),
+                    default=issuer_generation if isinstance(issuer_generation, int) else 0,
+                )
+                if issuer_generation != latest_issuer_generation:
+                    reasons[rowid] = "stale-issuer-generation"
             if (identity, generation) in revocations and record["schema"] != "revocation":
                 reasons[rowid] = "revoked-generation"
             if record["schema"] == "identity-generation":
@@ -924,3 +1005,12 @@ class Runtime:
     def projection(self) -> dict[str, dict[str, Any]]:
         return {record_id: {"schema": schema, "payload": json.loads(payload), "generation": generation}
                 for record_id, schema, payload, generation in self.db.execute("SELECT record_id, schema, payload, generation FROM projection")}
+
+    def status(self) -> dict[str, int]:
+        """Return deterministic counts without exposing raw or secret values."""
+        return {
+            "records": self.db.execute("SELECT COUNT(*) FROM records").fetchone()[0],
+            "accepted": self.db.execute("SELECT COUNT(*) FROM records WHERE status = 'accepted'").fetchone()[0],
+            "quarantined": self.db.execute("SELECT COUNT(*) FROM records WHERE status = 'quarantined'").fetchone()[0],
+            "projected": self.db.execute("SELECT COUNT(*) FROM projection").fetchone()[0],
+        }

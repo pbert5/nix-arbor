@@ -90,8 +90,8 @@ accepted reconciliation, and materialized state.
 | ORBITDB-CROSS-GUEST-CONVERGENCE | INTEGRATION | DETERMINISTIC-INDEPENDENT-OPEN | registry transport + VM | bounded four-VM raw replication and multi-writer assertion passes; live relationship convergence remains separate |
 | CROSS-GUEST-VM-CONVERGENCE | INTEGRATION | DETERMINISTIC-INDEPENDENT-OPEN | VM integration | VM status proves one realm/address, then root-a→child and child→root-b raw events replicate within bounded waits |
 | ACCEPTED-STATE-CROSS-GUEST | DONE | CROSS-GUEST-VM-CONVERGENCE | registry reconciliation | bounded VM assertion proves a signed root-a record reaches child raw state, accepted history, and materialized projection |
-| LIVE-RELATIONSHIP-ACCEPTANCE | READY | ACCEPTED-STATE-CROSS-GUEST | registry reconciliation | live signed peer, active/standby parent, and grandchild edges |
-| SERVICE-ENDPOINT-CROSS-GUEST | READY | ACCEPTED-STATE-CROSS-GUEST | registry runtime | live service and provider-neutral endpoint advertisement/resolution |
+| LIVE-RELATIONSHIP-ACCEPTANCE | IN_PROGRESS | ACCEPTED-STATE-CROSS-GUEST + RUNTIME-CONTROL-SURFACE | registry reconciliation | live signed peer, active/standby parent, and grandchild edges |
+| SERVICE-ENDPOINT-CROSS-GUEST | IN_PROGRESS | ACCEPTED-STATE-CROSS-GUEST + RUNTIME-CONTROL-SURFACE | registry runtime | live service and provider-neutral endpoint advertisement/resolution |
 | VM-SERVICE-ENDPOINT-INTEGRATION | BLOCKED | SERVICE-ENDPOINT-CROSS-GUEST | registry runtime | live service and provider-neutral endpoint advertisement/resolution in the VM network |
 | IDENTITY-RECOVERY-VM | BLOCKED | LIVE-RELATIONSHIP-ACCEPTANCE | registry runtime | runtime identity replacement, recovery authorization, stale-generation rejection, and grandchild survival |
 | REMOTE-NIXOS-ACTIVATION | BLOCKED | LIVE-RELATIONSHIP-ACCEPTANCE; published module path | manager/integration | registry-derived immutable plan and real SSH/NixOS activation with receipt |
