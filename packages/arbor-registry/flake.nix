@@ -66,6 +66,10 @@
           module = vaultRuntimeModule;
           pkgs = import nixpkgs { inherit system; };
         };
+        vault-runtime-contract = import ./tests/vault-runtime-contract.nix {
+          module = vaultRuntimeModule;
+          pkgs = import nixpkgs { inherit system; };
+        };
       });
     };
 }
