@@ -596,6 +596,52 @@ class RuntimeTests(unittest.TestCase):
         finally:
             runtime.close()
 
+    def test_observe_only_child_cannot_seed_same_batch_recovery_approver(self):
+        child = RuntimeKey("child", SigningKey.generate())
+        approver = RuntimeKey("approver", SigningKey.generate())
+        runtime = Runtime(
+            Path(self.temp.name) / "same-batch-delegated-approver-state",
+            FileProvider(Path(self.temp.name) / "same-batch-delegated-approver-raw" / "history.jsonl"),
+            {"root": self.key.public_key},
+            approver_roles={"operator": {"approver"}, "parent": set(), "peer": set()},
+        )
+        try:
+            established = [
+                make_identity_generation(self.key, "child", 1, child.public_key),
+            ]
+            self.assertEqual({item["status"] for item in runtime.ingest(established)}, {"accepted"})
+
+            relationship = make_public_record(
+                self.key, "relationship", "root-child-observe",
+                {"from": "root", "to": "child", "kind": "parent", "scope": ["observe"],
+                 "authorityRoot": "root"},
+            )
+            forged_identity = make_lifecycle_record(
+                child, "identity-generation", "approver-from-child", {
+                    "identity": "approver", "generation": 1, "publicKey": approver.public_key,
+                    "status": "active",
+                },
+            )
+            forged_identity["issuerGeneration"] = 1
+            forged_identity["signature"] = child.sign(
+                {key: value for key, value in forged_identity.items() if key != "signature"}
+            )
+            approval = make_recovery_approval(
+                approver, "node", 1, role="operator", approver_generation=1,
+            )
+            authorization = make_recovery_authorization(
+                self.key, "node", 1, "replacement", [approval],
+            )
+
+            outcomes = runtime.ingest([relationship, forged_identity, authorization])
+            self.assertEqual([item["status"] for item in outcomes],
+                             ["accepted", "quarantined", "quarantined"])
+            self.assertEqual(outcomes[1]["reason"], "unauthorized-authority")
+            self.assertEqual(outcomes[2]["reason"], "unknown-approver-generation")
+            self.assertNotIn("approver-from-child", runtime.projection())
+        finally:
+            runtime.close()
+
     def test_lifecycle_families_require_shapes_and_recovery_provenance(self):
         identity = make_identity_generation(self.key, "node", 1, self.key.public_key)
         approval = make_recovery_approval(
