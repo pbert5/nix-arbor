@@ -84,6 +84,20 @@ test('separate daemon processes preserve the typed append/list transport', async
   }
 })
 
+test('shutdown is bounded when a shared database close waits forever', async () => {
+  const daemon = new TransportDaemon({ stateDir: await fs.mkdtemp(path.join(os.tmpdir(), 'arbor-registryd-stop-')) })
+  let orbitdbStopped = false
+  daemon.databases.set('registry', { close: () => new Promise(() => {}) })
+  daemon.orbitdb = { stop: async () => { orbitdbStopped = true } }
+  const started = Date.now()
+  try {
+    await daemon.stop({ timeoutMs: 2_500 })
+    assert.ok(Date.now() - started < 3_000, 'shutdown exceeded its caller-provided deadline')
+    assert.equal(orbitdbStopped, true, 'cleanup must continue after a database close times out')
+    await daemon.stop({ timeoutMs: 2_500 })
+  } finally { await fs.rm(daemon.stateDir, { recursive: true, force: true }) }
+})
+
 test('two daemons replicate an OrbitDB event over a bootstrapped libp2p peer', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'arbor-registryd-peers-'))
   const portA = await freeTcpPort()
