@@ -1,4 +1,5 @@
-_: {
+{ inputs, ... }:
+{
   perSystem =
     { pkgs, ... }:
     let
@@ -21,6 +22,11 @@ _: {
           ${pkgs.deadnix}/bin/deadnix --fail ${../flake.nix} ${../modules}
           touch $out
         '';
+
+      };
+
+      packages.arbor-multinode-vm = import ../tests/arbor-multinode-vm {
+        inherit inputs pkgs;
       };
     };
 }
