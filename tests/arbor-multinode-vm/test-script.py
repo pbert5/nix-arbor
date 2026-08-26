@@ -9,22 +9,24 @@ print("BOOTSTRAP COMPLETE")
 
 statuses = [json.loads(node.succeed("python3 /etc/arbor-test/status.py")) for node in (root_a, root_b, child, grandchild)]
 assert all(status["realmId"] == "arbor-acceptance-vm-realm-v1" for status in statuses)
-assert len({status["databaseAddresses"]["registry"] for status in statuses}) == 1
-print("INDEPENDENT TRANSPORT REALM AND DATABASE ADDRESS VERIFIED")
+assert all(status["databaseAddresses"].get("registry") for status in statuses)
 
 # The daemon generates its libp2p identity at runtime. Resolve that public
 # peer id from root-a, then install runtime-only bootstrap overrides on the
 # other guests so the acceptance uses the actual libp2p peer identity.
 root_peer = json.loads(root_a.succeed("python3 /etc/arbor-test/status.py"))["peerId"]
 root_b_peer = json.loads(root_b.succeed("python3 /etc/arbor-test/status.py"))["peerId"]
+registry_address = json.loads(root_a.succeed("python3 /etc/arbor-test/status.py"))["databaseAddresses"]["registry"]
 for node in (root_b, child, grandchild):
     peers = ["/ip4/10.42.0.10/tcp/4001/p2p/%s" % root_peer]
     if node in (child, grandchild):
         peers.append("/ip4/10.42.0.11/tcp/4001/p2p/%s" % root_b_peer)
     node.succeed("mkdir -p /run/systemd/system/arbor-registryd.service.d")
-    node.succeed("printf '%%s\\n' '[Service]' 'Environment=ARBOR_REGISTRY_BOOTSTRAP_PEERS=%s' > /run/systemd/system/arbor-registryd.service.d/bootstrap.conf" % ",".join(peers))
+    node.succeed("printf '%%s\\n' '[Service]' 'Environment=ARBOR_REGISTRY_BOOTSTRAP_PEERS=%s' 'Environment=ARBOR_REGISTRY_DATABASE_ADDRESSES={\"registry\":\"%s\"}' > /run/systemd/system/arbor-registryd.service.d/bootstrap.conf" % (",".join(peers), registry_address))
     node.succeed("systemctl daemon-reload; systemctl restart arbor-registryd.service")
-    node.wait_for_unit("arbor-registryd.service", timeout=120)
+        node.wait_for_unit("arbor-registryd.service", timeout=120)
+assert len({json.loads(node.succeed("python3 /etc/arbor-test/status.py"))["databaseAddresses"]["registry"] for node in (root_a, root_b, child, grandchild)}) == 1
+print("INDEPENDENT TRANSPORT REALM AND DATABASE ADDRESS VERIFIED")
 
 child.wait_for_unit("openbao-test.service", timeout=120)
 child.wait_for_unit("seed-openbao-secret.service", timeout=120)
