@@ -22,8 +22,7 @@ for node in (root_b, child, grandchild):
     if node in (child, grandchild):
         peers.append("/ip4/10.42.0.11/tcp/4001/p2p/%s" % root_b_peer)
     node.succeed("mkdir -p /run/systemd/system/arbor-registryd.service.d")
-    node.succeed("printf 'ARBOR_REGISTRY_DATABASE_ADDRESSES=\\\"{\\\\\"registry\\\\\":\\\\\"%s\\\\\"}\\\"\\n' > /run/arbor-test/addresses.env" % registry_address)
-    node.succeed("printf '%%s\\n' '[Service]' 'Environment=ARBOR_REGISTRY_BOOTSTRAP_PEERS=%s' 'EnvironmentFile=/run/arbor-test/addresses.env' > /run/systemd/system/arbor-registryd.service.d/bootstrap.conf" % ",".join(peers))
+    node.succeed("printf '%%s\\n' '[Service]' 'Environment=ARBOR_REGISTRY_BOOTSTRAP_PEERS=%s' 'Environment=ARBOR_REGISTRY_DATABASE_ADDRESS=%s' > /run/systemd/system/arbor-registryd.service.d/bootstrap.conf" % (",".join(peers), registry_address))
     node.succeed("systemctl daemon-reload; systemctl restart arbor-registryd.service")
     node.wait_for_unit("arbor-registryd.service", timeout=120)
 assert len({json.loads(node.succeed("python3 /etc/arbor-test/status.py"))["databaseAddresses"]["registry"] for node in (root_a, root_b, child, grandchild)}) == 1

@@ -442,7 +442,9 @@ async function main() {
   const stateDir = process.env.ARBOR_REGISTRY_STATE_DIR ?? '/var/lib/arbor-registryd'
   const socketPath = process.env.ARBOR_REGISTRY_SOCKET ?? '/run/arbor-registryd/registry.sock'
   const streams = (process.env.ARBOR_REGISTRY_STREAMS ?? 'registry').split(',').filter(Boolean)
-  const addresses = process.env.ARBOR_REGISTRY_DATABASE_ADDRESSES ? JSON.parse(process.env.ARBOR_REGISTRY_DATABASE_ADDRESSES) : {}
+  const addresses = process.env.ARBOR_REGISTRY_DATABASE_ADDRESS
+    ? { registry: process.env.ARBOR_REGISTRY_DATABASE_ADDRESS }
+    : (process.env.ARBOR_REGISTRY_DATABASE_ADDRESSES ? JSON.parse(process.env.ARBOR_REGISTRY_DATABASE_ADDRESSES) : {})
   const daemon = new TransportDaemon({ stateDir, streams, databaseAddresses: addresses, listen: (process.env.ARBOR_REGISTRY_LISTEN ?? '').split(',').filter(Boolean), bootstrapPeers: (process.env.ARBOR_REGISTRY_BOOTSTRAP_PEERS ?? '').split(',').filter(Boolean), realmId: process.env.ARBOR_REGISTRY_REALM_ID ?? null, protocolEpoch: process.env.ARBOR_REGISTRY_PROTOCOL_EPOCH ?? null })
   const token = process.env.ARBOR_REGISTRY_SOCKET_TOKEN
   if (!token) throw new Error('ARBOR_REGISTRY_SOCKET_TOKEN is required')
