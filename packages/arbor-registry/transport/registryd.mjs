@@ -199,7 +199,10 @@ export class TransportDaemon {
         // the durable visibility frontier, so a late earlier-clock entry is
         // still returned after the cursor that preceded its observation.
         selectedAfter = entries.filter(item => item.issued > anchor.issued)
-        selectedAfter.sort((left, right) => (left.order ?? `1:${left.hash}`).localeCompare(right.order ?? `1:${right.hash}`))
+        // Keep the frontier order here. Sorting by the event clock can put a
+        // late entry ahead of an already-issued entry; using that late hash as
+        // the next cursor would then skip the intervening full-stream entry.
+        selectedAfter.sort((left, right) => left.issued - right.issued)
         start = 0
       } else if (v2) {
         if (v2[1] === 'begin') start = 0

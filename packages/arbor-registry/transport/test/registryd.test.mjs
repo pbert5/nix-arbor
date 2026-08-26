@@ -332,6 +332,51 @@ test('v2-after preserves a late earlier-clock event across index persistence', a
   } finally { await fs.rm(root, { recursive: true, force: true }) }
 })
 
+test('v2-after pagination advances through the stable full-stream frontier', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'arbor-registryd-late-pagination-'))
+  const entries = [
+    { hash: 'hash-a', value: { id: 'a' }, clock: { time: 20, id: 'a' } },
+    { hash: 'hash-b', value: { id: 'b' }, clock: { time: 30, id: 'b' } },
+  ]
+  const open = async () => ({ iterator: async function * () { yield * entries }, get: async hash => entries.find(entry => entry.hash === hash).value })
+  const daemon = new TransportDaemon({ stateDir: root }); daemon.open = open
+  try {
+    await daemon.withIndexLock(async () => { await daemon.refreshIndex('registry'); await daemon.saveIndex() })
+    entries.push({ hash: 'hash-c', value: { id: 'c' }, clock: { time: 10, id: 'c' } })
+
+    const first = await daemon.list('registry', 'v2-after:hash-a', 1)
+    assert.deepEqual(first.records.map(item => item.hash), ['hash-b'])
+    assert.equal(first.nextCursor, 'v2-after:hash-b')
+    assert.equal(first.hasMore, true)
+
+    const second = await daemon.list('registry', first.nextCursor, 1)
+    assert.deepEqual(second.records.map(item => item.hash), ['hash-c'])
+    assert.equal(second.nextCursor, 'v2-after:hash-c')
+    assert.equal(second.hasMore, false)
+  } finally { await fs.rm(root, { recursive: true, force: true }) }
+})
+
+test('v2-after pagination retains its frontier after restart and late convergence', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'arbor-registryd-late-restart-'))
+  const entries = [
+    { hash: 'hash-a', value: { id: 'a' }, clock: { time: 20, id: 'a' } },
+    { hash: 'hash-b', value: { id: 'b' }, clock: { time: 30, id: 'b' } },
+  ]
+  const open = async () => ({ iterator: async function * () { yield * entries }, get: async hash => entries.find(entry => entry.hash === hash).value })
+  const first = new TransportDaemon({ stateDir: root }); first.open = open
+  try {
+    await first.withIndexLock(async () => { await first.refreshIndex('registry'); await first.saveIndex() })
+    const page = await first.list('registry', 'v2-after:hash-a', 1)
+    assert.equal(page.nextCursor, 'v2-after:hash-b')
+
+    entries.push({ hash: 'hash-c', value: { id: 'c' }, clock: { time: 10, id: 'c' } })
+    const restarted = new TransportDaemon({ stateDir: root }); restarted.open = open
+    const next = await restarted.list('registry', page.nextCursor, 10)
+    assert.deepEqual(next.records.map(item => item.hash), ['hash-c'])
+    assert.equal(next.hasMore, false)
+  } finally { await fs.rm(root, { recursive: true, force: true }) }
+})
+
 test('duplicate loser hashes are quarantined and cannot be used as cursors', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'arbor-registryd-loser-cursor-'))
   const daemon = new TransportDaemon({ stateDir: root })
