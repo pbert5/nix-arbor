@@ -103,8 +103,10 @@ writes `/run/systemd-vaultd/secrets/<service>.service.json` with mode `0400`.
 `vault-provider-bridge-vm` proves OpenBao, both provider fetches, the real
 upstream socket, and multiple `LoadCredential` values. Provider watchers retain
 `refreshInterval`; a changed value invokes the bridge before trying to restart
-the consumer. Rotation is implemented as a runtime command path but is not
-covered by the VM check yet. The default vault-agent mode remains unchanged;
+the consumer. The `vault-agent-autoauth-vm` check composes the pinned
+`vaultAgent` module with runtime-generated OpenBao AppRole fixture files, a
+file token sink, the external provider `tokenFile`, `LoadCredential`, consumer
+rotation, and agent/token recovery. The default vault-agent mode remains unchanged;
 the bridge mode omits the upstream vault-agent template to avoid two writers.
 Runtime files and token contents remain outside Nix evaluation.
 

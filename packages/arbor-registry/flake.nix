@@ -128,6 +128,14 @@
             systemd-vaultd.nixosModules.vaultAgent
           ];
         };
+        vault-agent-autoauth-vm = import ./tests/vault-agent-autoauth-vm.nix {
+          module = vaultRuntimeModule;
+          pkgs = import nixpkgs { inherit system; };
+          upstreamModules = [
+            systemd-vaultd.nixosModules.systemdVaultd
+            systemd-vaultd.nixosModules.vaultAgent
+          ];
+        };
         openbao-runtime =
           let
             pkgs = import nixpkgs { inherit system; };
