@@ -98,6 +98,27 @@ test('shutdown is bounded when a shared database close waits forever', async () 
   } finally { await fs.rm(daemon.stateDir, { recursive: true, force: true }) }
 })
 
+test('socket shutdown destroys clients that never finish a request', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'arbor-registryd-socket-stop-'))
+  const socketPath = path.join(root, 'registry.sock')
+  const server = await startSocketServer({ handle: async () => ({ ok: true }) }, socketPath, 'test-token')
+  const client = net.createConnection(socketPath)
+  try {
+    await new Promise((resolve, reject) => {
+      client.once('connect', resolve)
+      client.once('error', reject)
+    })
+    client.write('{"operation":"health"')
+    const closed = new Promise(resolve => client.once('close', resolve))
+    await server.shutdown(0)
+    await closed
+    assert.equal(client.destroyed, true)
+  } finally {
+    client.destroy()
+    await fs.rm(root, { recursive: true, force: true })
+  }
+})
+
 test('two daemons replicate an OrbitDB event over a bootstrapped libp2p peer', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'arbor-registryd-peers-'))
   const portA = await freeTcpPort()
