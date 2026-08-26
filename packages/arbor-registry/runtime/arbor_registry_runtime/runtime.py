@@ -24,8 +24,10 @@ from nacl.signing import SigningKey, VerifyKey
 
 
 SCHEMAS = frozenset({
-    "node-identity", "identity-generation", "relationship", "capability", "service", "endpoint",
-    "enrollment", "revocation", "recovery-authorization", "receipt",
+    "node-identity", "identity-generation", "relationship", "peer-relationship", "capability",
+    "machine-facts", "hardware-snapshot", "configuration-intent", "endpoint", "name", "service",
+    "trusted-peer", "reachability", "compatibility", "enrollment", "revocation",
+    "recovery-authorization", "receipt",
 })
 ProviderCursor: TypeAlias = int | str
 _SECRET_NAMES = {"secret", "password", "passphrase", "token", "credential", "private", "privatekey", "signingkey", "apikey", "accesskey", "accesstoken", "seed"}
@@ -215,6 +217,28 @@ def make_lifecycle_record(
         "recordId": record_id, "generation": generation, "predecessor": predecessor,
         "issuer": issuer_key.issuer, "schema": schema, "payload": payload,
     }
+    return {**unsigned, "signature": issuer_key.sign(unsigned)}
+
+
+def make_public_record(
+    issuer_key: RuntimeKey,
+    schema: str,
+    record_id: str,
+    payload: dict[str, Any],
+    *,
+    generation: int = 1,
+    issuer_generation: int | None = None,
+) -> dict[str, Any]:
+    """Create a signed public advertisement with optional identity binding."""
+    if schema not in {"machine-facts", "hardware-snapshot", "configuration-intent", "endpoint", "name", "service", "trusted-peer", "reachability", "compatibility", "relationship", "peer-relationship"}:
+        raise ValueError("schema is not a public advertisement family")
+    unsigned = {
+        "protocolEpoch": 1, "wireVersion": 1, "schemaVersion": 1,
+        "recordVersion": generation, "recordId": record_id, "generation": generation,
+        "predecessor": None, "issuer": issuer_key.issuer, "schema": schema, "payload": payload,
+    }
+    if issuer_generation is not None:
+        unsigned["issuerGeneration"] = issuer_generation
     return {**unsigned, "signature": issuer_key.sign(unsigned)}
 
 
@@ -505,6 +529,14 @@ class OrbitDBProvider(Provider):
             raise ValueError("OrbitDB provider append response has no valid cursor")
         return result
 
+    def status(self) -> dict[str, Any]:
+        """Return non-secret transport diagnostics for operator tooling."""
+        response = self._request({"operation": "status"})
+        result = {key: value for key, value in response.items() if key != "ok"}
+        if not isinstance(result.get("peerId"), str) or not isinstance(result.get("databaseAddresses"), dict):
+            raise ValueError("OrbitDB provider status response is malformed")
+        return result
+
     def fetch(self, cursor: ProviderCursor = 0, limit: int = 100) -> list[tuple[ProviderCursor, dict[str, Any]]]:
         if isinstance(cursor, int):
             if cursor < 0:
@@ -567,6 +599,7 @@ class Runtime:
         _secure_directory(self.state_dir)
         self.provider = provider
         self.public_keys = dict(public_keys)
+        self.dynamic_generations: dict[tuple[str, int], str] = {}
         self.authority_issuers = set(authority_issuers) if authority_issuers is not None else (
             {"root"} if "root" in self.public_keys else set()
         )
@@ -633,21 +666,32 @@ class Runtime:
             return "quarantined", "framing-limit"
         if _unsafe_value(_without_signature(record)):
             return "quarantined", "unsafe-value"
+        issuer_generation = record.get("issuerGeneration")
+        if record["issuer"] not in self.authority_issuers:
+            if isinstance(issuer_generation, bool) or not isinstance(issuer_generation, int) or issuer_generation < 1:
+                return "quarantined", "missing-issuer-generation"
+            public_key = self.dynamic_generations.get((record["issuer"], issuer_generation))
+            if public_key is None:
+                return "quarantined", "unknown-issuer-generation"
+        else:
+            public_key = self.public_keys.get(record["issuer"])
         try:
-            verify = VerifyKey(_unb64(self.public_keys[record["issuer"]]))
+            verify = VerifyKey(_unb64(public_key))
             verify.verify(unsigned, _unb64(record["signature"]))
         except (KeyError, ValueError, TypeError, binascii.Error, BadSignatureError):
             return "quarantined", "invalid-signature"
         payload = record["payload"]
-        sensitive_schemas = {
-            "node-identity", "identity-generation", "enrollment", "revocation",
-            "recovery-authorization", "receipt", "relationship", "capability",
-        }
-        if record["schema"] in sensitive_schemas and record["issuer"] not in self.authority_issuers:
-            return "quarantined", "unauthorized-authority"
+        if record["schema"] in {"endpoint", "service", "machine-facts", "configuration-intent", "compatibility"}:
+            claimed_node = payload.get("node")
+            if claimed_node is not None and claimed_node != record["issuer"]:
+                return "quarantined", "issuer-node-mismatch"
+        # Envelope validation proves authenticity.  Authorization is resolved
+        # below, during reconciliation, because a delegated issuer's authority
+        # is a property of the accepted relationship graph rather than a
+        # static allow-list.
         authority_root = payload.get("authorityRoot")
-        if authority_root is not None and authority_root not in self.authority_issuers:
-            return "quarantined", "unauthorized-authority-root"
+        if authority_root is not None and not isinstance(authority_root, str):
+            return "quarantined", "malformed-authority-root"
         if record["schema"] == "enrollment":
             if (not isinstance(payload.get("identity"), str) or not isinstance(payload.get("publicKey"), str)
                     or not isinstance(payload.get("requestDigest"), str)
@@ -670,6 +714,146 @@ class Runtime:
             if not isinstance(payload.get("subject"), str) or not isinstance(payload.get("digest"), str):
                 return "quarantined", "malformed-receipt"
         return "accepted", None
+
+    @staticmethod
+    def _relationship(record: dict[str, Any]) -> dict[str, Any] | None:
+        if record.get("schema") not in {"relationship", "peer-relationship"}:
+            return None
+        payload = record.get("payload")
+        if not isinstance(payload, dict):
+            return None
+        edge = dict(payload)
+        if record["schema"] == "peer-relationship":
+            edge["kind"] = "peer"
+        # Older control-surface versions called this field state.  Preserve
+        # their records while exposing the canonical pure-model spelling.
+        if "status" not in edge and "state" in edge:
+            edge["status"] = edge["state"]
+        return edge
+
+    def _relationship_reason(
+        self,
+        record: dict[str, Any],
+        accepted: list[dict[str, Any]],
+    ) -> str | None:
+        edge = self._relationship(record)
+        if edge is None:
+            return "malformed-relationship"
+        if (not isinstance(edge.get("from"), str) or not isinstance(edge.get("to"), str)
+                or edge.get("kind") not in {"parent", "peer"}
+                or edge.get("status", "active") not in {"active", "standby", "suspended", "severed"}):
+            return "malformed-relationship"
+        root = edge.get("authorityRoot")
+        if root not in self.authority_issuers:
+            return "unauthorized-authority-root"
+        if record["issuer"] not in {root, edge["from"]}:
+            return "unauthorized-relationship"
+        if record["issuer"] != root and not self._has_authority_path(accepted, root, record["issuer"]):
+            return "unauthorized-relationship"
+        requested = edge.get("scope", edge.get("capabilities", []))
+        if not isinstance(requested, list) or any(not isinstance(item, str) for item in requested):
+            return "malformed-capabilities"
+        if record["issuer"] != root:
+            inherited = self._capabilities_for(accepted, record["issuer"], root)
+            if not set(requested).issubset(inherited):
+                return "unauthorized-capability"
+        return None
+
+    @staticmethod
+    def _active_parent_edges(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        edges = []
+        for record in records:
+            edge = Runtime._relationship(record)
+            if edge and edge.get("kind") == "parent" and edge.get("status", "active") == "active":
+                edges.append(edge)
+        return edges
+
+    def _has_authority_path(self, records: list[dict[str, Any]], root: str, issuer: str) -> bool:
+        if issuer == root:
+            return True
+        seen = {root}
+        frontier = [root]
+        while frontier:
+            node = frontier.pop(0)
+            for edge in self._active_parent_edges(records):
+                if edge.get("authorityRoot") == root and edge.get("from") == node:
+                    child = edge["to"]
+                    if child == issuer:
+                        return True
+                    if child not in seen:
+                        seen.add(child)
+                        frontier.append(child)
+        return False
+
+    def _capabilities_for(self, records: list[dict[str, Any]], subject: str, root: str) -> set[str]:
+        capabilities: set[str] = set()
+        for record in records:
+            edge = self._relationship(record)
+            if edge and edge.get("kind") == "parent" and edge.get("status", "active") == "active":
+                if edge.get("authorityRoot") == root and edge.get("to") == subject:
+                    values = edge.get("scope", edge.get("capabilities", []))
+                    if isinstance(values, list):
+                        capabilities.update(item for item in values if isinstance(item, str))
+            if (record.get("schema") == "capability" and isinstance(record.get("payload"), dict)
+                    and record["payload"].get("subject") == subject
+                    and record["payload"].get("authorityRoot") == root):
+                values = record["payload"].get("capabilities", [])
+                if isinstance(values, list):
+                    capabilities.update(item for item in values if isinstance(item, str))
+        return capabilities
+
+    def _parent_cycle(self, records: list[dict[str, Any]]) -> bool:
+        graph: dict[str, list[str]] = {}
+        for edge in self._active_parent_edges(records):
+            graph.setdefault(edge["from"], []).append(edge["to"])
+        def visit(node: str, path: set[str]) -> bool:
+            if node in path:
+                return True
+            return any(visit(child, path | {node}) for child in graph.get(node, []))
+        return any(visit(node, set()) for node in graph)
+
+    def _edge_in_parent_cycle(self, edge: dict[str, Any], records: list[dict[str, Any]]) -> bool:
+        frontier = [edge["to"]]
+        seen: set[str] = set()
+        edges = self._active_parent_edges(records)
+        while frontier:
+            node = frontier.pop(0)
+            if node == edge["from"]:
+                return True
+            if node in seen:
+                continue
+            seen.add(node)
+            frontier.extend(item["to"] for item in edges if item["from"] == node)
+        return False
+
+    def _discover_dynamic_keys(self, records: Iterable[dict[str, Any]]) -> None:
+        """Learn node keys only from self-consistent authority-signed identity records."""
+        candidates = list(records)
+        rows = self.db.execute("SELECT envelope FROM records").fetchall()
+        candidates.extend(json.loads(raw) for (raw,) in rows)
+        for record in candidates:
+            if not isinstance(record, dict) or record.get("schema") not in {"node-identity", "identity-generation"}:
+                continue
+            issuer = record.get("issuer")
+            payload = record.get("payload")
+            if issuer not in self.authority_issuers or not isinstance(payload, dict):
+                continue
+            authority_key = self.public_keys.get(issuer)
+            public_key = payload.get("publicKey")
+            identity = payload.get("identity")
+            generation = payload.get("generation", record.get("generation"))
+            if not isinstance(authority_key, str) or not isinstance(public_key, str) or not isinstance(identity, str):
+                continue
+            if isinstance(generation, bool) or not isinstance(generation, int) or generation < 1:
+                continue
+            try:
+                VerifyKey(_unb64(authority_key)).verify(
+                    canonical_json(_without_signature(record)), _unb64(record["signature"])
+                )
+                VerifyKey(_unb64(public_key))
+            except (KeyError, ValueError, TypeError, binascii.Error, BadSignatureError):
+                continue
+            self.dynamic_generations[(identity, generation)] = public_key
 
     def _recovery_approval_reason(self, payload: dict[str, Any]) -> str | None:
         identity = payload.get("identity")
@@ -716,6 +900,8 @@ class Runtime:
         return None
 
     def ingest(self, records: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+        records = list(records)
+        self._discover_dynamic_keys(records)
         outcomes = []
         for record in records:
             if isinstance(record, dict) and "recordId" in record and "recordVersion" in record:
@@ -783,6 +969,62 @@ class Runtime:
                     if reasons[rowid] is None:
                         reasons[rowid] = "conflicting-record-key"
         candidates = [entry for entry in valid if reasons[entry[0]] is None]
+        # Resolve graph authority to a fixed point.  Bootstrap issuers are
+        # genesis trust anchors; descendants become issuers only through an
+        # accepted active parent path under the same authority root.
+        admitted: list[dict[str, Any]] = [
+            record for _, _, record in candidates
+            if record["schema"] not in {"relationship", "peer-relationship", "capability"}
+        ]
+        pending_authority = [item for item in candidates if item[2]["schema"] in {"relationship", "peer-relationship", "capability"}]
+        while pending_authority:
+            progressed = False
+            remaining = []
+            for rowid, _, record in pending_authority:
+                if record["schema"] in {"relationship", "peer-relationship"}:
+                    reason = self._relationship_reason(record, admitted)
+                else:
+                    payload = record.get("payload", {})
+                    root = payload.get("authorityRoot") if isinstance(payload, dict) else None
+                    requested = payload.get("capabilities", []) if isinstance(payload, dict) else None
+                    if (not isinstance(root, str) or root not in self.authority_issuers
+                            or not isinstance(payload.get("subject"), str)
+                            or not isinstance(requested, list)
+                            or any(not isinstance(item, str) for item in requested)
+                            or record["issuer"] != root and not self._has_authority_path(admitted, root, record["issuer"])):
+                        reason = "unauthorized-capability"
+                    elif record["issuer"] != root and not set(requested).issubset(
+                            self._capabilities_for(admitted, record["issuer"], root)):
+                        reason = "unauthorized-capability"
+                    else:
+                        reason = None
+                if reason is None:
+                    admitted.append(record)
+                    progressed = True
+                else:
+                    # A delegated record may become valid once its parent is
+                    # admitted; retain it for another fixed-point pass.
+                    remaining.append((rowid, reason, record))
+            if not progressed:
+                for rowid, reason, _ in remaining:
+                    reasons[rowid] = reason
+                break
+            pending_authority = remaining
+        for rowid, _, record in pending_authority:
+            if reasons[rowid] is None:
+                reasons[rowid] = "unauthorized-relationship" if record["schema"] in {"relationship", "peer-relationship"} else "unauthorized-capability"
+        candidates = [(rowid, key, record) for rowid, key, record in candidates if reasons[rowid] is None]
+        # Parent cycles are invalid, while peer edges are deliberately not
+        # included in this check.  Rejected cycle records remain in history
+        # and are surfaced through quarantine.
+        accepted_relationships = [record for _, _, record in candidates if record["schema"] in {"relationship", "peer-relationship"}]
+        if self._parent_cycle(accepted_relationships):
+            for rowid, _, record in list(candidates):
+                edge = self._relationship(record)
+                if edge and edge.get("kind") == "parent" and edge.get("status", "active") == "active":
+                    if self._edge_in_parent_cycle(edge, accepted_relationships):
+                        reasons[rowid] = "parent-cycle"
+            candidates = [(rowid, key, record) for rowid, key, record in candidates if reasons[rowid] is None]
         # Lifecycle records form a small, signed state machine layered over
         # ordinary lineage.  A revocation is authoritative for every record
         # carrying the same identity/generation, including materialization.
@@ -824,6 +1066,14 @@ class Runtime:
             payload = record.get("payload", {})
             identity = payload.get("identity") if isinstance(payload, dict) else None
             generation = payload.get("generation") if isinstance(payload, dict) else None
+            if record["issuer"] not in self.authority_issuers:
+                issuer_generation = record.get("issuerGeneration")
+                latest_issuer_generation = max(
+                    (generation for (issuer, generation) in self.dynamic_generations if issuer == record["issuer"]),
+                    default=issuer_generation if isinstance(issuer_generation, int) else 0,
+                )
+                if issuer_generation != latest_issuer_generation:
+                    reasons[rowid] = "stale-issuer-generation"
             if (identity, generation) in revocations and record["schema"] != "revocation":
                 reasons[rowid] = "revoked-generation"
             if record["schema"] == "identity-generation":
@@ -924,3 +1174,12 @@ class Runtime:
     def projection(self) -> dict[str, dict[str, Any]]:
         return {record_id: {"schema": schema, "payload": json.loads(payload), "generation": generation}
                 for record_id, schema, payload, generation in self.db.execute("SELECT record_id, schema, payload, generation FROM projection")}
+
+    def status(self) -> dict[str, int]:
+        """Return deterministic counts without exposing raw or secret values."""
+        return {
+            "records": self.db.execute("SELECT COUNT(*) FROM records").fetchone()[0],
+            "accepted": self.db.execute("SELECT COUNT(*) FROM records WHERE status = 'accepted'").fetchone()[0],
+            "quarantined": self.db.execute("SELECT COUNT(*) FROM records WHERE status = 'quarantined'").fetchone()[0],
+            "projected": self.db.execute("SELECT COUNT(*) FROM projection").fetchone()[0],
+        }
