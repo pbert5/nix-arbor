@@ -24,7 +24,7 @@ for node in (root_b, child, grandchild):
     node.succeed("mkdir -p /run/systemd/system/arbor-registryd.service.d")
     node.succeed("printf '%%s\\n' '[Service]' 'Environment=ARBOR_REGISTRY_BOOTSTRAP_PEERS=%s' 'Environment=ARBOR_REGISTRY_DATABASE_ADDRESSES={\"registry\":\"%s\"}' > /run/systemd/system/arbor-registryd.service.d/bootstrap.conf" % (",".join(peers), registry_address))
     node.succeed("systemctl daemon-reload; systemctl restart arbor-registryd.service")
-        node.wait_for_unit("arbor-registryd.service", timeout=120)
+    node.wait_for_unit("arbor-registryd.service", timeout=120)
 assert len({json.loads(node.succeed("python3 /etc/arbor-test/status.py"))["databaseAddresses"]["registry"] for node in (root_a, root_b, child, grandchild)}) == 1
 print("INDEPENDENT TRANSPORT REALM AND DATABASE ADDRESS VERIFIED")
 
