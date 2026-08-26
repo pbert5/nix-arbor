@@ -14,4 +14,6 @@ with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
         if not chunk:
             break
         response += chunk
+result = json.loads(response)
+assert result.get("ok") is True, result
 print(response.decode(), end="")

@@ -2,9 +2,17 @@ import json
 
 start_all()
 
+def wait_for_registry(node):
+    node.wait_until_succeeds(
+        "test -S /run/arbor-registryd/registry.sock && python3 /etc/arbor-test/status.py >/dev/null",
+        timeout=30,
+    )
+
+
 for node in (root_a, root_b, child, grandchild):
     node.wait_for_unit("arbor-registryd.service", timeout=120)
     node.wait_for_open_port(4001, timeout=120)
+    wait_for_registry(node)
 print("BOOTSTRAP COMPLETE")
 
 statuses = [json.loads(node.succeed("python3 /etc/arbor-test/status.py")) for node in (root_a, root_b, child, grandchild)]
@@ -25,6 +33,7 @@ for node in (root_b, child, grandchild):
     node.succeed("printf '%%s\\n' '[Service]' 'Environment=ARBOR_REGISTRY_BOOTSTRAP_PEERS=%s' 'Environment=ARBOR_REGISTRY_DATABASE_ADDRESS=%s' > /run/systemd/system/arbor-registryd.service.d/bootstrap.conf" % (",".join(peers), registry_address))
     node.succeed("systemctl daemon-reload; systemctl restart arbor-registryd.service")
     node.wait_for_unit("arbor-registryd.service", timeout=120)
+    wait_for_registry(node)
 assert len({json.loads(node.succeed("python3 /etc/arbor-test/status.py"))["databaseAddresses"]["registry"] for node in (root_a, root_b, child, grandchild)}) == 1
 print("INDEPENDENT TRANSPORT REALM AND DATABASE ADDRESS VERIFIED")
 
@@ -70,7 +79,7 @@ root_b.succeed("ARBOR_TEST_RECORD_ID=transport-first-loss-root-b2 python3 /etc/a
 child.wait_until_succeeds("python3 /etc/arbor-test/list.py | grep -q transport-first-loss-root-b2", timeout=30)
 root_a.succeed("systemctl start arbor-registryd.service")
 root_a.wait_for_unit("arbor-registryd.service", timeout=120)
-root_a.wait_until_succeeds("test -S /run/arbor-registryd/registry.sock", timeout=30)
+wait_for_registry(root_a)
 root_a.wait_until_succeeds("python3 /etc/arbor-test/list.py | grep -q transport-first-loss-root-b2", timeout=30)
 print("FIRST REALM CREATOR LOSS AND REJOIN CATCH-UP VERIFIED")
 
@@ -91,11 +100,12 @@ print("FAILED CONSUMER REFRESH REPORTED WITHOUT FALSE SUCCESS; RETRY RECOVERED")
 child.succeed("value=$(BAO_ADDR=http://127.0.0.1:8200 BAO_TOKEN=arbor-test-root bao kv get -field=value secret/arbor/acceptance); ! nix-store -qR /run/current-system | xargs -r grep -I -F \"$value\" 2>/dev/null; ! grep -R -F \"$value\" /run/arbor-test /var/log 2>/dev/null")
 child.succeed("systemctl restart arbor-registryd.service")
 child.wait_for_unit("arbor-registryd.service", timeout=120)
+wait_for_registry(child)
 child.reboot()
 child.wait_for_shutdown()
 child.start()
 child.wait_for_unit("arbor-registryd.service", timeout=120)
-child.wait_until_succeeds("test -S /run/arbor-registryd/registry.sock", timeout=30)
+wait_for_registry(child)
 child.wait_for_unit("arbor-vault-runtime-arbor-test-consumer-bridge.service", timeout=120)
 print("RESTART AND REBOOT RECOVERED")
 
