@@ -36,7 +36,7 @@ function validateIndex(index, streams) {
   if (!index || index.version !== 1 || !index.streams || typeof index.streams !== 'object' || Array.isArray(index.streams)) throw new Error('invalid transport index')
   for (const stream of streams) {
     const entries = index.streams[stream]
-    if (!Array.isArray(entries) || entries.some(item => !item || typeof item.key !== 'string' || typeof item.hash !== 'string' || (item.order != null && typeof item.order !== 'string'))) throw new Error('invalid transport index')
+    if (!Array.isArray(entries) || entries.some(item => !item || typeof item.key !== 'string' || typeof item.hash !== 'string' || (item.order != null && typeof item.order !== 'string') || (item.issued != null && (!Number.isSafeInteger(item.issued) || item.issued < 0)))) throw new Error('invalid transport index')
     if (new Set(entries.map(item => item.key)).size !== entries.length) throw new Error('invalid transport index')
     if (new Set(entries.map(item => item.hash)).size !== entries.length) throw new Error('invalid transport index')
   }
@@ -168,7 +168,11 @@ export class TransportDaemon {
         await this.refreshIndex(stream)
         const refreshed = this.index.streams[stream] ??= []
         let position = refreshed.findIndex(item => item.hash === hash)
-        if (position < 0) { refreshed.push({ key, hash, order: `1:${hash}` }); position = refreshed.length - 1 }
+        if (position < 0) {
+          const issued = refreshed.reduce((next, item) => Math.max(next, Number.isSafeInteger(item.issued) ? item.issued + 1 : 0), 0)
+          refreshed.push({ key, hash, order: `1:${hash}`, issued }); position = refreshed.length - 1
+          refreshed.sort((left, right) => (left.order ?? `1:${left.hash}`).localeCompare(right.order ?? `1:${right.hash}`))
+        }
         const cursor = `v2:${hash}`
         await assertOwned(); await this.saveIndex(assertOwned)
         return { hash, cursor, duplicate: false }
@@ -187,10 +191,16 @@ export class TransportDaemon {
       const v2 = typeof cursor === 'string' && /^v2:(begin|[A-Za-z0-9._:-]{1,1024})$/.exec(cursor)
       const v2After = typeof cursor === 'string' && /^v2-after:([A-Za-z0-9._:-]{1,1024})$/.exec(cursor)
       const legacy = typeof cursor === 'string' && /^v1:(0|[1-9][0-9]*)$/.exec(cursor)
+      let selectedAfter
       if (v2After) {
-        const position = entries.findIndex(item => item.hash === v2After[1])
-        if (position < 0) throw new Error('invalid cursor')
-        start = position + 1
+        const anchor = entries.find(item => item.hash === v2After[1])
+        if (!anchor || !Number.isSafeInteger(anchor.issued)) throw new Error('invalid cursor')
+        // Array order is deterministic healing order. The issued ordinal is
+        // the durable visibility frontier, so a late earlier-clock entry is
+        // still returned after the cursor that preceded its observation.
+        selectedAfter = entries.filter(item => item.issued > anchor.issued)
+        selectedAfter.sort((left, right) => (left.order ?? `1:${left.hash}`).localeCompare(right.order ?? `1:${right.hash}`))
+        start = 0
       } else if (v2) {
         if (v2[1] === 'begin') start = 0
         else {
@@ -206,14 +216,14 @@ export class TransportDaemon {
         start = position + 1
       } else throw new Error('invalid cursor')
       if (!Number.isSafeInteger(start) || start > Number.MAX_SAFE_INTEGER - limit) throw new Error('invalid cursor')
-      const selected = entries.slice(start, start + limit); const db = await this.open(stream)
+      const selected = selectedAfter ? selectedAfter.slice(0, limit) : entries.slice(start, start + limit); const db = await this.open(stream)
       const records = []
       let processed = 0
       for (const [sequence, item] of selected.entries()) {
         try { records.push({ hash: item.hash, event: await db.get(item.hash), sequence: start + sequence }); processed = sequence + 1 } catch { break }
       }
       const nextCursor = processed > 0 ? `v2-after:${records[records.length - 1].hash}` : cursor
-      return { records, nextCursor, hasMore: start + processed < entries.length }
+      return { records, nextCursor, hasMore: processed < (selectedAfter ? selectedAfter.length : entries.length - start) }
     })
   }
 
@@ -339,31 +349,36 @@ export class TransportDaemon {
     const database = await this.open(stream)
     const entries = this.index.streams[stream] ??= []
     if (typeof database.iterator !== 'function') return
+    let nextIssued = 0
+    for (const [index, entry] of entries.entries()) {
+      if (!Number.isSafeInteger(entry.issued)) entry.issued = index
+      nextIssued = Math.max(nextIssued, entry.issued + 1)
+    }
     const observed = []
-    const known = new Set()
+    const knownHashes = new Set(entries.map(item => item.hash))
+    const knownKeys = new Set(entries.map(item => item.key))
     for await (const entry of database.iterator()) {
       if (!entry || typeof entry !== 'object' || typeof entry.hash !== 'string' || !entry.hash || !entry.value || typeof entry.value !== 'object' || Array.isArray(entry.value)) {
         await this.quarantineEntry(entry, 'malformed-replicated-entry'); continue
       }
       const hash = entry.hash
-      if (!known.has(hash)) {
+      if (!knownHashes.has(hash)) {
         try {
           const clock = entry.clock && typeof entry.clock === 'object' ? entry.clock : {}
           const order = Number.isSafeInteger(clock.time)
             ? `0:${String(clock.time).padStart(20, '0')}:${typeof clock.id === 'string' ? clock.id : ''}:${hash}`
             : `1:${hash}`
-          observed.push({ key: digest(entry.value), hash, order }); known.add(hash)
+          const key = digest(entry.value)
+          if (knownKeys.has(key)) {
+            await this.quarantineEntry(entry, 'duplicate-event-key'); continue
+          }
+          observed.push({ key, hash, order, issued: nextIssued++ }); knownHashes.add(hash); knownKeys.add(key)
         } catch { await this.quarantineEntry(entry, 'malformed-replicated-entry') }
       }
     }
     observed.sort((left, right) => left.order.localeCompare(right.order))
-    const unique = []
-    const keys = new Set()
-    for (const entry of observed) {
-      if (keys.has(entry.key)) { await this.quarantineEntry(entry, 'duplicate-event-key'); continue }
-      keys.add(entry.key); unique.push(entry)
-    }
-    this.index.streams[stream] = unique
+    entries.push(...observed)
+    entries.sort((left, right) => (left.order ?? `1:${left.hash}`).localeCompare(right.order ?? `1:${right.hash}`))
   }
   async handle(request) {
     try {
