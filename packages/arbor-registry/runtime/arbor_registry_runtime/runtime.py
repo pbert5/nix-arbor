@@ -31,6 +31,10 @@ SCHEMAS = frozenset({
 })
 ProviderCursor: TypeAlias = int | str
 _SECRET_NAMES = {"secret", "password", "passphrase", "token", "credential", "private", "privatekey", "signingkey", "apikey", "accesskey", "accesstoken", "seed"}
+_LIFECYCLE_SCHEMAS = frozenset({
+    "enrollment", "identity-generation", "revocation", "recovery-authorization", "receipt",
+})
+_NODE_BOUND_SCHEMAS = frozenset({"endpoint", "service", "machine-facts"})
 
 
 def _unsafe_value(value: Any) -> bool:
@@ -681,9 +685,11 @@ class Runtime:
         except (KeyError, ValueError, TypeError, binascii.Error, BadSignatureError):
             return "quarantined", "invalid-signature"
         payload = record["payload"]
-        if record["schema"] in {"endpoint", "service", "machine-facts", "configuration-intent", "compatibility"}:
+        if record["schema"] in _NODE_BOUND_SCHEMAS:
             claimed_node = payload.get("node")
-            if claimed_node is not None and claimed_node != record["issuer"]:
+            if not isinstance(claimed_node, str) or not claimed_node:
+                return "quarantined", "missing-node-binding"
+            if claimed_node != record["issuer"]:
                 return "quarantined", "issuer-node-mismatch"
         # Envelope validation proves authenticity.  Authorization is resolved
         # below, during reconciliation, because a delegated issuer's authority
@@ -1013,6 +1019,18 @@ class Runtime:
         for rowid, _, record in pending_authority:
             if reasons[rowid] is None:
                 reasons[rowid] = "unauthorized-relationship" if record["schema"] in {"relationship", "peer-relationship"} else "unauthorized-capability"
+        # Delegation does not implicitly include lifecycle authority.  A
+        # delegated issuer must have a currently active parent path and an
+        # explicit grant for each lifecycle family it publishes.
+        for rowid, _, record in candidates:
+            if record["schema"] not in _LIFECYCLE_SCHEMAS or record["issuer"] in self.authority_issuers:
+                continue
+            granted = set()
+            for root in self.authority_issuers:
+                if self._has_authority_path(admitted, root, record["issuer"]):
+                    granted.update(self._capabilities_for(admitted, record["issuer"], root))
+            if record["schema"] not in granted:
+                reasons[rowid] = "unauthorized-authority"
         candidates = [(rowid, key, record) for rowid, key, record in candidates if reasons[rowid] is None]
         # Parent cycles are invalid, while peer edges are deliberately not
         # included in this check.  Rejected cycle records remain in history
@@ -1045,6 +1063,7 @@ class Runtime:
             and isinstance(record["payload"].get("newGeneration"), int)
         }
         active_generations: dict[str, int] = {}
+        dynamic_states: dict[tuple[str, int], str] = {}
         for _, _, record in candidates:
             payload = record.get("payload", {})
             if (record["schema"] == "identity-generation" and isinstance(payload, dict)
@@ -1053,6 +1072,13 @@ class Runtime:
                     and payload.get("status", "active") == "active"):
                 identity = payload["identity"]
                 active_generations[identity] = max(active_generations.get(identity, 0), payload["generation"])
+            if (record["schema"] == "identity-generation" and isinstance(payload, dict)
+                    and isinstance(payload.get("identity"), str)
+                    and isinstance(payload.get("generation"), int)):
+                dynamic_states[(payload["identity"], payload["generation"])] = payload.get("status", "active")
+        for identity, generation in revocations:
+            if (identity, generation) in dynamic_states:
+                dynamic_states[(identity, generation)] = "revoked"
         for rowid, _, record in candidates:
             if record["schema"] != "recovery-authorization" or reasons[rowid] is not None:
                 continue
@@ -1068,11 +1094,15 @@ class Runtime:
             generation = payload.get("generation") if isinstance(payload, dict) else None
             if record["issuer"] not in self.authority_issuers:
                 issuer_generation = record.get("issuerGeneration")
-                latest_issuer_generation = max(
-                    (generation for (issuer, generation) in self.dynamic_generations if issuer == record["issuer"]),
-                    default=issuer_generation if isinstance(issuer_generation, int) else 0,
-                )
-                if issuer_generation != latest_issuer_generation:
+                issuer_state = dynamic_states.get((record["issuer"], issuer_generation))
+                if issuer_state == "revoked":
+                    reasons[rowid] = "revoked-generation"
+                elif issuer_state != "active":
+                    reasons[rowid] = "inactive-generation" if issuer_state is not None else "stale-issuer-generation"
+                elif issuer_generation != max(
+                        (generation for (issuer, generation) in dynamic_states if issuer == record["issuer"]),
+                        default=issuer_generation,
+                ):
                     reasons[rowid] = "stale-issuer-generation"
             if (identity, generation) in revocations and record["schema"] != "revocation":
                 reasons[rowid] = "revoked-generation"

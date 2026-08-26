@@ -147,6 +147,87 @@ class RuntimeTests(unittest.TestCase):
         self.assertNotIn("stranger-child", runtime.projection())
         runtime.close()
 
+    def test_delegated_lifecycle_authority_requires_an_explicit_schema_grant(self):
+        child = RuntimeKey("child", SigningKey.generate())
+        runtime = Runtime(
+            Path(self.temp.name) / "delegated-lifecycle-state",
+            FileProvider(Path(self.temp.name) / "delegated-lifecycle-raw" / "history.jsonl"),
+            {"root": self.key.public_key},
+        )
+        try:
+            identity = make_identity_generation(self.key, "child", 1, child.public_key)
+            relationship = make_public_record(
+                self.key, "relationship", "root-child",
+                {"from": "root", "to": "child", "kind": "parent", "scope": ["observe"],
+                 "authorityRoot": "root"},
+            )
+            revocation = make_lifecycle_record(
+                child, "revocation", "child:revocation:1",
+                {"identity": "other", "generation": 1, "reason": "retired"},
+            )
+            revocation["issuerGeneration"] = 1
+            revocation["signature"] = child.sign({key: value for key, value in revocation.items() if key != "signature"})
+            self.assertEqual(runtime.ingest([identity, relationship, revocation])[-1]["reason"], "unauthorized-authority")
+
+            grant = make_public_record(
+                self.key, "relationship", "root-child-revocation",
+                {"from": "root", "to": "child", "kind": "parent", "scope": ["revocation"],
+                 "authorityRoot": "root"},
+            )
+            authorized = dict(revocation, recordId="child:revocation:2")
+            authorized["signature"] = child.sign({key: value for key, value in authorized.items() if key != "signature"})
+            self.assertEqual(runtime.ingest([grant, authorized])[-1]["status"], "accepted")
+        finally:
+            runtime.close()
+
+    def test_revoked_or_retired_dynamic_generation_cannot_publish(self):
+        child = RuntimeKey("child", SigningKey.generate())
+        runtime = Runtime(
+            Path(self.temp.name) / "dynamic-state",
+            FileProvider(Path(self.temp.name) / "dynamic-raw" / "history.jsonl"),
+            {"root": self.key.public_key},
+        )
+        try:
+            identity = make_identity_generation(self.key, "child", 1, child.public_key)
+            relationship = make_public_record(
+                self.key, "relationship", "root-child",
+                {"from": "root", "to": "child", "kind": "parent", "scope": ["observe"],
+                 "authorityRoot": "root"},
+            )
+            endpoint = make_public_record(
+                child, "endpoint", "child-endpoint", {"node": "child", "address": "https://example.invalid"},
+                issuer_generation=1,
+            )
+            self.assertEqual({item["status"] for item in runtime.ingest([identity, relationship, endpoint])}, {"accepted"})
+            revoked = make_revocation(self.key, "child", 1, "compromised")
+            self.assertEqual(runtime.ingest([revoked])[-1]["status"], "accepted")
+            retired = make_public_record(
+                child, "service", "child-service", {"node": "child", "name": "demo"}, issuer_generation=1,
+            )
+            self.assertEqual(runtime.ingest([retired])[0]["reason"], "revoked-generation")
+            self.assertNotIn("child-endpoint", runtime.projection())
+
+            retired_key = RuntimeKey("retired", SigningKey.generate())
+            retired_generation = make_lifecycle_record(
+                self.key, "identity-generation", "retired", {
+                    "identity": "retired", "publicKey": retired_key.public_key,
+                    "generation": 1, "status": "deprecated",
+                },
+            )
+            retired_public = make_public_record(
+                retired_key, "machine-facts", "retired-facts", {"node": "retired"}, issuer_generation=1,
+            )
+            self.assertEqual(runtime.ingest([retired_generation, retired_public])[-1]["reason"], "inactive-generation")
+        finally:
+            runtime.close()
+
+    def test_node_bound_public_records_require_matching_node(self):
+        for schema in ("endpoint", "service", "machine-facts"):
+            missing = self.envelope(f"{schema}-missing", schema=schema, payload={})
+            conflicting = self.envelope(f"{schema}-conflicting", schema=schema, payload={"node": "other"})
+            outcomes = self.runtime.ingest([missing, conflicting])
+            self.assertEqual([item["reason"] for item in outcomes], ["missing-node-binding", "issuer-node-mismatch"])
+
     def test_generate_keypair_refuses_implicit_overwrite_and_supports_explicit_rotation(self):
         key_dir = Path(self.temp.name) / "identity"
         first = generate_keypair(key_dir, "operator")
