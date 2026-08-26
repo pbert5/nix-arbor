@@ -221,6 +221,26 @@ class RuntimeTests(unittest.TestCase):
         finally:
             runtime.close()
 
+    def test_invalid_recovery_generation_cannot_seed_same_batch_dependent(self):
+        child = RuntimeKey("child", SigningKey.generate())
+        identity_one = make_identity_generation(self.key, "child", 1, child.public_key)
+        invalid_identity_two = make_identity_generation(
+            self.key, "child", 2, child.public_key, predecessor="child:1",
+            recovery_authorization={"authorization": "not-a-record"},
+        )
+        dependent = make_public_record(
+            child, "endpoint", "child-endpoint-generation-two",
+            {"node": "child", "address": "https://example.invalid"}, issuer_generation=2,
+        )
+
+        outcomes = self.runtime.ingest([identity_one, invalid_identity_two, dependent])
+
+        self.assertEqual([item["status"] for item in outcomes], ["accepted", "quarantined", "quarantined"])
+        self.assertEqual(outcomes[1]["reason"], "missing-recovery-authorization")
+        self.assertEqual(outcomes[2]["reason"], "stale-issuer-generation")
+        self.assertNotIn("child-endpoint-generation-two", self.runtime.projection())
+        self.assertNotIn(("child", 2), self.runtime.dynamic_generations)
+
     def test_node_bound_public_records_require_matching_node(self):
         for schema in ("endpoint", "service", "machine-facts"):
             missing = self.envelope(f"{schema}-missing", schema=schema, payload={})

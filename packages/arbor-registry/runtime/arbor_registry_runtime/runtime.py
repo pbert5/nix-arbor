@@ -1064,6 +1064,7 @@ class Runtime:
         }
         active_generations: dict[str, int] = {}
         dynamic_states: dict[tuple[str, int], str] = {}
+        declared_generations: dict[str, int] = {}
         for _, _, record in candidates:
             payload = record.get("payload", {})
             if (record["schema"] == "identity-generation" and isinstance(payload, dict)
@@ -1071,6 +1072,7 @@ class Runtime:
                     and isinstance(payload.get("generation"), int)
                     and payload.get("status", "active") == "active"):
                 identity = payload["identity"]
+                declared_generations[identity] = max(declared_generations.get(identity, 0), payload["generation"])
                 active_generations[identity] = max(active_generations.get(identity, 0), payload["generation"])
             if (record["schema"] == "identity-generation" and isinstance(payload, dict)
                     and isinstance(payload.get("identity"), str)
@@ -1085,9 +1087,58 @@ class Runtime:
             for approval in record.get("payload", {}).get("approvals", []):
                 approver = approval.get("approver") if isinstance(approval, dict) else None
                 generation = approval.get("approverGeneration") if isinstance(approval, dict) else None
-                if approver not in self.authority_issuers and active_generations.get(approver) != generation:
+                if approver not in self.authority_issuers and declared_generations.get(approver) != generation:
                     reasons[rowid] = "stale-approver-generation"
                     break
+        # A recovery authorization that fails its approver-generation check is
+        # not a usable predecessor for the replacement generation.  Keep the
+        # generation out of the active state before validating dependent
+        # publications; otherwise its provisional key can authorize a
+        # same-batch publication.
+        for rowid, _, record in candidates:
+            if record["schema"] != "identity-generation" or reasons[rowid] is not None:
+                continue
+            payload = record.get("payload", {})
+            identity = payload.get("identity") if isinstance(payload, dict) else None
+            generation = payload.get("generation") if isinstance(payload, dict) else None
+            if not isinstance(generation, int) or generation <= 1:
+                continue
+            authorization = authorizations.get((identity, generation))
+            if authorization is None or next(
+                    (candidate_rowid for candidate_rowid, _, candidate in candidates
+                     if candidate is authorization), None) is None:
+                reasons[rowid] = "missing-recovery-authorization"
+                continue
+            authorization_rowid = next(
+                candidate_rowid for candidate_rowid, _, candidate in candidates if candidate is authorization
+            )
+            if reasons[authorization_rowid] is not None and reasons[authorization_rowid] != "stale-approver-generation":
+                reasons[rowid] = "missing-recovery-authorization"
+
+        # Recompute state after recovery and revocation decisions.  The first
+        # pass above is only for checking approval freshness; only records with
+        # no reconciliation reason may provide issuer keys or active state.
+        active_generations = {}
+        dynamic_states = {}
+        known_generations: dict[str, int] = {}
+        for rowid, _, record in candidates:
+            payload = record.get("payload", {})
+            if record["schema"] != "identity-generation" or not isinstance(payload, dict):
+                continue
+            identity = payload.get("identity")
+            generation = payload.get("generation")
+            if not isinstance(identity, str) or not isinstance(generation, int):
+                continue
+            known_generations[identity] = max(known_generations.get(identity, 0), generation)
+            if reasons[rowid] is not None:
+                continue
+            state = payload.get("status", "active")
+            dynamic_states[(identity, generation)] = state
+            if state == "active":
+                active_generations[identity] = max(active_generations.get(identity, 0), generation)
+        for identity, generation in revocations:
+            if (identity, generation) in dynamic_states:
+                dynamic_states[(identity, generation)] = "revoked"
         for rowid, _, record in candidates:
             payload = record.get("payload", {})
             identity = payload.get("identity") if isinstance(payload, dict) else None
@@ -1099,10 +1150,7 @@ class Runtime:
                     reasons[rowid] = "revoked-generation"
                 elif issuer_state != "active":
                     reasons[rowid] = "inactive-generation" if issuer_state is not None else "stale-issuer-generation"
-                elif issuer_generation != max(
-                        (generation for (issuer, generation) in dynamic_states if issuer == record["issuer"]),
-                        default=issuer_generation,
-                ):
+                elif issuer_generation != known_generations.get(record["issuer"], issuer_generation):
                     reasons[rowid] = "stale-issuer-generation"
             if (identity, generation) in revocations and record["schema"] != "revocation":
                 reasons[rowid] = "revoked-generation"
@@ -1128,10 +1176,14 @@ class Runtime:
                     payload_digest = payload.get("recoveryAuthorizationDigest")
                     if payload_digest != _digest(authorization):
                         reasons[rowid] = "recovery-provenance-mismatch"
-        by_id: dict[str, list[dict[str, Any]]] = {}
-        for _, _, record in candidates:
-            by_id.setdefault(record["recordId"], []).append(record)
-        max_generation = {record_id: max(item["generation"] for item in items) for record_id, items in by_id.items()}
+        by_id: dict[str, list[tuple[int, dict[str, Any]]]] = {}
+        for rowid, _, record in candidates:
+            by_id.setdefault(record["recordId"], []).append((rowid, record))
+        max_generation: dict[str, int] = {}
+        for record_id, items in by_id.items():
+            valid_generations = [record["generation"] for rowid, record in items if reasons[rowid] is None]
+            if valid_generations:
+                max_generation[record_id] = max(valid_generations)
         for rowid, _, record in candidates:
             if reasons[rowid] is None and record["generation"] < max_generation[record["recordId"]]:
                 reasons[rowid] = "anti-rollback"
@@ -1165,6 +1217,26 @@ class Runtime:
             for rowid, _, _, _, _, _ in rows:
                 status = "accepted" if reasons[rowid] is None else "quarantined"
                 self.db.execute("UPDATE records SET status = ?, reason = ? WHERE rowid = ?", (status, reasons[rowid], rowid))
+        self._refresh_dynamic_keys()
+
+    def _refresh_dynamic_keys(self) -> None:
+        """Retain issuer keys only for currently accepted identity records."""
+        dynamic_generations: dict[tuple[str, int], str] = {}
+        rows = self.db.execute(
+            "SELECT envelope FROM records WHERE status = 'accepted'"
+        ).fetchall()
+        for (raw,) in rows:
+            record = json.loads(raw)
+            if record.get("schema") not in {"node-identity", "identity-generation"}:
+                continue
+            payload = record.get("payload", {})
+            identity = payload.get("identity")
+            generation = payload.get("generation", record.get("generation"))
+            public_key = payload.get("publicKey")
+            if isinstance(identity, str) and isinstance(generation, int) and not isinstance(generation, bool) \
+                    and generation > 0 and isinstance(public_key, str):
+                dynamic_generations[(identity, generation)] = public_key
+        self.dynamic_generations = dynamic_generations
 
     def _materialize(self) -> None:
         accepted = self.db.execute("SELECT record_key, record_id, generation, predecessor, status, reason, envelope FROM records WHERE status = 'accepted' OR reason IN ('anti-rollback', 'revoked-generation') ORDER BY generation, record_key").fetchall()
