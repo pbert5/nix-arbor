@@ -35,7 +35,9 @@ _SECRET_NAMES = {"secret", "password", "passphrase", "token", "credential", "pri
 _LIFECYCLE_SCHEMAS = frozenset({
     "enrollment", "identity-generation", "revocation", "recovery-authorization", "receipt",
 })
-_NODE_BOUND_SCHEMAS = frozenset({"endpoint", "service", "machine-facts"})
+_NODE_BOUND_SCHEMAS = frozenset({
+    "endpoint", "service", "machine-facts", "hardware-snapshot", "configuration-intent", "trusted-peer",
+})
 
 
 def _unsafe_value(value: Any) -> bool:
@@ -240,6 +242,7 @@ def make_public_record(
     *,
     generation: int = 1,
     issuer_generation: int | None = None,
+    subject: str | None = None,
 ) -> dict[str, Any]:
     """Create a signed public advertisement with optional identity binding."""
     if schema not in {"machine-facts", "hardware-snapshot", "configuration-intent", "endpoint", "name", "service", "trusted-peer", "reachability", "compatibility", "relationship", "peer-relationship"}:
@@ -251,6 +254,8 @@ def make_public_record(
     }
     if issuer_generation is not None:
         unsigned["issuerGeneration"] = issuer_generation
+    if subject is not None:
+        unsigned["subject"] = subject
     return {**unsigned, "signature": issuer_key.sign(unsigned)}
 
 
@@ -700,6 +705,18 @@ class Runtime:
                 return "quarantined", "missing-node-binding"
             if claimed_node != record["issuer"]:
                 return "quarantined", "issuer-node-mismatch"
+        if record["schema"] == "reachability":
+            # The subject is the observed endpoint, not the node making the
+            # observation; binding it to issuer would reject valid probes.
+            if not isinstance(payload.get("subject"), str) or not payload["subject"]:
+                return "quarantined", "missing-subject-binding"
+        if record["schema"] == "compatibility":
+            # Compatibility is a node's self-publication, so its envelope
+            # subject must identify the signing node.
+            if not isinstance(record.get("subject"), str) or not record["subject"]:
+                return "quarantined", "missing-subject-binding"
+            if record["subject"] != record["issuer"]:
+                return "quarantined", "issuer-subject-mismatch"
         # Envelope validation proves authenticity.  Authorization is resolved
         # below, during reconciliation, because a delegated issuer's authority
         # is a property of the accepted relationship graph rather than a
