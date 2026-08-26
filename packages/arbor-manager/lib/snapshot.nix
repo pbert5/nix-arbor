@@ -19,11 +19,26 @@ let
     ];
   unsafeString =
     value:
+    let
+      lower = lib.toLower value;
+      isUrl = builtins.match "^[A-Za-z][A-Za-z0-9+.-]*://.*" value != null;
+      hasUrlUserinfo =
+        builtins.match "^[A-Za-z][A-Za-z0-9+.-]*://[^/?#[:space:]]+:[^/?#[:space:]]+@.*" value != null;
+      hasSecretQuery =
+        isUrl
+        &&
+          builtins.match ".*[?&](token|password|secret|credential|api[_-]?key|access[_-]?key|access[_-]?token|private[_-]?key|signing[_-]?key|pass[_-]?phrase|seed)=[^&]*.*" lower
+          != null;
+      isBearer = builtins.match "^bearer[[:space:]]+[^[:space:]]+$" lower != null;
+    in
     lib.hasPrefix "/nix/store/" value
     || lib.hasPrefix "/run/secrets/" value
     || lib.hasPrefix "/run/credentials/" value
     || lib.hasPrefix "/var/run/secrets/" value
-    || lib.hasPrefix "-----BEGIN" value;
+    || lib.hasPrefix "-----BEGIN" value
+    || hasUrlUserinfo
+    || hasSecretQuery
+    || isBearer;
   redact =
     value:
     let

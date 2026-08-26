@@ -16,6 +16,11 @@ let
         a = 2;
         apiToken = "do-not-export";
         transform = value: value;
+        nested = [
+          { endpoint = "https://user:password@example.invalid/api"; }
+          { query = "https://example.invalid/api?access_token=secret"; }
+          { bearer = "Bearer nested-secret"; }
+        ];
       };
     };
   };
@@ -50,9 +55,26 @@ assert inspected.provenance.fields.metadata.source.digest == "sha256:registry";
 assert inspected.provenance.fields.metadata.field == "metadata";
 assert inspected.record.metadata.apiToken == "<redacted>";
 assert inspected.record.metadata.transform == "<redacted>";
+assert
+  inspected.record.metadata.nested == [
+    { endpoint = "<redacted>"; }
+    { query = "<redacted>"; }
+    { bearer = "<redacted>"; }
+  ];
 assert builtins.match ".*apiToken.*<redacted>.*" exported != null;
 assert builtins.match ".*transform.*<redacted>.*" exported != null;
 assert builtins.match ".*do-not-export.*" exported == null;
+assert builtins.match ".*user:password.*" exported == null;
+assert builtins.match ".*access_token=secret.*" exported == null;
+assert builtins.match ".*nested-secret.*" exported == null;
+assert
+  snapshot.digest {
+    nested = "https://one:secret@example.invalid";
+    bearer = "Bearer first";
+  } == snapshot.digest {
+    nested = "https://two:other@example.invalid";
+    bearer = "Bearer second";
+  };
 assert
   builtins.match ".*/nix/store/.*" (
     snapshot.exportMachine {
