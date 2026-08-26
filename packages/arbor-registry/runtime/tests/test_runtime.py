@@ -489,6 +489,77 @@ class RuntimeTests(unittest.TestCase):
         bad = make_recovery_authorization(self.key, "other", 1, "new-key", [tampered])
         self.assertEqual(self.runtime.ingest([bad])[0]["reason"], "invalid-recovery-approval-signature")
 
+    def test_dynamic_recovery_approval_requires_current_accepted_generation(self):
+        approver = RuntimeKey("approver", SigningKey.generate())
+        runtime = Runtime(
+            Path(self.temp.name) / "dynamic-approver-state",
+            FileProvider(Path(self.temp.name) / "dynamic-approver-raw" / "history.jsonl"),
+            {"root": self.key.public_key},
+            approver_roles={"operator": {"approver", "root"}, "parent": set(), "peer": set()},
+        )
+        try:
+            approver_identity = make_identity_generation(self.key, "approver", 1, approver.public_key)
+            self.assertEqual(runtime.ingest([approver_identity])[0]["status"], "accepted")
+
+            approval = make_recovery_approval(approver, "node", 1, role="operator", approver_generation=1)
+            authorization = make_recovery_authorization(self.key, "node", 1, "replacement", [approval])
+            self.assertEqual(runtime.ingest([authorization])[0]["status"], "accepted")
+        finally:
+            runtime.close()
+
+    def test_dynamic_recovery_approval_rejects_stale_generation_after_rotation(self):
+        approver_one = RuntimeKey("approver", SigningKey.generate())
+        approver_two = RuntimeKey("approver", SigningKey.generate())
+        runtime = Runtime(
+            Path(self.temp.name) / "rotated-approver-state",
+            FileProvider(Path(self.temp.name) / "rotated-approver-raw" / "history.jsonl"),
+            {"root": self.key.public_key},
+            approver_roles={"operator": {"approver", "root"}, "parent": set(), "peer": set()},
+        )
+        try:
+            first = make_identity_generation(self.key, "approver", 1, approver_one.public_key)
+            self.assertEqual(runtime.ingest([first])[0]["status"], "accepted")
+            rotation_approval = make_recovery_approval(
+                self.key, "approver", 1, role="operator", approver_generation=1,
+            )
+            rotation = make_recovery_authorization(
+                self.key, "approver", 1, approver_two.public_key, [rotation_approval],
+            )
+            second = make_identity_generation(
+                self.key, "approver", 2, approver_two.public_key,
+                predecessor="approver:1", recovery_authorization=rotation,
+            )
+            self.assertEqual({item["status"] for item in runtime.ingest([rotation, second])}, {"accepted"})
+
+            stale = make_recovery_authorization(
+                self.key, "node", 1, "replacement",
+                [make_recovery_approval(approver_one, "node", 1, role="operator", approver_generation=1)],
+            )
+            self.assertEqual(runtime.ingest([stale])[0]["reason"], "stale-approver-generation")
+        finally:
+            runtime.close()
+
+    def test_unaccepted_dynamic_recovery_approver_is_not_authoritative(self):
+        approver = RuntimeKey("approver", SigningKey.generate())
+        runtime = Runtime(
+            Path(self.temp.name) / "unaccepted-approver-state",
+            FileProvider(Path(self.temp.name) / "unaccepted-approver-raw" / "history.jsonl"),
+            {"root": self.key.public_key},
+            approver_roles={"operator": {"approver"}, "parent": set(), "peer": set()},
+        )
+        try:
+            unaccepted = make_identity_generation(self.key, "approver", 1, approver.public_key)
+            unaccepted["payload"]["status"] = "deprecated"
+            unaccepted["signature"] = self.key.sign(
+                {key: value for key, value in unaccepted.items() if key != "signature"}
+            )
+            approval = make_recovery_approval(approver, "node", 1, role="operator", approver_generation=1)
+            authorization = make_recovery_authorization(self.key, "node", 1, "replacement", [approval])
+            self.assertEqual(runtime.ingest([unaccepted, authorization])[1]["status"], "quarantined")
+            self.assertEqual(runtime.quarantine()[-1]["reason"], "stale-approver-generation")
+        finally:
+            runtime.close()
+
     def test_lifecycle_families_require_shapes_and_recovery_provenance(self):
         identity = make_identity_generation(self.key, "node", 1, self.key.public_key)
         approval = make_recovery_approval(

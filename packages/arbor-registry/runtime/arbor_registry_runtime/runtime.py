@@ -604,6 +604,7 @@ class Runtime:
         self.provider = provider
         self.public_keys = dict(public_keys)
         self.dynamic_generations: dict[tuple[str, int], str] = {}
+        self._accepted_dynamic_generations: dict[tuple[str, int], str] = {}
         self.authority_issuers = set(authority_issuers) if authority_issuers is not None else (
             {"root"} if "root" in self.public_keys else set()
         )
@@ -896,7 +897,23 @@ class Runtime:
             seen.add(identity_key)
             counts[role] += 1
             try:
-                key = VerifyKey(_unb64(self.public_keys[approval["approver"]]))
+                # Bootstrap authorities are trust anchors and deliberately do
+                # not participate in dynamic identity-generation state.  All
+                # other approvers must be verified with the exact generation
+                # key learned from an identity record.  Discovery may make a
+                # same-batch key available here, while reconciliation below
+                # still requires that generation to be currently accepted.
+                if approver in self.authority_issuers:
+                    public_key = self.public_keys[approver]
+                else:
+                    public_key = self.dynamic_generations.get(
+                        (approver, approval["approverGeneration"])
+                    )
+                    if public_key is None:
+                        if any(identity == approver for identity, _ in self.dynamic_generations):
+                            return "stale-approver-generation"
+                        return "unknown-approver-generation"
+                key = VerifyKey(_unb64(public_key))
                 unsigned = {key: value for key, value in approval.items() if key not in {"signature", "issuer"}}
                 key.verify(canonical_json(unsigned), _unb64(approval["signature"]))
             except (KeyError, ValueError, TypeError, binascii.Error, BadSignatureError):
@@ -907,6 +924,10 @@ class Runtime:
 
     def ingest(self, records: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
         records = list(records)
+        # Keep the trust boundary stable for this reconciliation pass.  Keys
+        # discovered from the incoming batch may authenticate envelopes, but
+        # cannot become approvers until their identity generation is accepted.
+        self._accepted_dynamic_generations = dict(self.dynamic_generations)
         self._discover_dynamic_keys(records)
         outcomes = []
         for record in records:
@@ -1064,7 +1085,31 @@ class Runtime:
         }
         active_generations: dict[str, int] = {}
         dynamic_states: dict[tuple[str, int], str] = {}
-        declared_generations: dict[str, int] = {}
+        # Only accepted dynamic keys are eligible recovery approvers.  The
+        # candidate set can contain authority-signed but ultimately
+        # quarantined identity records, so it is not an authority source.
+        accepted_approver_generations: dict[str, int] = {}
+        for identity, generation in self._accepted_dynamic_generations:
+            accepted_approver_generations[identity] = max(
+                accepted_approver_generations.get(identity, 0), generation
+            )
+        # An authority-signed active identity can be admitted in the same
+        # batch as its recovery authorization (the normal out-of-order case).
+        # The final state still records any failed generation/recovery check,
+        # and the approval itself is quarantined if its generation is not the
+        # current accepted generation on a subsequent reconciliation.
+        for rowid, _, record in candidates:
+            payload = record.get("payload", {})
+            generation = payload.get("generation", record["generation"]) if isinstance(payload, dict) else None
+            identity = payload.get("identity") if isinstance(payload, dict) else None
+            if (record["schema"] in {"node-identity", "identity-generation"}
+                    and isinstance(generation, int)
+                    and isinstance(identity, str)
+                    and payload.get("status", "active") == "active"
+                    and reasons[rowid] is None):
+                accepted_approver_generations[identity] = max(
+                    accepted_approver_generations.get(identity, 0), generation
+                )
         for _, _, record in candidates:
             payload = record.get("payload", {})
             if (record["schema"] == "identity-generation" and isinstance(payload, dict)
@@ -1072,7 +1117,6 @@ class Runtime:
                     and isinstance(payload.get("generation"), int)
                     and payload.get("status", "active") == "active"):
                 identity = payload["identity"]
-                declared_generations[identity] = max(declared_generations.get(identity, 0), payload["generation"])
                 active_generations[identity] = max(active_generations.get(identity, 0), payload["generation"])
             if (record["schema"] == "identity-generation" and isinstance(payload, dict)
                     and isinstance(payload.get("identity"), str)
@@ -1087,7 +1131,8 @@ class Runtime:
             for approval in record.get("payload", {}).get("approvals", []):
                 approver = approval.get("approver") if isinstance(approval, dict) else None
                 generation = approval.get("approverGeneration") if isinstance(approval, dict) else None
-                if approver not in self.authority_issuers and declared_generations.get(approver) != generation:
+                if (approver not in self.authority_issuers
+                        and accepted_approver_generations.get(approver) != generation):
                     reasons[rowid] = "stale-approver-generation"
                     break
         # A recovery authorization that fails its approver-generation check is
