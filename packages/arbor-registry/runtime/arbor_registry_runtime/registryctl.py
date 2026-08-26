@@ -17,9 +17,12 @@ from .runtime import (
     OrbitDBProvider,
     Runtime,
     RuntimeKey,
+    canonical_json,
     make_public_record,
     make_identity_generation,
     generate_keypair,
+    make_recovery_approval,
+    make_recovery_authorization,
 )
 
 
@@ -191,9 +194,31 @@ def _public_command(args: argparse.Namespace, config: dict[str, Any], schema: st
         runtime.close()
 
 
+def _data_only(value: Any) -> Any:
+    blocked = {"secret", "password", "token", "credential", "private", "privatekey", "signingkey",
+               "code", "script", "command", "executable"}
+    if isinstance(value, dict):
+        return {key: _data_only(item) for key, item in sorted(value.items())
+                if key.replace("-", "").replace("_", "").lower() not in blocked}
+    if isinstance(value, list):
+        return [_data_only(item) for item in value]
+    return value
+
+
+def manager_snapshot(value: dict[str, Any]) -> dict[str, Any]:
+    """Export Manager's public node-data contract with a stable digest."""
+    source = value.get("nodes", value.get("snapshot", {}).get("nodes", value))
+    if not isinstance(source, dict):
+        raise ValueError("manager snapshot must contain a nodes object")
+    snapshot = {"nodes": {name: _data_only(source[name]) for name in sorted(source)}}
+    digest = hashlib.sha256(canonical_json(snapshot)).hexdigest()
+    return {"format": "arbor-manager/registry-snapshot", "version": 1,
+            "snapshot": snapshot, "snapshotDigest": digest}
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="arbor-registryctl")
-    parser.add_argument("--config", type=Path, required=True)
+    parser.add_argument("--config", type=Path)
     parser.add_argument("--format", choices=("human", "json"), default="human")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("sync").add_argument("--limit", type=int, default=100)
@@ -212,6 +237,36 @@ def main(argv: list[str] | None = None) -> int:
     keygen.add_argument("issuer")
     keygen.add_argument("--generation", type=int)
     keygen.add_argument("--rotation", action="store_true")
+    for name, schema in (("configuration-intent-publish", "configuration-intent"),
+                         ("compatibility-publish", "compatibility")):
+        command = sub.add_parser(name)
+        command.set_defaults(schema=schema)
+        command.add_argument("record_id")
+        command.add_argument("payload", type=Path)
+        command.add_argument("--issuer", required=True)
+        command.add_argument("--record-generation", type=int, default=1)
+        command.add_argument("--issuer-generation", type=int)
+    approve = sub.add_parser("recovery-approve")
+    approve.add_argument("identity")
+    approve.add_argument("lost_generation", type=int)
+    approve.add_argument("--role", required=True)
+    approve.add_argument("--approver", required=True)
+    approve.add_argument("--approver-generation", type=int, required=True)
+    authorize = sub.add_parser("recovery-authorize")
+    authorize.add_argument("identity")
+    authorize.add_argument("lost_generation", type=int)
+    authorize.add_argument("new_public_key")
+    authorize.add_argument("approvals", type=Path)
+    authorize.add_argument("--issuer", required=True)
+    recover = sub.add_parser("identity-recover")
+    recover.add_argument("identity")
+    recover.add_argument("lost_generation", type=int)
+    recover.add_argument("new_public_key")
+    recover.add_argument("approvals", type=Path)
+    recover.add_argument("--issuer", required=True)
+    snapshot = sub.add_parser("manager-snapshot-export")
+    snapshot.add_argument("input", type=Path)
+    snapshot.add_argument("--output", type=Path)
     identity = sub.add_parser("identity-generation")
     identity.add_argument("identity")
     identity.add_argument("public_key")
@@ -242,8 +297,16 @@ def main(argv: list[str] | None = None) -> int:
         for field in fields:
             command.add_argument(f"--{field}", required=True, type=int if field == "port" else str)
     args = parser.parse_args(argv)
-    config = _config(args.config)
     as_json = args.format == "json"
+    if args.command == "manager-snapshot-export":
+        result = manager_snapshot(_read_json(args.input))
+        if args.output:
+            _write_json_atomic(args.output, result)
+        _format(result, as_json)
+        return 0
+    if args.config is None:
+        parser.error("--config is required for this command")
+    config = _config(args.config)
     if args.command == "keygen":
         key = generate_keypair(Path(config["identityDir"]), args.issuer, generation=args.generation, rotation=args.rotation)
         result = {"issuer": key.issuer, "generation": args.generation, "publicKey": key.public_key}
@@ -274,6 +337,37 @@ def main(argv: list[str] | None = None) -> int:
                 key = _private_key(Path(config["identityDir"]), args.issuer)
                 record = make_identity_generation(key, args.identity, args.generation, args.public_key)
                 result = runtime.ingest([record])[0]
+            elif args.command in {"configuration-intent-publish", "compatibility-publish"}:
+                payload = _read_json(args.payload, None)
+                if not isinstance(payload, dict):
+                    raise ValueError("publication payload must be a JSON object")
+                result = _public_command(argparse.Namespace(**vars(args), **payload), config,
+                                         args.schema, tuple(payload))
+            elif args.command == "recovery-approve":
+                result = make_recovery_approval(
+                    _private_key(Path(config["identityDir"]), args.approver),
+                    args.identity, args.lost_generation, role=args.role,
+                    approver_generation=args.approver_generation,
+                )
+            elif args.command in {"recovery-authorize", "identity-recover"}:
+                authority = _private_key(Path(config["identityDir"]), args.issuer)
+                approvals = _read_json(args.approvals)
+                if not isinstance(approvals, list):
+                    raise ValueError("approvals must be a JSON list")
+                authorization = make_recovery_authorization(
+                    authority, args.identity, args.lost_generation,
+                    args.new_public_key, approvals,
+                )
+                if args.command == "identity-recover":
+                    generation = make_identity_generation(
+                        authority, args.identity, args.lost_generation + 1,
+                        args.new_public_key,
+                        predecessor=f"{args.identity}:{args.lost_generation}",
+                        recovery_authorization=authorization,
+                    )
+                    result = runtime.ingest([authorization, generation])[1]
+                else:
+                    result = runtime.ingest([authorization])[0]
             else:
                 schemas = {"endpoint-publish": ("endpoint", ("node", "network", "address", "port", "purpose")),
                            "service-publish": ("service", ("name", "node", "protocol", "endpoint")),

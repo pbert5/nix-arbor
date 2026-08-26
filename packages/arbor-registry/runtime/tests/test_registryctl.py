@@ -11,6 +11,7 @@ from arbor_registry_runtime.registryctl import (
     _record,
     _sync,
     _write_json_atomic,
+    manager_snapshot,
 )
 from arbor_registry_runtime.runtime import SigningKey
 
@@ -29,6 +30,17 @@ class CursorProvider(FileProvider):
 
 
 class RegistryCtlTests(unittest.TestCase):
+    def test_manager_snapshot_exports_only_public_data_with_stable_digest(self):
+        first = manager_snapshot({
+            "nodes": {"node-a": {"hostname": "a", "token": "omit", "code": "omit"}}
+        })
+        second = manager_snapshot({"nodes": {"node-a": {"hostname": "b"}}})
+
+        self.assertEqual(first["format"], "arbor-manager/registry-snapshot")
+        self.assertNotIn("token", first["snapshot"]["nodes"]["node-a"])
+        self.assertNotIn("code", first["snapshot"]["nodes"]["node-a"])
+        self.assertNotEqual(first["snapshotDigest"], second["snapshotDigest"])
+
     def test_public_generations_are_independent(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
