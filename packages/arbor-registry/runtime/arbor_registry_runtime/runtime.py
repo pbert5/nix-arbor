@@ -1116,7 +1116,7 @@ class Runtime:
                     and isinstance(identity, str)
                     and payload.get("status", "active") == "active"
                     and "recoveryAuthorization" not in payload
-                    and "recoveryAuthorizationDigest" not in payload
+                    and payload.get("recoveryAuthorizationDigest") is None
                     and reasons[rowid] is None):
                 accepted_approver_generations[identity] = max(
                     accepted_approver_generations.get(identity, 0), generation
