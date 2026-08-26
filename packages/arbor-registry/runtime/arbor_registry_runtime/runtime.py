@@ -1101,10 +1101,26 @@ class Runtime:
             accepted_approver_generations[identity] = max(
                 accepted_approver_generations.get(identity, 0), generation
             )
-        # Do not admit identity generations from this batch as approvers.
-        # They are not accepted state until this reconciliation pass has
-        # completed, so an authority-signed but otherwise invalid generation
-        # cannot authorize a recovery in the same batch.
+        # A first identity generation has no recovery authorization to
+        # validate, so it may bootstrap an otherwise out-of-order recovery
+        # authorization in this batch. Never admit a generation carrying
+        # recovery provenance here: it is not accepted until that provenance
+        # has been fully reconciled, and must not authorize a recovery in the
+        # same batch merely because its envelope is authority-signed.
+        for rowid, _, record in candidates:
+            payload = record.get("payload", {})
+            generation = payload.get("generation", record["generation"]) if isinstance(payload, dict) else None
+            identity = payload.get("identity") if isinstance(payload, dict) else None
+            if (record["schema"] in {"node-identity", "identity-generation"}
+                    and isinstance(generation, int)
+                    and isinstance(identity, str)
+                    and payload.get("status", "active") == "active"
+                    and "recoveryAuthorization" not in payload
+                    and "recoveryAuthorizationDigest" not in payload
+                    and reasons[rowid] is None):
+                accepted_approver_generations[identity] = max(
+                    accepted_approver_generations.get(identity, 0), generation
+                )
         for _, _, record in candidates:
             payload = record.get("payload", {})
             if (record["schema"] == "identity-generation" and isinstance(payload, dict)
