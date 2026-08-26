@@ -18,6 +18,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterable, TypeAlias
+from urllib.parse import parse_qsl, urlsplit
 
 from nacl.exceptions import BadSignatureError
 from nacl.signing import SigningKey, VerifyKey
@@ -39,6 +40,13 @@ _NODE_BOUND_SCHEMAS = frozenset({"endpoint", "service", "machine-facts"})
 
 def _unsafe_value(value: Any) -> bool:
     if isinstance(value, str):
+        try:
+            query = urlsplit(value).query
+            if any(re.sub(r"[-_]", "", name).lower() in _SECRET_NAMES
+                   for name, _ in parse_qsl(query, keep_blank_values=True)):
+                return True
+        except ValueError:
+            pass
         return (
             value.startswith(("/nix/store/", "/run/secrets/", "-----BEGIN"))
             or re.match(r"^[A-Za-z][A-Za-z0-9+.-]*://[^/?#\s]+:[^/?#\s]+@", value) is not None

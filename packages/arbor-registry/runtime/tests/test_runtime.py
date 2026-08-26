@@ -365,6 +365,42 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(outcome["status"], "quarantined")
         self.assertEqual(outcome["reason"], "unsafe-value")
 
+    def test_endpoint_secret_query_credentials_are_redacted_before_persistence(self):
+        secret = "do-not-store-this-query-secret"
+        records = [
+            self.envelope(
+                f"endpoint-query-{name}",
+                schema="endpoint",
+                payload={"node": "root", "address": f"https://example.invalid/api?{name}={secret}"},
+            )
+            for name in ("token", "access_token", "api-key", "password", "private_key")
+        ]
+
+        outcomes = self.runtime.ingest(records)
+
+        self.assertEqual([item["reason"] for item in outcomes], ["unsafe-value"] * len(records))
+        self.assertEqual(self.runtime.accepted(), [])
+        self.assertEqual(self.runtime.projection(), {})
+        self.assertNotIn(secret, json.dumps(self.runtime.quarantine()))
+        raw = Path(self.temp.name) / "raw" / "history.jsonl"
+        self.assertFalse(raw.exists())
+        self.assertNotIn(secret.encode(), (Path(self.temp.name) / "state" / "registry.sqlite3").read_bytes())
+
+    def test_endpoint_urls_with_non_secret_queries_remain_usable(self):
+        record = self.envelope(
+            "endpoint-benign-query",
+            schema="endpoint",
+            payload={"node": "root", "address": "https://example.invalid/api?region=eu-west-1"},
+        )
+
+        outcome = self.runtime.ingest([record])[0]
+
+        self.assertEqual(outcome["status"], "accepted")
+        self.assertEqual(
+            self.runtime.projection()["endpoint-benign-query"]["payload"]["address"],
+            "https://example.invalid/api?region=eu-west-1",
+        )
+
     def test_bearer_values_are_quarantined_even_without_secret_field_names(self):
         record = self.envelope(
             "endpoint-bearer",
