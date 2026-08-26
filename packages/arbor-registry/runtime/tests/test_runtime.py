@@ -242,11 +242,47 @@ class RuntimeTests(unittest.TestCase):
         self.assertNotIn(("child", 2), self.runtime.dynamic_generations)
 
     def test_node_bound_public_records_require_matching_node(self):
-        for schema in ("endpoint", "service", "machine-facts"):
+        for schema in (
+            "endpoint", "service", "machine-facts", "hardware-snapshot", "configuration-intent", "trusted-peer",
+        ):
             missing = self.envelope(f"{schema}-missing", schema=schema, payload={})
             conflicting = self.envelope(f"{schema}-conflicting", schema=schema, payload={"node": "other"})
             outcomes = self.runtime.ingest([missing, conflicting])
             self.assertEqual([item["reason"] for item in outcomes], ["missing-node-binding", "issuer-node-mismatch"])
+
+    def test_public_subject_bindings_reject_forged_targets(self):
+        reachability = self.envelope(
+            "reachability-missing-subject", schema="reachability", payload={"state": "reachable"},
+        )
+        compatibility = self.envelope(
+            "compatibility-missing-subject", schema="compatibility", payload={"protocolEpoch": 1},
+        )
+        forged = self.envelope(
+            "compatibility-forged-target", schema="compatibility", payload={"protocolEpoch": 1},
+        )
+        forged["subject"] = "other"
+        forged["signature"] = self.key.sign({key: value for key, value in forged.items() if key != "signature"})
+
+        outcomes = self.runtime.ingest([reachability, compatibility, forged])
+
+        self.assertEqual([item["reason"] for item in outcomes], [
+            "missing-subject-binding", "missing-subject-binding", "issuer-subject-mismatch",
+        ])
+
+    def test_reachability_subject_is_an_observed_target_not_the_issuer(self):
+        record = self.envelope(
+            "reachability-endpoint", schema="reachability",
+            payload={"subject": "endpoint-other", "state": "reachable"},
+        )
+
+        self.assertEqual(self.runtime.ingest([record])[0]["status"], "accepted")
+
+    def test_compatibility_subject_binds_a_node_self_publication(self):
+        record = make_public_record(
+            self.key, "compatibility", "compatibility-root", {"protocolEpoch": 1}, subject="root",
+        )
+
+        self.assertEqual(self.runtime.ingest([record])[0]["status"], "accepted")
 
     def test_generate_keypair_refuses_implicit_overwrite_and_supports_explicit_rotation(self):
         key_dir = Path(self.temp.name) / "identity"
