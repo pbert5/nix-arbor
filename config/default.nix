@@ -39,6 +39,10 @@ let
     inputs.tilingDesktop.nixosModules.default
     inputs.ashes-desktop-apps.nixosModules.default
     {
+      nix.settings.experimental-features = [
+        "nix-command"
+        "flakes"
+      ];
       nixpkgs.config.allowUnfree = true;
       system.stateVersion = "26.05";
       users.users.ash = {
@@ -71,6 +75,10 @@ let
     networkPolicy
     inputs.home-manager.nixosModules.home-manager
     {
+      nix.settings.experimental-features = [
+        "nix-command"
+        "flakes"
+      ];
       system.stateVersion = "26.05";
       services.openssh.enable = true;
       services.openssh.settings = {

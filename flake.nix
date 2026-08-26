@@ -9,7 +9,7 @@
     sops-nix.inputs.nixpkgs.follows = "nixpkgs";
     flake-parts.url = "github:hercules-ci/flake-parts";
     flake-parts.inputs.nixpkgs-lib.follows = "nixpkgs";
-    ashzsh.url = "github:pbert5/AshZsh";
+    ashzsh.url = "github:pbert5/AshZsh/b693b17";
     ashzsh.inputs.nixpkgs.follows = "nixpkgs";
     ashzsh.inputs.home-manager.follows = "home-manager";
     codex-switch.url = "github:pbert5/codex-switch";

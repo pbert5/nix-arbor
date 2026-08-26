@@ -78,9 +78,24 @@
     home.homeDirectory = "/home/ash";
     home.stateVersion = "26.05";
     programs.git.enable = true;
-    programs.git.settings.user = {
-      name = "ash-r640-0";
-      email = "phsilbert@gmail.com";
+    programs.git.settings = {
+      user = {
+        name = "ash-r640-0";
+        email = "phsilbert@gmail.com";
+      };
+      # Keep Git's configuration fully Home Manager-owned.  The empty helper
+      # first clears any lower-priority helper, matching `gh auth setup-git`,
+      # and the shell helper asks gh for the active user's token at runtime.
+      credential = {
+        "https://github.com".helper = [
+          ""
+          "!${lib.getExe pkgs.gh} auth git-credential"
+        ];
+        "https://gist.github.com".helper = [
+          ""
+          "!${lib.getExe pkgs.gh} auth git-credential"
+        ];
+      };
     };
     programs.ssh = {
       enable = true;
