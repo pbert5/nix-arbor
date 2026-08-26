@@ -82,9 +82,11 @@ function orbitdbLibp2p(libp2p) {
 }
 
 export class TransportDaemon {
-  constructor({ stateDir, streams = ['registry'], databaseAddresses = {}, listen = [], bootstrapPeers = [] }) {
+  constructor({ stateDir, streams = ['registry'], databaseAddresses = {}, listen = [], bootstrapPeers = [], realmId = null, protocolEpoch = null }) {
     if (!stateDir) throw new Error('stateDir is required')
     this.stateDir = stateDir
+    this.realmId = realmId
+    this.protocolEpoch = protocolEpoch
     this.streams = [...new Set(streams)].filter(Boolean)
     if (!this.streams.length) throw new Error('at least one stream is required')
     this.addresses = { ...databaseAddresses }
@@ -386,7 +388,7 @@ export class TransportDaemon {
   async handle(request) {
     try {
       if (request.operation === 'health') return reply(true, { status: 'ok' })
-      if (request.operation === 'status') return reply(true, { peerId: this.libp2p.peerId.toString(), databaseAddresses: this.addresses })
+      if (request.operation === 'status') return reply(true, { peerId: this.libp2p.peerId.toString(), databaseAddresses: this.addresses, ...(this.realmId == null ? {} : { realmId: this.realmId }), ...(this.protocolEpoch == null ? {} : { protocolEpoch: this.protocolEpoch }) })
       if (request.operation === 'append') return reply(true, await this.append(request.stream, request.event))
       if (request.operation === 'list') return reply(true, await this.list(request.stream, request.cursor ?? 'v2:begin', request.limit ?? 100))
       return reply(false, { code: 'unsupported_operation' })
@@ -441,7 +443,7 @@ async function main() {
   const socketPath = process.env.ARBOR_REGISTRY_SOCKET ?? '/run/arbor-registryd/registry.sock'
   const streams = (process.env.ARBOR_REGISTRY_STREAMS ?? 'registry').split(',').filter(Boolean)
   const addresses = process.env.ARBOR_REGISTRY_DATABASE_ADDRESSES ? JSON.parse(process.env.ARBOR_REGISTRY_DATABASE_ADDRESSES) : {}
-  const daemon = new TransportDaemon({ stateDir, streams, databaseAddresses: addresses, listen: (process.env.ARBOR_REGISTRY_LISTEN ?? '').split(',').filter(Boolean), bootstrapPeers: (process.env.ARBOR_REGISTRY_BOOTSTRAP_PEERS ?? '').split(',').filter(Boolean) })
+  const daemon = new TransportDaemon({ stateDir, streams, databaseAddresses: addresses, listen: (process.env.ARBOR_REGISTRY_LISTEN ?? '').split(',').filter(Boolean), bootstrapPeers: (process.env.ARBOR_REGISTRY_BOOTSTRAP_PEERS ?? '').split(',').filter(Boolean), realmId: process.env.ARBOR_REGISTRY_REALM_ID ?? null, protocolEpoch: process.env.ARBOR_REGISTRY_PROTOCOL_EPOCH ?? null })
   const token = process.env.ARBOR_REGISTRY_SOCKET_TOKEN
   if (!token) throw new Error('ARBOR_REGISTRY_SOCKET_TOKEN is required')
   await daemon.start()
