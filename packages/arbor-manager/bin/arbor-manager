@@ -129,6 +129,14 @@ redact_filter='
 
 refuse() { echo "arbor-manager: deployment application refused: $*" >&2; exit 3; }
 
+receipt_key=${ARBOR_MANAGER_RECEIPT_KEY:-}
+
+receipt_authentication() {
+  [ -n "$receipt_key" ] || return 1
+  local payload=$1
+  printf '%s' "$payload" | openssl dgst -sha256 -hmac "$receipt_key" -r | awk '{print $1}'
+}
+
 run_direct_backend() {
   [ -n "$backend_executable" ] || refuse "no deployment backend configured; provide --backend-executable or use --dry-run"
   [ -f "$backend_executable" ] && [ -x "$backend_executable" ] || refuse "backend executable '$backend_executable' is not an executable file"
@@ -170,8 +178,14 @@ run_direct_backend() {
 
   if [ -n "$resume_file" ]; then
     [ -r "$resume_file" ] || refuse "cannot read resume receipt '$resume_file'"
+    [ -n "$receipt_key" ] || refuse "resume receipts require ARBOR_MANAGER_RECEIPT_KEY"
+    resume_authentication=$(jq -cS 'del(.authentication)' "$resume_file" 2>/dev/null) || refuse "resume receipt identity is not bound to this immutable snapshot and acknowledgement"
+    expected_receipt_authentication=$(jq -r '.authentication.digest // empty' "$resume_file" 2>/dev/null) || refuse "resume receipt identity is not bound to this immutable snapshot and acknowledgement"
+    actual_receipt_authentication=$(receipt_authentication "$resume_authentication") || refuse "resume receipts require ARBOR_MANAGER_RECEIPT_KEY"
+    [ "$expected_receipt_authentication" = "$actual_receipt_authentication" ] || refuse "resume receipt is not authenticated by ARBOR_MANAGER_RECEIPT_KEY"
     jq -e --slurpfile snapshot "$snapshot_file" --arg snapshotDigest "$(jq -r .snapshotDigest <<<"$snapshot")" --arg acknowledgementDigest "$(jq -r .acknowledgement.digest <<<"$snapshot")" '
       type == "object" and .format == "arbor-manager/deployment-receipt" and .version == 1
+      and (.authentication | type == "object" and .algorithm == "hmac-sha256" and (.digest | type == "string" and length > 0))
       and .snapshotDigest == $snapshotDigest and .acknowledgementDigest == $acknowledgementDigest
       and (.results | type == "array")
       and all(.results[]; (.phase | type == "string") and (.node | type == "string")
@@ -187,8 +201,11 @@ run_direct_backend() {
 
   write_receipt() {
     [ -n "$receipt_file" ] || return 0
+    [ -n "$receipt_key" ] || refuse "writing receipts requires ARBOR_MANAGER_RECEIPT_KEY"
     receipt_tmp="$work/receipt.tmp"
-    jq -n -cS --arg snapshotDigest "$(jq -r .snapshotDigest <<<"$snapshot")" --arg acknowledgementDigest "$(jq -r .acknowledgement.digest <<<"$snapshot")" --argjson results "$results" '{format: "arbor-manager/deployment-receipt", version: 1, status: (if all($results[]; .status == "succeeded") then "applied" else "partial" end), snapshotDigest: $snapshotDigest, acknowledgementDigest: $acknowledgementDigest, results: $results}' >"$receipt_tmp"
+    receipt_payload=$(jq -n -cS --arg snapshotDigest "$(jq -r .snapshotDigest <<<"$snapshot")" --arg acknowledgementDigest "$(jq -r .acknowledgement.digest <<<"$snapshot")" --argjson results "$results" '{format: "arbor-manager/deployment-receipt", version: 1, status: (if all($results[]; .status == "succeeded") then "applied" else "partial" end), snapshotDigest: $snapshotDigest, acknowledgementDigest: $acknowledgementDigest, results: $results}')
+    receipt_digest=$(receipt_authentication "$receipt_payload") || refuse "writing receipts requires ARBOR_MANAGER_RECEIPT_KEY"
+    jq -cS --arg digest "$receipt_digest" '. + {authentication: {algorithm: "hmac-sha256", digest: $digest}}' <<<"$receipt_payload" >"$receipt_tmp"
     mv -f "$receipt_tmp" "$receipt_file"
   }
 

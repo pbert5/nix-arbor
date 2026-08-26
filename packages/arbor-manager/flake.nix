@@ -21,6 +21,7 @@
           runtimeInputs = [
             pkgs.coreutils
             pkgs.jq
+            pkgs.openssl
             pkgs.util-linux
           ];
           text = builtins.readFile ./bin/arbor-manager;
@@ -77,6 +78,7 @@
             ''
                 work=$(mktemp -d)
                 trap 'rm -rf "$work"' EXIT
+                export ARBOR_MANAGER_RECEIPT_KEY=manager-cli-test-key
                 snapshot=$(jq -cnS '{
                   format: "arbor-manager/deployment-snapshot",
                   version: 1,
@@ -155,18 +157,22 @@
                 if ${cli}/bin/arbor-manager deployment apply --snapshot "$work/snapshot.json" --acknowledgement "$acknowledgement_digest" --backend-executable ${failingBackend} --receipt "$work/failed-receipt.json" > "$work/failed.json" 2> "$work/failed-error"; then exit 1; fi
                 jq -e '.status == "failed" and .applied == false and .results[0].error == "backend response did not confirm request identity or success"' "$work/failed.json"
                 jq -e '.format == "arbor-manager/deployment-receipt" and .status == "partial" and (.results | length) == 1 and .results[0].status == "failed"' "$work/failed-receipt.json"
+                forged_receipt=$(jq '.results[0] |= (.status = "succeeded" | .provider = {status: "succeeded"}) | del(.authentication)' "$work/failed-receipt.json")
+                printf '%s\n' "$forged_receipt" > "$work/forged-receipt.json"
+                if ${cli}/bin/arbor-manager deployment apply --snapshot "$work/snapshot.json" --acknowledgement "$acknowledgement_digest" --backend-executable ${mockBackend} --resume "$work/forged-receipt.json" > "$work/forged-resume.json" 2> "$work/forged-resume-error"; then exit 1; fi
+                grep -q 'resume receipt is not authenticated' "$work/forged-resume-error"
                 malformed_receipt=$(jq 'del(.results[0].error)' "$work/failed-receipt.json")
                 printf '%s\n' "$malformed_receipt" > "$work/malformed-receipt.json"
                 if ${cli}/bin/arbor-manager deployment apply --snapshot "$work/snapshot.json" --acknowledgement "$acknowledgement_digest" --backend-executable ${mockBackend} --resume "$work/malformed-receipt.json" > "$work/malformed-resume.json" 2> "$work/malformed-resume-error"; then exit 1; fi
-                grep -q 'resume receipt identity is not bound' "$work/malformed-resume-error"
+                grep -q 'resume receipt is not authenticated' "$work/malformed-resume-error"
                 unknown_node_receipt=$(jq '.results[0].node = "unknown"' "$work/failed-receipt.json")
                 printf '%s\n' "$unknown_node_receipt" > "$work/unknown-node-receipt.json"
                 if ${cli}/bin/arbor-manager deployment apply --snapshot "$work/snapshot.json" --acknowledgement "$acknowledgement_digest" --backend-executable ${mockBackend} --resume "$work/unknown-node-receipt.json" > "$work/unknown-node-resume.json" 2> "$work/unknown-node-resume-error"; then exit 1; fi
-                grep -q 'resume receipt identity is not bound' "$work/unknown-node-resume-error"
+                grep -q 'resume receipt is not authenticated' "$work/unknown-node-resume-error"
                 mismatched_receipt=$(jq '.snapshotDigest = "mismatched"' "$work/failed-receipt.json")
                 printf '%s\n' "$mismatched_receipt" > "$work/mismatched-receipt.json"
                 if ${cli}/bin/arbor-manager deployment apply --snapshot "$work/snapshot.json" --acknowledgement "$acknowledgement_digest" --backend-executable ${mockBackend} --resume "$work/mismatched-receipt.json" > "$work/mismatched-resume.json" 2> "$work/mismatched-resume-error"; then exit 1; fi
-                grep -q 'resume receipt identity is not bound' "$work/mismatched-resume-error"
+                grep -q 'resume receipt is not authenticated' "$work/mismatched-resume-error"
                 ${cli}/bin/arbor-manager deployment apply --snapshot "$work/snapshot.json" --acknowledgement "$acknowledgement_digest" --backend-executable ${mockBackend} --resume "$work/failed-receipt.json" > "$work/resumed-failed.json"
                 jq -e '.status == "applied" and .applied == true and (.results | length) == 1 and .results[0].status == "succeeded"' "$work/resumed-failed.json"
                 if ${cli}/bin/arbor-manager deployment apply --snapshot "$work/snapshot.json" --acknowledgement "$acknowledgement_digest" --backend-executable ${mockBackend} --dry-run > "$work/dry-run.json"; then :; else exit 1; fi

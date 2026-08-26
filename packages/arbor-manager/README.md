@@ -150,8 +150,10 @@ plan, the adapter is the operator-supplied wrapper that turns these verified
 requests into the desired `colmena apply` invocation; Arbor Manager does not
 treat Colmena as registry truth. No SSH or Colmena networking is built into the
 CLI. `--receipt FILE` writes resumable per-node results after each attempt;
-`--resume FILE` accepts only a receipt bound to the same snapshot and
-acknowledgement digests.
+`--resume FILE` accepts only a receipt authenticated with the local
+`ARBOR_MANAGER_RECEIPT_KEY` and bound to the same snapshot and acknowledgement
+digests. Receipt use requires that key to be set; keep it private and stable
+across retries.
 
 ```nix
 plan = lib.plan {
