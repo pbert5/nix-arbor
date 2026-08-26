@@ -1060,6 +1060,40 @@ class Runtime:
                     granted.update(self._capabilities_for(admitted, record["issuer"], root))
             if record["schema"] not in granted:
                 reasons[rowid] = "unauthorized-authority"
+        # Only accepted dynamic keys are eligible recovery approvers.  The
+        # candidate set can contain identity records that are ultimately
+        # quarantined, so it is not an authority source.
+        accepted_approver_generations: dict[str, int] = {}
+        for identity, generation in self._accepted_dynamic_generations:
+            accepted_approver_generations[identity] = max(
+                accepted_approver_generations.get(identity, 0), generation
+            )
+        # A first identity generation has no recovery authorization to
+        # validate, so an identity record accepted after lifecycle
+        # authorization may bootstrap an otherwise out-of-order recovery
+        # authorization in this batch. Never admit a generation carrying
+        # recovery provenance here: it is not accepted until that provenance
+        # has been fully reconciled, and must not authorize a recovery in the
+        # same batch merely because its envelope is authority-signed.
+        #
+        # This intentionally runs after the delegated lifecycle pass. An
+        # observe-only child may publish a validly signed identity envelope,
+        # but it must not provision an approver generation until its own
+        # lifecycle authority has been accepted.
+        for rowid, _, record in candidates:
+            payload = record.get("payload", {})
+            generation = payload.get("generation", record["generation"]) if isinstance(payload, dict) else None
+            identity = payload.get("identity") if isinstance(payload, dict) else None
+            if (record["schema"] in {"node-identity", "identity-generation"}
+                    and isinstance(generation, int)
+                    and isinstance(identity, str)
+                    and payload.get("status", "active") == "active"
+                    and "recoveryAuthorization" not in payload
+                    and payload.get("recoveryAuthorizationDigest") is None
+                    and reasons[rowid] is None):
+                accepted_approver_generations[identity] = max(
+                    accepted_approver_generations.get(identity, 0), generation
+                )
         candidates = [(rowid, key, record) for rowid, key, record in candidates if reasons[rowid] is None]
         # Parent cycles are invalid, while peer edges are deliberately not
         # included in this check.  Rejected cycle records remain in history
@@ -1093,34 +1127,6 @@ class Runtime:
         }
         active_generations: dict[str, int] = {}
         dynamic_states: dict[tuple[str, int], str] = {}
-        # Only accepted dynamic keys are eligible recovery approvers.  The
-        # candidate set can contain authority-signed but ultimately
-        # quarantined identity records, so it is not an authority source.
-        accepted_approver_generations: dict[str, int] = {}
-        for identity, generation in self._accepted_dynamic_generations:
-            accepted_approver_generations[identity] = max(
-                accepted_approver_generations.get(identity, 0), generation
-            )
-        # A first identity generation has no recovery authorization to
-        # validate, so it may bootstrap an otherwise out-of-order recovery
-        # authorization in this batch. Never admit a generation carrying
-        # recovery provenance here: it is not accepted until that provenance
-        # has been fully reconciled, and must not authorize a recovery in the
-        # same batch merely because its envelope is authority-signed.
-        for rowid, _, record in candidates:
-            payload = record.get("payload", {})
-            generation = payload.get("generation", record["generation"]) if isinstance(payload, dict) else None
-            identity = payload.get("identity") if isinstance(payload, dict) else None
-            if (record["schema"] in {"node-identity", "identity-generation"}
-                    and isinstance(generation, int)
-                    and isinstance(identity, str)
-                    and payload.get("status", "active") == "active"
-                    and "recoveryAuthorization" not in payload
-                    and payload.get("recoveryAuthorizationDigest") is None
-                    and reasons[rowid] is None):
-                accepted_approver_generations[identity] = max(
-                    accepted_approver_generations.get(identity, 0), generation
-                )
         for _, _, record in candidates:
             payload = record.get("payload", {})
             if (record["schema"] == "identity-generation" and isinstance(payload, dict)
