@@ -86,6 +86,8 @@ let
     else
       "nixos-rebuild switch --flake '.#${name}'";
 
+  commandForBatch = backend: names: [ (commandFor backend (lib.concatStringsSep " " names)) ];
+
 in
 rec {
   planFromSnapshot =
@@ -186,7 +188,7 @@ rec {
         ++ (lib.optional (batches != [ ]) {
           name = "batches";
           names = batches;
-          commands = map (batch: map (commandFor recommendation.backend) batch) batches;
+          commands = map (commandForBatch recommendation.backend) batches;
         });
       snapshot = {
         inherit roots selector selected;
