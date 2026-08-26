@@ -49,12 +49,13 @@ def _write_json_atomic(path: Path, value: Any, *, mode: int = 0o600) -> None:
 def _private_key(path: Path, issuer: str, generation: int | None = None) -> RuntimeKey:
     suffix = f".g{generation}" if generation is not None else ""
     private = path / f"{issuer}{suffix}.private"
-    # Bootstrap authorities retain their legacy unsuffixed key.  Dynamically
-    # enrolled identities use generation-bound files.  This fallback keeps
-    # both command families interoperable without copying bootstrap secrets
-    # into generation slots.
-    if generation is not None and not private.exists():
+    # Bootstrap authorities and legacy generation-one identities may retain
+    # their unsuffixed key.  Never use it for a requested later generation:
+    # that would produce a record claiming a generation the key cannot sign.
+    if generation == 1 and not private.exists():
         private = path / f"{issuer}.private"
+    if not private.exists():
+        raise ValueError(f"private key for issuer {issuer!r}, generation {generation or 'legacy'} is missing")
     encoded = private.read_text(encoding="ascii").strip()
     signing = SigningKey(base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)))
     return RuntimeKey(issuer, signing)
@@ -127,18 +128,64 @@ def _sync(config: dict[str, Any], runtime: Runtime, provider: OrbitDBProvider, l
     return {"fetched": fetched, "accepted": accepted, "quarantined": quarantined, "cursor": cursor}
 
 
-def _record(key: RuntimeKey, schema: str, record_id: str, payload: dict[str, Any], generation: int = 1) -> dict[str, Any]:
+def _record(
+    key: RuntimeKey,
+    schema: str,
+    record_id: str,
+    payload: dict[str, Any],
+    generation: int = 1,
+    issuer_generation: int | None = None,
+) -> dict[str, Any]:
     if not schema or not record_id or not isinstance(payload, dict):
         raise ValueError("schema, record id, and object payload are required")
-    return make_public_record(key, schema, record_id, payload, generation=generation, issuer_generation=generation)
+    return make_public_record(
+        key, schema, record_id, payload, generation=generation, issuer_generation=issuer_generation,
+    )
+
+
+def _authority_issuers(config: dict[str, Any]) -> set[str]:
+    authorities = _read_json(Path(config["bootstrapAuthoritiesFile"]), {})
+    if isinstance(authorities, dict) and isinstance(authorities.get("keys"), dict):
+        authorities = authorities["keys"]
+    configured = config.get("authorityIssuers")
+    if configured is not None:
+        if not isinstance(configured, list) or any(not isinstance(item, str) for item in configured):
+            raise ValueError("authorityIssuers must be a list of issuer names")
+        return set(configured)
+    return set(authorities) if isinstance(authorities, dict) else set()
+
+
+def _public_generations(args: argparse.Namespace, config: dict[str, Any]) -> tuple[int, int | None]:
+    legacy = getattr(args, "generation", None)
+    record_generation = getattr(args, "record_generation", None)
+    issuer_generation = getattr(args, "issuer_generation", None)
+    if legacy is not None and (record_generation is not None or issuer_generation is not None):
+        raise ValueError("--generation cannot be combined with --record-generation or --issuer-generation")
+    if legacy is not None:
+        record_generation = issuer_generation = legacy
+    elif record_generation is None and issuer_generation is None:
+        # The historical default emitted generation one in both fields.
+        record_generation, issuer_generation = 1, 1
+    elif record_generation is None:
+        record_generation = 1
+    if isinstance(record_generation, bool) or not isinstance(record_generation, int) or record_generation < 1:
+        raise ValueError("record generation must be a positive integer")
+    if issuer_generation is not None and (
+        isinstance(issuer_generation, bool) or not isinstance(issuer_generation, int) or issuer_generation < 1
+    ):
+        raise ValueError("issuer generation must be a positive integer")
+    if issuer_generation is None and args.issuer not in _authority_issuers(config):
+        raise ValueError("--issuer-generation is required for a non-authority issuer")
+    return record_generation, issuer_generation
 
 
 def _public_command(args: argparse.Namespace, config: dict[str, Any], schema: str, required: tuple[str, ...]) -> dict[str, Any]:
+    record_generation, issuer_generation = _public_generations(args, config)
     payload = {field: getattr(args, field) for field in required}
-    key = _private_key(Path(config["identityDir"]), args.issuer, args.generation)
+    key = _private_key(Path(config["identityDir"]), args.issuer, issuer_generation)
     runtime, _ = _runtime(config)
     try:
-        result = runtime.ingest([_record(key, schema, args.record_id, payload, args.generation)])
+        result = runtime.ingest([_record(key, schema, args.record_id, payload, record_generation, issuer_generation)])
         return result[0]
     finally:
         runtime.close()
@@ -158,7 +205,9 @@ def main(argv: list[str] | None = None) -> int:
     record.add_argument("record_id")
     record.add_argument("payload", type=Path)
     record.add_argument("--issuer", required=True)
-    record.add_argument("--generation", type=int, default=1)
+    record.add_argument("--record-generation", type=int)
+    record.add_argument("--issuer-generation", type=int)
+    record.add_argument("--generation", type=int, help=argparse.SUPPRESS)
     keygen = sub.add_parser("keygen")
     keygen.add_argument("issuer")
     keygen.add_argument("--generation", type=int)
@@ -176,7 +225,9 @@ def main(argv: list[str] | None = None) -> int:
     relationship.add_argument("--state", choices=("active", "standby", "suspended", "severed"), default="active")
     relationship.add_argument("--authority-root", required=True)
     relationship.add_argument("--issuer", required=True)
-    relationship.add_argument("--generation", type=int, default=1)
+    relationship.add_argument("--record-generation", type=int)
+    relationship.add_argument("--issuer-generation", type=int)
+    relationship.add_argument("--generation", type=int, help=argparse.SUPPRESS)
     for name, schema, fields in (
         ("endpoint-publish", "endpoint", ("node", "network", "address", "port", "purpose")),
         ("service-publish", "service", ("name", "node", "protocol", "endpoint")),
@@ -185,7 +236,9 @@ def main(argv: list[str] | None = None) -> int:
         command = sub.add_parser(name)
         command.add_argument("record_id")
         command.add_argument("--issuer", required=True)
-        command.add_argument("--generation", type=int, default=1)
+        command.add_argument("--record-generation", type=int)
+        command.add_argument("--issuer-generation", type=int)
+        command.add_argument("--generation", type=int, help=argparse.SUPPRESS)
         for field in fields:
             command.add_argument(f"--{field}", required=True, type=int if field == "port" else str)
     args = parser.parse_args(argv)
@@ -211,10 +264,12 @@ def main(argv: list[str] | None = None) -> int:
             elif args.command == "quarantine":
                 result = runtime.quarantine()
             elif args.command == "relationship-add":
+                record_generation, issuer_generation = _public_generations(args, config)
                 payload = {"from": args.from_node, "to": args.to_node, "kind": args.kind,
                            "status": args.state, "authorityRoot": args.authority_root}
-                key = _private_key(Path(config["identityDir"]), args.issuer, args.generation)
-                result = runtime.ingest([_record(key, "relationship", args.record_id, payload, args.generation)])[0]
+                key = _private_key(Path(config["identityDir"]), args.issuer, issuer_generation)
+                result = runtime.ingest([_record(key, "relationship", args.record_id, payload,
+                                                 record_generation, issuer_generation)])[0]
             elif args.command == "identity-generation":
                 key = _private_key(Path(config["identityDir"]), args.issuer)
                 record = make_identity_generation(key, args.identity, args.generation, args.public_key)

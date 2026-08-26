@@ -1,10 +1,17 @@
+import base64
 import json
 import tempfile
 import unittest
 from pathlib import Path
 
 from arbor_registry_runtime import FileProvider, Runtime, RuntimeKey, make_identity_generation, make_public_record
-from arbor_registry_runtime.registryctl import _sync, _write_json_atomic
+from arbor_registry_runtime.registryctl import (
+    _private_key,
+    _public_generations,
+    _record,
+    _sync,
+    _write_json_atomic,
+)
 from arbor_registry_runtime.runtime import SigningKey
 
 
@@ -22,6 +29,46 @@ class CursorProvider(FileProvider):
 
 
 class RegistryCtlTests(unittest.TestCase):
+    def test_public_generations_are_independent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            authorities = root / "authorities.json"
+            authorities.write_text(json.dumps({"root": "public-key"}))
+            config = {"bootstrapAuthoritiesFile": str(authorities)}
+            args = type("Args", (), {
+                "issuer": "node", "generation": None, "record_generation": 7,
+                "issuer_generation": 3,
+            })()
+            self.assertEqual(_public_generations(args, config), (7, 3))
+
+            key = RuntimeKey("node", SigningKey.generate())
+            record = _record(key, "endpoint", "endpoint-7", {"node": "node"}, 7, 3)
+            self.assertEqual(record["generation"], 7)
+            self.assertEqual(record["recordVersion"], 7)
+            self.assertEqual(record["issuerGeneration"], 3)
+
+    def test_legacy_generation_is_rejected_when_split_flags_are_present(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            authorities = root / "authorities.json"
+            authorities.write_text(json.dumps({"root": "public-key"}))
+            args = type("Args", (), {
+                "issuer": "root", "generation": 2, "record_generation": 2,
+                "issuer_generation": None,
+            })()
+            with self.assertRaisesRegex(ValueError, "cannot be combined"):
+                _public_generations(args, {"bootstrapAuthoritiesFile": str(authorities)})
+
+    def test_missing_later_issuer_key_does_not_fall_back_to_legacy_key(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            key = RuntimeKey("node", SigningKey.generate())
+            root.joinpath("node.private").write_text(
+                base64.urlsafe_b64encode(bytes(key.signing_key)).decode("ascii").rstrip("=")
+            )
+            with self.assertRaisesRegex(ValueError, "generation 2 is missing"):
+                _private_key(root, "node", 2)
+
     def test_cursor_is_written_only_after_page_ingest(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
