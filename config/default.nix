@@ -3,6 +3,7 @@ let
   networkPolicy = import ./networks.nix;
   r640Users = import ./users;
   r640Env = import ./env.nix;
+  vscodeRemote = import ./modules/vscode-remote.nix;
   serverTools =
     { pkgs, ... }:
     {
@@ -95,6 +96,7 @@ let
     { virtualisation.docker.enable = true; }
     r640Users
     r640Env
+    vscodeRemote
     serverTools
     (import ./machines/r640-0/storage.nix)
     (import ./machines/r640-0/management.nix)
