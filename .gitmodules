@@ -14,3 +14,6 @@
 	path = packages/tiling-desktop
 	url = https://github.com/pbert5/TilingDesktop.git
 	branch = main
+[submodule ".env"]
+	path = .env
+	url = https://github.com/pbert5/arbor-recovery-env.git
