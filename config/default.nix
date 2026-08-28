@@ -38,6 +38,7 @@ let
   desktop = [
     networkPolicy
     r640Env
+    r640Users
     inputs.home-manager.nixosModules.home-manager
     inputs.tilingDesktop.nixosModules.default
     inputs.ashes-desktop-apps.nixosModules.default

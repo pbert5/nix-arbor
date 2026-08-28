@@ -62,10 +62,12 @@ in
             group = "users";
           };
           r640SshIdentity = {
-            path = "/root/.ssh/r640-0";
+            path = "/home/ash/.ssh/cluster-leader-ed25519";
+            owner = "ash";
+            group = "users";
           };
         };
-        description = "Provider-independent references to operator-provisioned files; never file contents.";
+        description = "Provider-independent runtime file references; never file contents.";
       };
     };
     public = lib.mkOption {
@@ -90,6 +92,25 @@ in
         sshHosts = { };
       };
       description = "Transitional public registry fallback; dynamic runtime data may replace it later.";
+    };
+    secrets = lib.mkOption {
+      type = lib.types.submodule {
+        options = {
+          enable = lib.mkOption {
+            type = lib.types.bool;
+            default = false;
+          };
+          provider = lib.mkOption {
+            type = lib.types.enum [
+              "sops"
+              "external-files"
+            ];
+            default = "sops";
+          };
+        };
+      };
+      default = { };
+      description = "Optional account secret provider configuration.";
     };
   };
 }

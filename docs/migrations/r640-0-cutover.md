@@ -23,6 +23,10 @@ Radicle, Matrix, distributed builds, or an operational Yggdrasil dependency.
   link services are composed for r640.
 - SOPS/age is wired but disabled until the operator provisions the encrypted
   file and host age key outside Git.
+- r640 retains the default `sops` account-secret provider. Desktoptoodle
+  explicitly selects `external-files` and consumes only the
+  `/run/secrets/ash-password` and `/run/secrets/madeline-password` runtime
+  paths; no `.env` file, password value, or SOPS ciphertext is imported.
 
 ## Physical preflight (read-only)
 
@@ -75,7 +79,7 @@ pool, controller, dataset topology, or Tailscale control-plane enrollment.
 
 ## Secret provisioning
 
-Create `/var/lib/host-age/keys.txt` and an encrypted
+For r640 SOPS mode, create `/var/lib/host-age/keys.txt` and an encrypted
 `/etc/nix-arbor/r640-0.sops.yaml` containing `ash_password_hash` and
 `madeline_password_hash`, then enable `arbor.environment.secrets`. Never put
 the age private key, password hashes, Tailscale auth key, or private SSH keys
