@@ -5,7 +5,8 @@ This is the public access record for the cluster-leader path:
 | Field | Value |
 | --- | --- |
 | OpenSSH alias | `eVolver` |
-| Yggdrasil address | `200:c739:8dc3:8e5a:b1b4:bf7b:1142:d29a` |
+| r640-0 route | Tailscale MagicDNS `evolver` (observed `100.97.84.12`) |
+| desktoptoodle route | Yggdrasil `200:c739:8dc3:8e5a:b1b4:bf7b:1142:d29a` |
 | SSH principal | `root` |
 | Credential ID | `r640-0-leader-user-ssh` |
 | Destination | `/home/ash/.ssh/cluster-leader-ed25519` |
@@ -63,4 +64,15 @@ shell argument, or capture it in logs.
    reboot, hardware change, or other remote action. Keep any failed connection
    evidence and stop for review.
 
-## Current validation boundary
+## Current validation
+
+After scoped materialization on r640-0, the non-destructive acceptance passed:
+
+```sh
+ssh -o BatchMode=yes -o IdentitiesOnly=yes \
+  -i /home/ash/.ssh/cluster-leader-ed25519 \
+  root@100.97.84.12 'hostname; id -un'
+```
+
+The result was `eVolver` / `root`. The r640-0-to-eVolver route used Tailscale
+because r640-0 currently has no Yggdrasil route; no hardware command was sent.
