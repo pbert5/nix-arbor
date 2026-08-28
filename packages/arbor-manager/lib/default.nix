@@ -5,6 +5,7 @@ let
   colmena = import ./colmena.nix { inherit lib; };
   sourceMergeLib = import ./source-merge.nix { inherit lib; };
   sourceMerge = sourceMergeLib.sourceMerge;
+  externalTargetMerge = sourceMergeLib.externalTargetMerge;
   hardware = import ./hardware.nix { inherit lib; };
 
   publicMachineFields = [
@@ -287,6 +288,7 @@ in
     localSource
     registrySnapshot
     sourceMerge
+    externalTargetMerge
     ;
 
   inherit (hardware) validateHardware;

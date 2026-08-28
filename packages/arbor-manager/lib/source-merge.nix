@@ -283,8 +283,99 @@ let
       );
       digest = builtins.hashString "sha256" (builtins.toJSON digestInput);
     };
+
+  # External SSH targets are operator-owned endpoints, not machine
+  # identities.  Keep their three layers and provenance separate from the
+  # registry/local/session machine merge above.
+  mergeExternalTargets =
+    {
+      static ? null,
+      local ? null,
+      session ? null,
+    }:
+    let
+      normalize =
+        layer: value:
+        let
+          entries = asEntries "${layer} external target" value;
+          _ = checkedEntries "${layer} external target" value;
+          records = map (
+            entry:
+            let
+              record = entry.record;
+            in
+            {
+              name = entry.name;
+              record = record // {
+                provenance =
+                  entry.provenance or {
+                    kind = "external-target-${layer}";
+                    layer = layer;
+                  };
+              };
+              provenance =
+                entry.provenance or {
+                  kind = "external-target-${layer}";
+                  layer = layer;
+                };
+            }
+          ) entries;
+        in
+        assert _ != null;
+        builtins.listToAttrs (
+          map (entry: {
+            inherit (entry) name;
+            value = entry;
+          }) records
+        );
+      staticMap = normalize "static" static;
+      localMap = normalize "local" local;
+      sessionMap = normalize "session" session;
+      names = builtins.sort builtins.lessThan (
+        lib.unique (
+          (builtins.attrNames staticMap) ++ (builtins.attrNames localMap) ++ (builtins.attrNames sessionMap)
+        )
+      );
+      get = map: name: if builtins.hasAttr name map then map.${name} else null;
+      merge =
+        name:
+        let
+          present = builtins.filter (entry: entry != null) [
+            (get staticMap name)
+            (get localMap name)
+            (get sessionMap name)
+          ];
+          record = builtins.foldl' (result: entry: mergeAttrs result entry.record) { } present;
+          provenance = {
+            kind = "external-target-merge";
+            layers = map (entry: entry.provenance) present;
+          };
+        in
+        {
+          inherit name provenance;
+          record =
+            if (record.host or record.hostname or null) == null then
+              throw "Arbor Manager: external target '${name}' requires a non-empty host after merging."
+            else
+              record // { inherit provenance; };
+        };
+      targetEntries = map merge names;
+      targets = builtins.listToAttrs (
+        map (entry: {
+          inherit (entry) name;
+          value = entry;
+        }) targetEntries
+      );
+      targetRecords = builtins.mapAttrs (_: entry: entry.record) targets;
+    in
+    {
+      inherit targets targetRecords;
+      digest = builtins.hashString "sha256" (builtins.toJSON (canonicalize targetRecords));
+    };
 in
 {
   inherit mergeSources;
+  inherit mergeExternalTargets;
   sourceMerge = mergeSources;
+  externalTargetMerge = mergeExternalTargets;
 }

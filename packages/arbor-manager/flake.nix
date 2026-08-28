@@ -291,6 +291,7 @@
           assert (import ./tests/snapshot.nix { inherit (nixpkgs) lib; });
           assert (import ./tests/hardware.nix { inherit (nixpkgs) lib; });
           assert (import ./tests/source-merge.nix { inherit (nixpkgs) lib; });
+          assert (import ./tests/external-targets.nix { inherit (nixpkgs) lib; });
           assert (import ./tests/colmena.nix { inherit (nixpkgs) lib; });
           (import nixpkgs { inherit system; }).emptyFile;
       });
