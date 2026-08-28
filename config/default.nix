@@ -38,7 +38,10 @@ let
   desktop = [
     networkPolicy
     r640Env
-    r640Users
+    # r640Users is imported by the desktop machine's configuration.nix. Keep
+    # this profile-level omission: importing it here as well duplicates the
+    # unique shell definition. See docs/migrations/desktoptoodle-swap-over.md
+    # before changing the ownership of that import.
     inputs.home-manager.nixosModules.home-manager
     inputs.tilingDesktop.nixosModules.default
     inputs.ashes-desktop-apps.nixosModules.default
