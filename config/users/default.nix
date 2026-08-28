@@ -92,10 +92,16 @@ in
       "home-share"
     ];
     openssh.authorizedKeys.keys = [ ];
-    hashedPasswordFile = lib.mkIf config.arbor.environment.secrets.enable (accountSecretPath {
-      inherit config;
-      name = "madelinePasswordHash";
-    });
+    # desktoptoodle has no live madeline account or recovered hash. Keep the
+    # historical r640 SOPS path, but do not make the desktop external-files
+    # provider depend on an absent runtime file.
+    hashedPasswordFile =
+      lib.mkIf
+        (config.arbor.environment.secrets.enable && config.arbor.environment.secrets.provider == "sops")
+        (accountSecretPath {
+          inherit config;
+          name = "madelinePasswordHash";
+        });
   };
   home-manager.users.ash = {
     imports = [ inputs.ashzsh.homeModules.default ];
