@@ -1,5 +1,13 @@
 let
   desktoptoodleSshKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAbYbxGzSboO3llrd28uOHpybxTLrbDZN/QmY0crRxU0 ash@desktoptoodle cluster leader";
+  accountSecretPath =
+    { config, name, ... }:
+    if config.arbor.environment.secrets.provider == "external-files" then
+      config.arbor.environment.externalFiles.files.${name}.path
+    else
+      config.sops.secrets.${
+        if name == "ashPasswordHash" then "ash-password" else "madeline-password"
+      }.path;
 in
 {
   config,
@@ -66,7 +74,10 @@ in
       "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDD72jIDEuYHCZXxxFvYHt3IcoQRGxBoRGCIy5kiaYcKkpLC8Noh6OZg0rHNbmfRao0DFzdCuVMmTAy+p7NV4w/CGLosytjSARQ91xRKdPoJVO4j5WMd+dgJREr3sqGflI3HVuQmqsFTKKBs3P4CjkyPE0yBaHkU0FVZf5ww+y0xkO1RySEDN3nTLtI6353zJa6D4WQokzL7W9yoB9mjzL092xqO3fr3DVKrnh5HFKlKOq2hbFVxo6hvCMCfJCuvkTpO3QRvlt/IHClqBUf8UGDT7aY0Dv3WhLCN5EbMCO1zuS1wyxq2wNpBhFpxRtbusxkaCOKAdrVyAAXcky51b8GrkBpHn37ybmYHEnpgXMA2SClKvfwUP3ObLdV7zqGo0kGFoC4HJiZiMx7oroer+smmx6zW1fFL6LuBq9gocXM6pp9Dsf/3jA3GCy0d/yyMNbIHfpYyUxy0WHTL8XjJm9J2K308lkQeikswtcikzAkoCUMhR08fTDuoDo5eORe1OGVd7+Y4F8iGV5rzDYlhmTdqj0/rPfxVLu2rbaOVKBUyQgPPkPcYHzvJXyV/BdQjCGcm2+gYR9HAPkWJjqR7q88gNa0OgyJWZXHWP3hpKQ4Mt9k23Veh8RGMx6ixYuHFKuUNovhj3m0GBkBFp4mYWos3J4iVuq02jamB7JIQJZmsw== r640-0"
       desktoptoodleSshKey
     ];
-    hashedPasswordFile = lib.mkIf config.arbor.environment.secrets.enable config.arbor.environment.externalFiles.files.ashPasswordHash.path;
+    hashedPasswordFile = lib.mkIf config.arbor.environment.secrets.enable (accountSecretPath {
+      inherit config;
+      name = "ashPasswordHash";
+    });
   };
   users.users.madeline = {
     uid = 1001;
@@ -81,7 +92,10 @@ in
       "home-share"
     ];
     openssh.authorizedKeys.keys = [ ];
-    hashedPasswordFile = lib.mkIf config.arbor.environment.secrets.enable config.arbor.environment.externalFiles.files.madelinePasswordHash.path;
+    hashedPasswordFile = lib.mkIf config.arbor.environment.secrets.enable (accountSecretPath {
+      inherit config;
+      name = "madelinePasswordHash";
+    });
   };
   home-manager.users.ash = {
     imports = [ inputs.ashzsh.homeModules.default ];

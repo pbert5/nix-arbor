@@ -91,5 +91,24 @@ in
       };
       description = "Transitional public registry fallback; dynamic runtime data may replace it later.";
     };
+    secrets = lib.mkOption {
+      type = lib.types.submodule {
+        options = {
+          enable = lib.mkOption {
+            type = lib.types.bool;
+            default = false;
+          };
+          provider = lib.mkOption {
+            type = lib.types.enum [
+              "sops"
+              "external-files"
+            ];
+            default = "sops";
+          };
+        };
+      };
+      default = { };
+      description = "Optional account secret provider configuration.";
+    };
   };
 }
