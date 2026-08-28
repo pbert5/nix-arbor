@@ -103,6 +103,7 @@ let
     serverTools
     (import ./machines/r640-0/storage.nix)
     (import ./machines/r640-0/management.nix)
+    (import ./machines/r640-0/access.nix)
   ];
   machines = inputs.arbor-manager.lib.mkMachines {
     inherit inputs;
