@@ -39,38 +39,47 @@ let
     inputs.home-manager.nixosModules.home-manager
     inputs.tilingDesktop.nixosModules.default
     inputs.ashes-desktop-apps.nixosModules.default
-    {
-      nix.settings.experimental-features = [
-        "nix-command"
-        "flakes"
-      ];
-      nixpkgs.config.allowUnfree = true;
-      system.stateVersion = "26.05";
-      users.users.ash = {
-        isNormalUser = true;
-        description = "Ash";
-        extraGroups = [
-          "networkmanager"
-          "wheel"
+    (
+      { config, ... }:
+      {
+        assertions = [
+          {
+            assertion = !config.programs.nix-ld.enable;
+            message = "desktoptoodle must not inherit r640's VS Code nix-ld capability";
+          }
         ];
-      };
-      home-manager.useGlobalPkgs = true;
-      home-manager.useUserPackages = true;
-      home-manager.users.ash = {
-        imports = [
-          inputs.ashzsh.homeModules.default
-          inputs.tilingDesktop.homeModules.hyprland
-          inputs.ashes-desktop-apps.homeModules.default
+        nix.settings.experimental-features = [
+          "nix-command"
+          "flakes"
         ];
-        home.stateVersion = "26.05";
-        home.username = "ash";
-        home.homeDirectory = "/home/ash";
-        ashesDesktopApps = {
-          enable = true;
-          sets = [ "desktop.core" ];
+        nixpkgs.config.allowUnfree = true;
+        system.stateVersion = "26.05";
+        users.users.ash = {
+          isNormalUser = true;
+          description = "Ash";
+          extraGroups = [
+            "networkmanager"
+            "wheel"
+          ];
         };
-      };
-    }
+        home-manager.useGlobalPkgs = true;
+        home-manager.useUserPackages = true;
+        home-manager.users.ash = {
+          imports = [
+            inputs.ashzsh.homeModules.default
+            inputs.tilingDesktop.homeModules.hyprland
+            inputs.ashes-desktop-apps.homeModules.default
+          ];
+          home.stateVersion = "26.05";
+          home.username = "ash";
+          home.homeDirectory = "/home/ash";
+          ashesDesktopApps = {
+            enable = true;
+            sets = [ "desktop.core" ];
+          };
+        };
+      }
+    )
   ];
   server = [
     networkPolicy
