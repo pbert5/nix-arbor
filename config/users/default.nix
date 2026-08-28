@@ -1,3 +1,6 @@
+let
+  desktoptoodleSshKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAbYbxGzSboO3llrd28uOHpybxTLrbDZN/QmY0crRxU0 ash@desktoptoodle cluster leader";
+in
 {
   config,
   inputs,
@@ -22,6 +25,13 @@
     {
       assertion =
         builtins.length config.users.users.ash.openssh.authorizedKeys.keys >= 9
+        &&
+          builtins.length (
+            builtins.filter (
+              key:
+              lib.hasPrefix "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAbYbxGzSboO3llrd28uOHpybxTLrbDZN/QmY0crRxU0" key
+            ) config.users.users.ash.openssh.authorizedKeys.keys
+          ) == 1
         && lib.all (
           key: lib.hasPrefix "ssh-" key || lib.hasPrefix "ecdsa-" key
         ) config.users.users.ash.openssh.authorizedKeys.keys;
@@ -54,6 +64,7 @@
       "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQCvNI0F9iH9Dhk0iCyvWrL8NGG4wd9GvEkbll3CZq/OKorynB8Dfov/rKfj4wTPiNdgdbUuH2gmB68MQjkNQlFuSmOgAefovfNK5wTUHQ7lWKYLfnWoZVSVT4KrLAusq6nvQDOJXCcEuR083IjvZgM/uVkomA/5nojcMRK9Vt9Xx97kmPWDMB8E1dS/sFSS1UWmyqJaABILKzT8ZNsaEanr5dbF2PY6YdjoiJqjjD3OFz6l1K0Cp652ZHhyo+/wd+zAUMuVttDDH2pZxaVRiofvy6z3QzT3YpYdAEqgx+dRF0tq+hwWfbU87al8MRCRYM/aiSTgHxLrJJTnS60OEJiC30HxPIHYqK54JRowvgZes0Yj/BfjkwvK0Um7tp7AF2xipCth/FGPDGL7wqUWujyP+s9sIeJO2o/9fqLKrox7HllWiUT1ZPCh0exKdiV0mqt/r3g+VCDTasrHvF1+t+7Caf61UqLddKzZJUfyqLMS1Oy5OxXK1O0pK3bm8K6U3+NYmtJ1v4hvgMCQbnSAbB1ZojMqOO8MaW56dNlm0x/SBOugpY3xTuMpImwo59/cA4Eaq+oZqZquda4bAlzKp0jh/aHrlTMClutLk/dv4i7IxIEsEKX1h8rmMYR6qy3YJWyuMV6ilj8lSouozHlXc5hfjWylzj6CxZ4p237Hsq8eFw== root@R730-0"
       "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQCwheo5UX9Ds48CxJLa0Spe4ms5ldW9nDVEBG9ir/2ONw1u/SIhCxAo1ONc1UbE3Xft3w0tVKP7sY/voHqB3q0sG9C+12cRN1KjNP3GCKZSRn/US5l2Ji79yqAPqYRnQp3d7jR6YhUafq6N0NIryFpeKwATTJfyQVBhJHGlLgihuxei7bjP43t4ANpDmZppIRo+qtSMfS1vvTTdNUKQbZI4xvmM8G5PFBEIo7Nfe6HbP1xRMNRU8y5hxB8fLHzUqWKT9DIaVaQ9C7BTxX4yniP/h8WTMYzgcEVEK2ifQ3Qz80lM0ES/kMbD/0KskSE8wNj1R3jbJK/P8Kz22G4H6FU9YT+KW2XHhWqX4I3MbC8LfV5OYklhcAuOP/LmDo+EIQGYyuBWcCBvX70bOrlSq893PrEvakK5Wh/UqSFwgNF1dn23yEFHkM8njF3nrPg7USNzS5m7Ch3JBobUVRqnYhLwEtKFL60cdi1nA/JThFCq+bnLadNhorS8Oh0NY/4HuXprLfTvqIgImPWO//MS8Wz52pi3f6ogmOtFFBmcL2LW6RcRKfFPWkIVK3qhaI4CXGJECVc7MIfAosgk9PyL/i4Dx9VTcMVA6GJWDMVMNn4gzMTxyI8Q17USUZuXFYtFKdYsxiXfVPvCsLuPvQ4xIpPX3pASm2gHBy0b+tBgnNfUsw== phsilbert@gmail.com"
       "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDD72jIDEuYHCZXxxFvYHt3IcoQRGxBoRGCIy5kiaYcKkpLC8Noh6OZg0rHNbmfRao0DFzdCuVMmTAy+p7NV4w/CGLosytjSARQ91xRKdPoJVO4j5WMd+dgJREr3sqGflI3HVuQmqsFTKKBs3P4CjkyPE0yBaHkU0FVZf5ww+y0xkO1RySEDN3nTLtI6353zJa6D4WQokzL7W9yoB9mjzL092xqO3fr3DVKrnh5HFKlKOq2hbFVxo6hvCMCfJCuvkTpO3QRvlt/IHClqBUf8UGDT7aY0Dv3WhLCN5EbMCO1zuS1wyxq2wNpBhFpxRtbusxkaCOKAdrVyAAXcky51b8GrkBpHn37ybmYHEnpgXMA2SClKvfwUP3ObLdV7zqGo0kGFoC4HJiZiMx7oroer+smmx6zW1fFL6LuBq9gocXM6pp9Dsf/3jA3GCy0d/yyMNbIHfpYyUxy0WHTL8XjJm9J2K308lkQeikswtcikzAkoCUMhR08fTDuoDo5eORe1OGVd7+Y4F8iGV5rzDYlhmTdqj0/rPfxVLu2rbaOVKBUyQgPPkPcYHzvJXyV/BdQjCGcm2+gYR9HAPkWJjqR7q88gNa0OgyJWZXHWP3hpKQ4Mt9k23Veh8RGMx6ixYuHFKuUNovhj3m0GBkBFp4mYWos3J4iVuq02jamB7JIQJZmsw== r640-0"
+      desktoptoodleSshKey
     ];
     hashedPasswordFile = lib.mkIf config.arbor.environment.secrets.enable config.sops.secrets.ash-password.path;
   };
