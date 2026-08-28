@@ -191,7 +191,9 @@ details.
 
 Use one branch and one sibling worktree per agent task. The helper, role briefs,
 Codex/Claude configuration, VS Code tasks, and handoff guidance are described
-in [docs/agent-workflows.md](docs/agent-workflows.md). Run
+in [docs/agent-workflows.md](docs/agent-workflows.md). Repository-local MCP
+configuration and toggles are documented in
+[docs/codex-development.md](docs/codex-development.md). Run
 `git submodule update --init` when a checkout needs Nix Arbor's direct child or
 reference repositories. Use recursive mode inside a child only when that child
 has a valid `.gitmodules` file.

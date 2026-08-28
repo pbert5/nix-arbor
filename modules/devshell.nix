@@ -1,7 +1,7 @@
 { inputs, ... }:
 {
   perSystem =
-    { pkgs, ... }:
+    { pkgs, system, ... }:
     let
       ashzshHome = inputs.home-manager.lib.homeManagerConfiguration {
         inherit pkgs;
@@ -22,9 +22,17 @@
     {
       formatter = pkgs.nixfmt-tree;
 
+      packages.codex-switch = inputs.codex-switch.packages.${system}.codex-switch;
+
       devShells.default = pkgs.mkShell {
         name = "nix-arbor";
-        packages = inputs.ashes-tools.lib.sets.nix-workstation pkgs;
+        packages = (inputs.ashes-tools.lib.sets.nix-workstation pkgs) ++ [
+          pkgs.codex
+          pkgs.rtk
+          pkgs.nodejs
+          pkgs.playwright-mcp
+          inputs.codex-switch.packages.${system}.codex-switch
+        ];
 
         shellHook = ''
           export HOME="/tmp/nix-arbor-ashzsh"

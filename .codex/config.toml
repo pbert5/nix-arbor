@@ -1,9 +1,22 @@
 # Project-local Codex settings. Authentication and personal preferences belong
 # in the user's CODEX_HOME, not in this repository.
 # AGENTS.md is the policy source; `nix develop` is the canonical environment.
-# No project MCP server is enabled until Nix Arbor maintains one.
 approval_policy = "on-request"
 sandbox_mode = "workspace-write"
 
 [agents]
 max_concurrent_threads_per_session = 6
+
+# Repository-local MCP defaults. Keep credentials in the user's environment or
+# Codex's OAuth store; never commit tokens here.
+
+[mcp_servers.playwright]
+command = "npx"
+args = ["-y", "@playwright/mcp"]
+enabled = true
+startup_timeout_sec = 20
+
+[mcp_servers.context7]
+url = "https://mcp.context7.com/mcp"
+enabled = true
+startup_timeout_sec = 20

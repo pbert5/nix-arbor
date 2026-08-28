@@ -57,3 +57,11 @@ belong in independent flakes and repositories.
 
 Nix teaching material belongs in `cheats/` and `docs/`, not in this durable
 repository policy.
+
+## Output-aware shell commands
+
+`RTK.md` provides optional guidance for Rust Token Killer (RTK). Agents may
+prefer `rtk` wrappers for high-output read-only commands such as Git, search,
+tests, and Nix checks when the compact output remains sufficient. Use the
+native command, or `rtk proxy`, whenever complete diagnostic evidence matters;
+RTK never changes the repository's workflow or safety policy.

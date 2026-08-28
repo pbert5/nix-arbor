@@ -1,0 +1,93 @@
+#!/bin/sh
+set -eu
+
+usage() {
+    cat >&2 <<'EOF'
+usage: scripts/codex-mcp list
+       scripts/codex-mcp enable <playwright|context7>
+       scripts/codex-mcp disable <playwright|context7>
+       scripts/codex-mcp all <enable|disable>
+EOF
+    exit 2
+}
+
+repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || {
+    echo "codex-mcp: run this command inside the repository" >&2
+    exit 1
+}
+config="$repo_root/.codex/config.toml"
+
+test -f "$config" || {
+    echo "codex-mcp: missing $config" >&2
+    exit 1
+}
+
+case "${1-}" in
+    list)
+        test "$#" -eq 1 || usage
+        awk '
+            /^\[mcp_servers\./ {
+                name = $0
+                sub(/^\[mcp_servers\./, "", name)
+                sub(/\].*$/, "", name)
+            }
+            name != "" && /^enabled[[:space:]]*=/ { print name " " $0 }
+        ' "$config"
+        ;;
+    enable|disable)
+        test "$#" -eq 2 || usage
+        state=$([ "$1" = enable ] && echo true || echo false)
+        python3 - "$config" "$2" "$state" <<'PY'
+import os
+import re
+import sys
+import tempfile
+
+path, wanted, state = sys.argv[1:]
+allowed = {"playwright", "context7"}
+if wanted not in allowed:
+    raise SystemExit(f"codex-mcp: unknown server: {wanted}")
+
+section = None
+changed = False
+output = []
+section_re = re.compile(r"^\[mcp_servers\.([^]]+)\]\s*$")
+enabled_re = re.compile(r"^(enabled\s*=\s*)(true|false)(\s*(?:#.*)?)$")
+with open(path, encoding="utf-8") as stream:
+    for line in stream:
+        match = section_re.match(line.rstrip("\n"))
+        if match:
+            section = match.group(1)
+        if section == wanted:
+            match = enabled_re.match(line.rstrip("\n"))
+            if match:
+                line = f"{match.group(1)}{state}{match.group(3)}\n"
+                changed = True
+        output.append(line)
+if not changed:
+    raise SystemExit(f"codex-mcp: no enabled setting for {wanted}")
+
+directory = os.path.dirname(path)
+fd, temporary = tempfile.mkstemp(prefix=".config.toml.", dir=directory, text=True)
+try:
+    os.chmod(temporary, os.stat(path).st_mode & 0o777)
+    with os.fdopen(fd, "w", encoding="utf-8") as stream:
+        stream.writelines(output)
+    os.replace(temporary, path)
+except BaseException:
+    try:
+        os.unlink(temporary)
+    except FileNotFoundError:
+        pass
+    raise
+PY
+        ;;
+    all)
+        test "$#" -eq 2 || usage
+        case "$2" in enable) state=true ;; disable) state=false ;; *) usage ;; esac
+        for server in playwright context7; do
+            "$0" "$([ "$state" = true ] && echo enable || echo disable)" "$server"
+        done
+        ;;
+    *) usage ;;
+esac
