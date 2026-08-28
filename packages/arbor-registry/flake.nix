@@ -18,6 +18,7 @@
       registry = import ./lib { lib = nixpkgs.lib; };
       nixosModule = import ./modules/nixos.nix;
       vaultRuntimeModule = import ./modules/vault-runtime.nix;
+      serviceContractModule = import ./modules/service-contract.nix;
     in
     {
       lib = registry;
@@ -37,6 +38,7 @@
       nixosModules = {
         default = nixosModule;
         vault-runtime = vaultRuntimeModule;
+        service-contract = serviceContractModule;
         vault-runtime-upstream = {
           imports = [
             systemd-vaultd.nixosModules.systemdVaultd
@@ -93,6 +95,10 @@
         };
         vault-runtime-contract = import ./tests/vault-runtime-contract.nix {
           module = vaultRuntimeModule;
+          pkgs = import nixpkgs { inherit system; };
+        };
+        service-contract = import ./tests/service-contract.nix {
+          module = serviceContractModule;
           pkgs = import nixpkgs { inherit system; };
         };
         vault-upstream = import ./tests/vault-upstream.nix {
