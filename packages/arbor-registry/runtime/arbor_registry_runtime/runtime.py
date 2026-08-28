@@ -13,6 +13,8 @@ import sqlite3
 import fcntl
 import socket
 import stat
+import subprocess
+import tempfile
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -363,10 +365,229 @@ def generate_keypair(
     public_path = key_dir / f"{issuer}{suffix}.public"
     if not rotation and (private_path.exists() or public_path.exists()):
         raise FileExistsError(f"key material already exists for {issuer}{suffix}; use rotation=True or a new generation")
-    private_path.write_text(_b64(bytes(key.signing_key)), encoding="ascii")
-    os.chmod(private_path, 0o600)
-    public_path.write_text(key.public_key + "\n", encoding="ascii")
+    # Replace only the explicitly selected generation, and do so atomically.
+    # A crash must never leave a truncated private key that looks usable.
+    for path, contents, mode in ((private_path, _b64(bytes(key.signing_key)), 0o600),
+                                 (public_path, key.public_key + "\n", 0o600)):
+        fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=key_dir)
+        try:
+            os.fchmod(fd, mode)
+            with os.fdopen(fd, "w", encoding="ascii") as stream:
+                stream.write(contents)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, path)
+        except BaseException:
+            try:
+                os.unlink(temporary)
+            except FileNotFoundError:
+                pass
+            raise
+    os.chmod(key_dir, 0o700)
     return key
+
+
+def inspect_identity(key_dir: Path, issuer: str) -> dict[str, Any]:
+    """Return non-secret identity metadata suitable for operator inspection."""
+    key_dir = Path(key_dir)
+    if not isinstance(issuer, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", issuer):
+        raise ValueError("issuer is invalid")
+    _secure_directory(key_dir)
+    generations = []
+    for path in sorted(key_dir.glob(f"{issuer}.g*.public")):
+        match = re.fullmatch(re.escape(issuer) + r"\.g([1-9][0-9]*)\.public", path.name)
+        if match is None:
+            continue
+        _secure_file(path)
+        public = path.read_text(encoding="ascii").strip()
+        if not re.fullmatch(r"[A-Za-z0-9_-]{32,128}", public):
+            raise ValueError("identity public key is malformed")
+        generation = int(match.group(1))
+        generations.append({"generation": generation, "publicKey": public,
+                            "privatePresent": (key_dir / f"{issuer}.g{generation}.private").exists()})
+    active_public = key_dir / f"{issuer}.public"
+    if active_public.exists():
+        _secure_file(active_public)
+        public = active_public.read_text(encoding="ascii").strip()
+    else:
+        public = generations[-1]["publicKey"] if generations else None
+    return {"issuer": issuer, "activePublicKey": public,
+            "generations": generations, "generationCount": len(generations)}
+
+
+def rotate_identity(key_dir: Path, issuer: str, *, generation: int | None = None) -> RuntimeKey:
+    """Explicitly create and publish the next identity generation."""
+    metadata = inspect_identity(key_dir, issuer) if Path(key_dir).exists() else {"generations": []}
+    current = max((item["generation"] for item in metadata["generations"]), default=0)
+    target = generation if generation is not None else current + 1
+    if target != current + 1:
+        raise ValueError("identity rotation must advance exactly one generation")
+    return generate_keypair(key_dir, issuer, generation=target, rotation=False)
+
+
+def _age_run(args: list[str], *, input_bytes: bytes, timeout: float = 30.0) -> bytes:
+    """Run age with secret data only on pipes; never include it in arguments."""
+    try:
+        result = subprocess.run(["age", *args], input=input_bytes, stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE, check=False, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise RuntimeError("age recovery operation failed") from error
+    if result.returncode != 0:
+        raise ValueError("age recovery operation failed")
+    return result.stdout
+
+
+def export_recovery(key_dir: Path, issuer: str, destination: Path, *, recipient: str,
+                    generation: int | None = None, runtime: "Runtime",
+                    authorization: dict[str, Any]) -> dict[str, Any]:
+    """Encrypt one private generation with age, atomically, and return a receipt."""
+    if not isinstance(recipient, str) or not recipient.startswith("age1"):
+        raise ValueError("recipient must be an age recipient")
+    metadata = inspect_identity(key_dir, issuer)
+    generation = generation or (max((x["generation"] for x in metadata["generations"]), default=0))
+    if runtime._recovery_approval_reason(authorization.get("payload", {})) is not None:
+        raise PermissionError("recovery authorization is not accepted")
+    status, reason = runtime._validate(authorization)
+    if status != "accepted" or reason is not None:
+        raise PermissionError("recovery authorization is not accepted")
+    payload = authorization.get("payload", {})
+    if payload.get("identity") != issuer or payload.get("newGeneration") != generation:
+        raise PermissionError("recovery authorization does not bind this identity generation")
+    private = Path(key_dir) / f"{issuer}.g{generation}.private"
+    _secure_file(private)
+    if not private.exists():
+        raise FileNotFoundError("requested identity generation is unavailable")
+    payload = {"format": "arbor-recovery-age-v1", "issuer": issuer, "generation": generation,
+               "private": private.read_text(encoding="ascii").strip()}
+    encrypted = _age_run(["-r", recipient], input_bytes=canonical_json(payload))
+    destination = Path(destination)
+    _secure_directory(destination.parent)
+    fd, temporary = tempfile.mkstemp(prefix=f".{destination.name}.", dir=destination.parent)
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(encrypted); stream.flush(); os.fsync(stream.fileno())
+        os.replace(temporary, destination)
+    except BaseException:
+        try: os.unlink(temporary)
+        except FileNotFoundError: pass
+        raise
+    digest = hashlib.sha256(encrypted).hexdigest()
+    manifest = {"format": "arbor-recovery-manifest-v1", "issuer": issuer,
+                "generation": generation, "ciphertextSha256": digest,
+                "authorizationDigest": _digest(authorization) if authorization is not None else None,
+                "provenance": "manual-private-recovery"}
+    manifest_path = destination.with_name(destination.name + ".manifest.json")
+    fd, temporary = tempfile.mkstemp(prefix=f".{manifest_path.name}.", dir=manifest_path.parent)
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(canonical_json(manifest) + b"\n"); stream.flush(); os.fsync(stream.fileno())
+        os.replace(temporary, manifest_path)
+    except BaseException:
+        try: os.unlink(temporary)
+        except FileNotFoundError: pass
+        raise
+    return {"issuer": issuer, "generation": generation, "digest": digest,
+            "manifest": str(manifest_path.name)}
+
+
+def import_recovery(archive: Path, key_dir: Path, *, identity_file: Path,
+                    expected_issuer: str | None = None, expected_generation: int | None = None,
+                    runtime: "Runtime", authorization: dict[str, Any]) -> RuntimeKey:
+    """Decrypt and install an age recovery generation without overwriting one."""
+    _secure_file(Path(archive)); _secure_file(Path(identity_file))
+    manifest_path = Path(archive).with_name(Path(archive).name + ".manifest.json")
+    _secure_file(manifest_path)
+    if not manifest_path.exists():
+        raise ValueError("recovery manifest is missing")
+    try: manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error: raise ValueError("malformed recovery manifest") from error
+    digest = hashlib.sha256(Path(archive).read_bytes()).hexdigest()
+    if manifest.get("format") != "arbor-recovery-manifest-v1" or manifest.get("ciphertextSha256") != digest:
+        raise ValueError("recovery manifest does not match ciphertext")
+    plaintext = _age_run(["-d", "-i", str(identity_file), str(archive)], input_bytes=b"")
+    try: payload = json.loads(plaintext)
+    except (UnicodeDecodeError, json.JSONDecodeError) as error: raise ValueError("malformed recovery archive") from error
+    if (not isinstance(payload, dict) or payload.get("format") != "arbor-recovery-age-v1"
+            or not isinstance(payload.get("issuer"), str)
+            or not isinstance(payload.get("generation"), int) or not isinstance(payload.get("private"), str)):
+        raise ValueError("recovery sentinel or archive metadata mismatch")
+    issuer, generation = payload["issuer"], payload["generation"]
+    if expected_issuer is not None and issuer != expected_issuer: raise ValueError("recovery issuer mismatch")
+    if expected_generation is not None and generation != expected_generation: raise ValueError("recovery generation mismatch")
+    if runtime._recovery_approval_reason(authorization.get("payload", {})) is not None:
+        raise PermissionError("recovery authorization is not accepted")
+    status, reason = runtime._validate(authorization)
+    if status != "accepted" or reason is not None:
+        raise PermissionError("recovery authorization is not accepted")
+    auth_payload = authorization.get("payload", {})
+    if auth_payload.get("identity") != issuer or auth_payload.get("newGeneration") != generation:
+        raise PermissionError("recovery authorization does not bind this identity generation")
+    if manifest.get("authorizationDigest") != _digest(authorization):
+        raise PermissionError("recovery manifest authorization mismatch")
+    current = runtime.projection().get(issuer, {}).get("generation", 0)
+    if isinstance(current, int) and generation <= current:
+        raise PermissionError("recovery generation is stale or already installed")
+    try: signing = SigningKey(_unb64(payload["private"]))
+    except (ValueError, TypeError, binascii.Error) as error: raise ValueError("recovery key is malformed") from error
+    destination = Path(key_dir); _secure_directory(destination)
+    private, public = destination / f"{issuer}.g{generation}.private", destination / f"{issuer}.g{generation}.public"
+    if private.exists() or public.exists(): raise FileExistsError("recovery generation already exists")
+    for path, contents, mode in ((private, _b64(bytes(signing)), 0o600),
+                                 (public, _b64(bytes(signing.verify_key)) + "\n", 0o600)):
+        fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=destination)
+        try:
+            os.fchmod(fd, mode)
+            with os.fdopen(fd, "w", encoding="ascii") as stream:
+                stream.write(contents); stream.flush(); os.fsync(stream.fileno())
+            os.replace(temporary, path)
+        except BaseException:
+            try: os.unlink(temporary)
+            except FileNotFoundError: pass
+            raise
+    return RuntimeKey(issuer, signing)
+
+
+def inspect_recovery_data(path: Path) -> dict[str, Any]:
+    """Classify a private recovery artifact without reading secret contents."""
+    path = Path(path)
+    _secure_file(path)
+    if not path.exists():
+        raise FileNotFoundError(path)
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    return {"kind": "private-recovery-data", "path": path.name, "bytes": path.stat().st_size,
+            "sha256": digest, "provenance": {"source": "manual-private-recovery"}}
+
+
+def inventory_recovery_catalog(root: Path, *, selected: Iterable[str] | None = None) -> dict[str, Any]:
+    """Validate a checked-out private catalog and return redacted inventory only."""
+    root = Path(root); _secure_directory(root)
+    catalog_path, schema_path = root / "catalog.yaml", root / "schema.yaml"
+    if not catalog_path.exists() or not schema_path.exists():
+        raise ValueError("private recovery catalog requires catalog.yaml and schema.yaml")
+    names = set(selected) if selected is not None else None
+    entries = []
+    for line in catalog_path.read_text(encoding="utf-8").splitlines():
+        match = re.match(r"\s*-?\s*(?:path|material):\s*([^#\s]+)", line)
+        if match and (names is None or match.group(1) in names):
+            rel = Path(match.group(1))
+            if rel.is_absolute() or ".." in rel.parts: raise ValueError("catalog path escapes root")
+            target = root / rel
+            _secure_file(target)
+            if not target.exists(): raise FileNotFoundError(rel)
+            entries.append({"name": rel.name, "sha256": hashlib.sha256(target.read_bytes()).hexdigest()})
+    return {"kind": "private-recovery-catalog", "entries": entries,
+            "provenance": {"source": "manual-private-recovery", "selected": selected is not None}}
+
+
+# Descriptive aliases retained for callers that use “bundle” terminology.
+export_recovery_bundle = export_recovery
+import_recovery_bundle = import_recovery
+import_private_recovery_data = import_recovery
+inspect_private_recovery_data = inspect_recovery_data
+inspect_identity_state = inspect_identity
+rotate_keypair = rotate_identity
 
 
 class Provider(ABC):

@@ -8,7 +8,8 @@ from pathlib import Path
 
 from nacl.signing import SigningKey
 
-from arbor_registry_runtime import FileProvider, OrbitDBProvider, Provider, Runtime, RuntimeKey, canonical_json, generate_keypair
+from arbor_registry_runtime import (FileProvider, OrbitDBProvider, Provider, Runtime, RuntimeKey, canonical_json,
+                                    generate_keypair, inspect_identity, rotate_identity, export_recovery, import_recovery)
 from arbor_registry_runtime.runtime import (
     approve_enrollment,
     make_identity_generation,
@@ -112,6 +113,37 @@ class RuntimeTests(unittest.TestCase):
         for issuer in ("../escape", "nested/operator", "\\absolute", "/absolute", ".", ".."):
             with self.assertRaises(ValueError):
                 generate_keypair(key_dir, issuer)
+
+    def test_identity_inspection_rotation_and_recovery_sentinel(self):
+        import arbor_registry_runtime.runtime as runtime_module
+        key_dir = Path(self.temp.name) / "identity"
+        first = generate_keypair(key_dir, "node", generation=1)
+        second = rotate_identity(key_dir, "node")
+        approval = make_recovery_approval(self.key, "node", 1, role="operator", approver_generation=1)
+        authorization = make_recovery_authorization(self.key, "node", 1, second.public_key, [approval])
+        metadata = inspect_identity(key_dir, "node")
+        self.assertEqual(metadata["generationCount"], 2)
+        self.assertEqual(metadata["activePublicKey"], second.public_key)
+        original = runtime_module._age_run
+        try:
+            runtime_module._age_run = lambda args, input_bytes: input_bytes
+            archive = Path(self.temp.name) / "recovery.age"
+            export_recovery(key_dir, "node", archive, recipient="age1synthetic", runtime=self.runtime, authorization=authorization)
+            runtime_module._age_run = lambda args, input_bytes: json.dumps({
+                "format": "arbor-recovery-age-v1", "issuer": "node", "generation": 2,
+                "sentinel": "sentinel", "private": runtime_module._b64(bytes(second.signing_key)),
+            }).encode()
+            restored = import_recovery(archive, Path(self.temp.name) / "restored", identity_file=archive,
+                                       runtime=self.runtime, authorization=authorization,
+                                       expected_issuer="node", expected_generation=2)
+            self.assertEqual(restored.public_key, second.public_key)
+            manifest = archive.with_name(archive.name + ".manifest.json")
+            manifest.write_text(manifest.read_text().replace("\"ciphertextSha256\":\"", "\"ciphertextSha256\":\"tampered"))
+            with self.assertRaises(ValueError):
+                import_recovery(archive, Path(self.temp.name) / "bad", identity_file=archive,
+                                runtime=self.runtime, authorization=authorization)
+        finally:
+            runtime_module._age_run = original
 
     def test_orbitdb_provider_maps_bounded_socket_contract(self):
         import socketserver
