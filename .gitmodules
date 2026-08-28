@@ -17,3 +17,4 @@
 [submodule ".env"]
 	path = .env
 	url = https://github.com/pbert5/arbor-recovery-env.git
+	update = none

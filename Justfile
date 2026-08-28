@@ -1,5 +1,7 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
+public_submodules := "packages/AshZsh references/flake-devbox packages/AshesTools packages/AshDesktopApps packages/tiling-desktop"
+
 help:
     @printf '%s\n' 'Use native Nix commands: nix develop, nix flake check, nix fmt, navi'
 
@@ -28,7 +30,7 @@ wt-prune:
     ./scripts/agent-worktree prune
 
 submodules:
-    git submodule update --init
+    git submodule update --init -- {{public_submodules}}
 
 check:
     nix flake check

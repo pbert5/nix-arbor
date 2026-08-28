@@ -64,10 +64,3 @@ shell argument, or capture it in logs.
    evidence and stop for review.
 
 ## Current validation boundary
-
-This worktree has no private credential and does not authenticate or actuate
-the physical R640/eVolver host. A read-only route check and unauthenticated
-TCP/22 probe from the validation environment succeeded. The pure metadata test
-validates the alias and path only; server host-key verification and the final
-authenticated login remain operator-side acceptance steps because the required
-credential is unavailable here.

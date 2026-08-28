@@ -193,10 +193,18 @@ Use one branch and one sibling worktree per agent task. The helper, role briefs,
 Codex/Claude configuration, VS Code tasks, and handoff guidance are described
 in [docs/agent-workflows.md](docs/agent-workflows.md). Repository-local MCP
 configuration and toggles are documented in
-[docs/codex-development.md](docs/codex-development.md). Run
-`git submodule update --init` when a checkout needs Nix Arbor's direct child or
-reference repositories. Use recursive mode inside a child only when that child
-has a valid `.gitmodules` file.
+[docs/codex-development.md](docs/codex-development.md). Run `just submodules`
+when a checkout needs Nix Arbor's public child or reference repositories. The
+private recovery environment remains a gitlink at `.env` but is not part of
+routine public bootstrap. An authorized operator may initialize it explicitly,
+with Git's configured update policy overridden for that one path:
+
+```sh
+git -c submodule..env.update=checkout submodule update --init -- .env
+```
+
+Use recursive mode inside a child only when that child has a valid
+`.gitmodules` file.
 
 `references/flake-devbox` is a legacy/reference submodule for inspection. It is
 not a Nix Arbor flake input and should not be casually modified or ported
