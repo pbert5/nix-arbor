@@ -70,3 +70,22 @@ Lead-maintained queue for the extraction. States use the repository workflow:
 The lead dispatches a newly unblocked row immediately; this table is not a
 serial phase plan. Research agents may finish without changing repository
 state; mutable workers own one branch/worktree and report commits.
+
+## Active desktoptoodle/recovery queue
+
+These rows define the current split between the recovery/credentials run and
+the parallel non-secret host-parity run. They supersede any broader
+`I4 DESKTOP-PARITY` assignment.
+
+| ID | State | Dependencies | Owner / write set | Deliverable or gate |
+|---|---|---|---|---|
+| I4 SECRET-CONSUMER-HANDOFF | IN_PROGRESS | recovery/credential discovery | recovery/credentials run; `.env/`, `arbor-recovery-env`, secret catalog/materialization tooling, and generic path-based consumer interface | Make runtime secret paths available to host consumers without secret values entering Nix evaluation. BitLocker recovery material uses root-only paths under `/etc/nix-arbor/secrets/desktoptoodle/bitlocker/`; preserve stable credential identity in filenames or a manifest. |
+| DESKTOPTOODLE-HOST-PARITY | IN_PROGRESS | none | parallel run on `agent/luna/desktoptoodle-host-parity`; `config/machines/desktoptoodle/` and other non-secret host configuration | Own monitor, Hyprland/Niri, GPU/NVIDIA, kernel, storage mounts, BitLocker unlock/mount service, Steam disk, audio/peripheral, workstation-service, hardware, and boot parity. It must consume secret paths only, never secret values. |
+| A1 DESKTOP TEST ACTIVATION | BLOCKED | I4 SECRET-CONSUMER-HANDOFF + green `DESKTOPTOODLE-HOST-PARITY` | lead/integration | Before any `nixos-rebuild test` or `switch`, fetch `origin/agent/luna/desktoptoodle-host-parity`; if it exists and is reported green, inspect and semantically integrate it first. If absent or incomplete, do not perform final desktoptoodle activation; report activation blocked on that integration. |
+
+The recovery/credentials run does not modify desktoptoodle monitor or host
+parity configuration, GPU, kernel, storage, BitLocker service behavior, Steam,
+audio/peripheral, workstation-service, or hardware/boot specialization. Those
+remain owned by `DESKTOPTOODLE-HOST-PARITY`. Private credentials, password
+hashes, SSH/service identities, BitLocker material, and other secret values
+remain exclusively owned by the recovery/credentials run.
