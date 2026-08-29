@@ -100,7 +100,6 @@ let
     inputs.sops-nix.nixosModules.sops
     { virtualisation.docker.enable = true; }
     r640Users
-    environment
     r640Sops
     vscodeRemote
     serverTools
