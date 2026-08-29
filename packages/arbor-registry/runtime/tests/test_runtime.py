@@ -121,6 +121,7 @@ class RuntimeTests(unittest.TestCase):
         second = rotate_identity(key_dir, "node")
         approval = make_recovery_approval(self.key, "node", 1, role="operator", approver_generation=1)
         authorization = make_recovery_authorization(self.key, "node", 1, second.public_key, [approval])
+        self.runtime.ingest([authorization])
         metadata = inspect_identity(key_dir, "node")
         self.assertEqual(metadata["generationCount"], 2)
         self.assertEqual(metadata["activePublicKey"], second.public_key)

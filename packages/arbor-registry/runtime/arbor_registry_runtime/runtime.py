@@ -31,6 +31,8 @@ SCHEMAS = frozenset({
 })
 ProviderCursor: TypeAlias = int | str
 _SECRET_NAMES = {"secret", "password", "passphrase", "token", "credential", "private", "privatekey", "signingkey", "apikey", "accesskey", "accesstoken", "seed"}
+AGE_BINARY = "/run/current-system/sw/bin/age"
+MAX_RECOVERY_BYTES = 16 * 1024 * 1024
 
 
 def _unsafe_value(value: Any) -> bool:
@@ -428,7 +430,7 @@ def rotate_identity(key_dir: Path, issuer: str, *, generation: int | None = None
 def _age_run(args: list[str], *, input_bytes: bytes, timeout: float = 30.0) -> bytes:
     """Run age with secret data only on pipes; never include it in arguments."""
     try:
-        result = subprocess.run(["age", *args], input=input_bytes, stdout=subprocess.PIPE,
+        result = subprocess.run([AGE_BINARY, *args], input=input_bytes, stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE, check=False, timeout=timeout)
     except (OSError, subprocess.TimeoutExpired) as error:
         raise RuntimeError("age recovery operation failed") from error
@@ -450,6 +452,8 @@ def export_recovery(key_dir: Path, issuer: str, destination: Path, *, recipient:
     status, reason = runtime._validate(authorization)
     if status != "accepted" or reason is not None:
         raise PermissionError("recovery authorization is not accepted")
+    if runtime.db.execute("SELECT status FROM records WHERE envelope = ?", (canonical_json(authorization).decode(),)).fetchone() != ("accepted",):
+        raise PermissionError("recovery authorization is not durably accepted")
     payload = authorization.get("payload", {})
     if payload.get("identity") != issuer or payload.get("newGeneration") != generation:
         raise PermissionError("recovery authorization does not bind this identity generation")
@@ -457,9 +461,15 @@ def export_recovery(key_dir: Path, issuer: str, destination: Path, *, recipient:
     _secure_file(private)
     if not private.exists():
         raise FileNotFoundError("requested identity generation is unavailable")
+    expected_key = payload.get("newPublicKey")
+    actual_key = metadata["generations"][-1]["publicKey"] if metadata["generations"] and generation == metadata["generations"][-1]["generation"] else None
+    if expected_key != actual_key:
+        raise PermissionError("recovery authorization key does not match generation")
     payload = {"format": "arbor-recovery-age-v1", "issuer": issuer, "generation": generation,
                "private": private.read_text(encoding="ascii").strip()}
     encrypted = _age_run(["-r", recipient], input_bytes=canonical_json(payload))
+    if len(encrypted) > MAX_RECOVERY_BYTES:
+        raise ValueError("recovery archive exceeds size limit")
     destination = Path(destination)
     _secure_directory(destination.parent)
     fd, temporary = tempfile.mkstemp(prefix=f".{destination.name}.", dir=destination.parent)
@@ -497,6 +507,8 @@ def import_recovery(archive: Path, key_dir: Path, *, identity_file: Path,
                     runtime: "Runtime", authorization: dict[str, Any]) -> RuntimeKey:
     """Decrypt and install an age recovery generation without overwriting one."""
     _secure_file(Path(archive)); _secure_file(Path(identity_file))
+    if Path(archive).stat().st_size > MAX_RECOVERY_BYTES:
+        raise ValueError("recovery archive exceeds size limit")
     manifest_path = Path(archive).with_name(Path(archive).name + ".manifest.json")
     _secure_file(manifest_path)
     if not manifest_path.exists():
@@ -514,6 +526,8 @@ def import_recovery(archive: Path, key_dir: Path, *, identity_file: Path,
             or not isinstance(payload.get("generation"), int) or not isinstance(payload.get("private"), str)):
         raise ValueError("recovery sentinel or archive metadata mismatch")
     issuer, generation = payload["issuer"], payload["generation"]
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", issuer):
+        raise ValueError("recovery issuer is invalid")
     if expected_issuer is not None and issuer != expected_issuer: raise ValueError("recovery issuer mismatch")
     if expected_generation is not None and generation != expected_generation: raise ValueError("recovery generation mismatch")
     if runtime._recovery_approval_reason(authorization.get("payload", {})) is not None:
@@ -521,6 +535,8 @@ def import_recovery(archive: Path, key_dir: Path, *, identity_file: Path,
     status, reason = runtime._validate(authorization)
     if status != "accepted" or reason is not None:
         raise PermissionError("recovery authorization is not accepted")
+    if runtime.db.execute("SELECT status FROM records WHERE envelope = ?", (canonical_json(authorization).decode(),)).fetchone() != ("accepted",):
+        raise PermissionError("recovery authorization is not durably accepted")
     auth_payload = authorization.get("payload", {})
     if auth_payload.get("identity") != issuer or auth_payload.get("newGeneration") != generation:
         raise PermissionError("recovery authorization does not bind this identity generation")
@@ -531,6 +547,8 @@ def import_recovery(archive: Path, key_dir: Path, *, identity_file: Path,
         raise PermissionError("recovery generation is stale or already installed")
     try: signing = SigningKey(_unb64(payload["private"]))
     except (ValueError, TypeError, binascii.Error) as error: raise ValueError("recovery key is malformed") from error
+    if auth_payload.get("newPublicKey") != _b64(bytes(signing.verify_key)):
+        raise PermissionError("recovery authorization key does not match recovered key")
     destination = Path(key_dir); _secure_directory(destination)
     private, public = destination / f"{issuer}.g{generation}.private", destination / f"{issuer}.g{generation}.public"
     if private.exists() or public.exists(): raise FileExistsError("recovery generation already exists")
