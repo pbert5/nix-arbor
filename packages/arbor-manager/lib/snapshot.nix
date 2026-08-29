@@ -97,6 +97,27 @@ let
       };
       inherit record;
     };
+  inspectExternalTarget =
+    {
+      target,
+      source ? null,
+    }:
+    let
+      rawRecord = if target ? record then target.record else target;
+      record = public rawRecord;
+      sourceProvenance = public (
+        if source != null then source else (rawRecord.provenance or { kind = "external-target"; })
+      );
+    in
+    {
+      format = "arbor-manager/external-target-inspect";
+      version = 1;
+      name = target.name or "unknown";
+      inherit record;
+      provenance = {
+        source = sourceProvenance;
+      };
+    };
   deploymentSnapshot =
     {
       plan,
@@ -127,6 +148,7 @@ in
     digest
     deploymentSnapshot
     inspectMachine
+    inspectExternalTarget
     public
     ;
   exportMachine = args: canonicalJson (inspectMachine args);

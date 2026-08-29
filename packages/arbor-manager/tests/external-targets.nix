@@ -6,6 +6,7 @@ let
       backup = {
         host = "backup.example";
         user = "root";
+        mode = 644;
         provenance = {
           kind = "checked-in";
         };
@@ -48,6 +49,9 @@ let
       ];
     }) true
   );
+  inspected = (import ../lib/snapshot.nix { inherit lib; }).inspectExternalTarget {
+    target = merged.targets.backup;
+  };
 in
 assert
   builtins.attrNames merged.targetRecords == [
@@ -60,4 +64,5 @@ assert merged.targetRecords.gateway.user == "operator";
 assert merged.targets.backup.provenance.kind == "external-target-merge";
 assert builtins.length merged.targets.backup.provenance.layers == 2;
 assert !invalid.success;
+assert inspected.record.mode == 644;
 true
