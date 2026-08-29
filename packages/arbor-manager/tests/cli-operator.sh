@@ -18,8 +18,8 @@ jq -e '.operation == "identity/import" and .data.privateKey == "must-not-print"'
 printf '%s\n' '{"status":"accepted","privateKey":"adapter-secret"}'
 EOF
 chmod 700 "$work/adapter"
-rm -f "$work/raw-output.json"
-"$cli" identity import --path "$work/identity.json" --output "$work/raw-output.json" --runtime-executable "$work/adapter" | jq -e '.status == "accepted" and .privateKey == "<redacted>"' >/dev/null
+"$cli" identity import --path "$work/identity.json" --runtime-executable "$work/adapter" | jq -e '.status == "accepted" and .privateKey == "<redacted>"' >/dev/null
+if "$cli" identity import --path "$work/identity.json" --output "$work/raw-output.json" --runtime-executable "$work/adapter" >/dev/null 2>&1; then exit 1; fi
 test ! -e "$work/raw-output.json"
 printf '%s\n' '{"status":"healthy","healthy":true}' >"$work/status.json"
 "$cli" doctor --status "$work/status.json" | jq -e '.healthy == true' >/dev/null
