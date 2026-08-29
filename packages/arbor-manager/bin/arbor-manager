@@ -128,7 +128,7 @@ if [ "$command" = identity ] || [ "$command" = recovery ] || [ "$command" = exte
     [ -f "$1" ] || die "'$1' is not a regular file"
     # Private recovery material must not be group/world accessible.
     mode=$(stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1")
-    case "$mode" in 600|400|640|440) ;; *) die "private input '$1' must have mode 0600 or 0400" ;; esac
+    case "$mode" in 600|400) ;; *) die "private input '$1' must have mode 0600 or 0400" ;; esac
   }
   resolve_input() {
     if [ -d "$input_file" ]; then
@@ -158,6 +158,12 @@ if [ "$command" = identity ] || [ "$command" = recovery ] || [ "$command" = exte
     request=$(jq -n -cS --arg operation "$command/$subcommand" --argjson data "$payload" '{protocol:"arbor-manager/runtime-adapter",version:1,operation:$operation,data:$data}')
     response=$(printf '%s\n' "$request" | env -i PATH="${PATH:-/usr/bin:/bin}" "$runtime_executable" 2>/dev/null) || die "runtime adapter failed (contract mismatch or runtime unavailable)"
     jq -e -cS "$redact_filter | select(type == \"object\")" <<<"$response" >/dev/null || die "runtime adapter returned a non-object JSON response (contract mismatch)"
+    if [ "$command" = identity ] || [ "$command" = recovery ]; then
+      # Runtime responses may contain opaque private receipt material. Keep a
+      # deliberately tiny public receipt projection; never heuristic-redact a
+      # neutral key and accidentally print its value.
+      response=$(jq -cS '{format:(.format // "arbor-manager/runtime-response"),version:(.version // 1),status:(.status // "accepted"),operation:(.operation // null),accepted:(.accepted // null),digest:(.digest // null)}' <<<"$response")
+    fi
     if [ "$format" = json ]; then redact_json <<<"$response"; else jq -r 'to_entries[] | "\(.key)=\(.value|tostring)"' <<<"$(redact_json <<<"$response")"; fi
     exit 0
   fi
@@ -498,7 +504,7 @@ elif [ "$command" = nodes ]; then
   fi
 else
   if [ "$format" = json ]; then
-    jq -S . <<<"$snapshot"
+    jq -S '.acknowledgement.token = "<redacted>"' <<<"$snapshot"
   else
     jq -r '"deployment snapshot \(.snapshotDigest)", "selector=\(.snapshot.selector)", "selected=\(.snapshot.selected | join(", "))", "excluded=\(.snapshot.excluded | map(.name + ":" + (.reasons | join(","))) | join("; "))"' <<<"$snapshot"
   fi
