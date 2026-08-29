@@ -2,7 +2,7 @@
 
 This record covers the legacy hosts found in the inspected Flake Devbox
 reference at commit `4ac3560d5ffcf414b210918f45d18f54f5513fa1`. The descriptors
-under `config/machines/` are deliberately suspended and data-only: they retain
+under `config/legacy-machines/` are deliberately suspended and data-only: they retain
 stable identity and a small hardware snapshot for inventory and future
 explicit recovery, but they do not activate legacy services or configuration.
 
