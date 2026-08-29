@@ -5,8 +5,13 @@ let
   environment = import ./env.nix;
   r640Sops = import ./sops.nix;
   vscodeRemote = import ./modules/vscode-remote.nix;
-  registryPolicy = import ../packages/arbor-registry/modules/nixos.nix;
-  registryServiceContract = import ../packages/arbor-registry/modules/service-contract.nix;
+  registryServiceContract =
+    if builtins.hasAttr "service-contract" inputs.arbor-registry.nixosModules then
+      inputs.arbor-registry.nixosModules.service-contract
+    else
+      # Compatibility for locks predating the exported module; input wins as
+      # soon as the Registry input publishes the service-contract export.
+      import ../packages/arbor-registry/modules/service-contract.nix;
   serverTools =
     { pkgs, ... }:
     {
@@ -107,7 +112,7 @@ let
     (import ./machines/r640-0/management.nix)
   ];
   arborParticipant = [
-    registryPolicy
+    inputs.arbor-registry.nixosModules.default
     registryServiceContract
     {
       # This is a public policy/status boundary only. Runtime credentials,
