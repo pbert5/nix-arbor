@@ -39,6 +39,7 @@ def _unsafe_value(value: Any) -> bool:
     if isinstance(value, str):
         return (
             value.startswith(("/nix/store/", "/run/secrets/", "-----BEGIN"))
+            or value.startswith(("AGE-SECRET-", "AGE-ENCRYPTED-"))
             or re.match(r"^[A-Za-z][A-Za-z0-9+.-]*://[^/?#\s]+:[^/?#\s]+@", value) is not None
             or re.match(r"^Bearer\s+\S+$", value, re.IGNORECASE) is not None
         )
@@ -485,6 +486,7 @@ def export_recovery(key_dir: Path, issuer: str, destination: Path, *, recipient:
     digest = hashlib.sha256(encrypted).hexdigest()
     manifest = {"format": "arbor-recovery-manifest-v1", "issuer": issuer,
                 "generation": generation, "ciphertextSha256": digest,
+                "recipient": recipient,
                 "authorizationDigest": _digest(authorization) if authorization is not None else None,
                 "provenance": "manual-private-recovery"}
     manifest_path = destination.with_name(destination.name + ".manifest.json")
@@ -504,7 +506,7 @@ def export_recovery(key_dir: Path, issuer: str, destination: Path, *, recipient:
 
 def import_recovery(archive: Path, key_dir: Path, *, identity_file: Path,
                     expected_issuer: str | None = None, expected_generation: int | None = None,
-                    runtime: "Runtime", authorization: dict[str, Any]) -> RuntimeKey:
+                    runtime: "Runtime", authorization: dict[str, Any], expected_recipient: str | None = None) -> RuntimeKey:
     """Decrypt and install an age recovery generation without overwriting one."""
     _secure_file(Path(archive)); _secure_file(Path(identity_file))
     if Path(archive).stat().st_size > MAX_RECOVERY_BYTES:
@@ -518,6 +520,8 @@ def import_recovery(archive: Path, key_dir: Path, *, identity_file: Path,
     digest = hashlib.sha256(Path(archive).read_bytes()).hexdigest()
     if manifest.get("format") != "arbor-recovery-manifest-v1" or manifest.get("ciphertextSha256") != digest:
         raise ValueError("recovery manifest does not match ciphertext")
+    if expected_recipient is not None and manifest.get("recipient") != expected_recipient:
+        raise PermissionError("recovery recipient mismatch")
     plaintext = _age_run(["-d", "-i", str(identity_file), str(archive)], input_bytes=b"")
     try: payload = json.loads(plaintext)
     except (UnicodeDecodeError, json.JSONDecodeError) as error: raise ValueError("malformed recovery archive") from error
@@ -543,6 +547,15 @@ def import_recovery(archive: Path, key_dir: Path, *, identity_file: Path,
     if manifest.get("authorizationDigest") != _digest(authorization):
         raise PermissionError("recovery manifest authorization mismatch")
     current = runtime.projection().get(issuer, {}).get("generation", 0)
+    rows = runtime.db.execute("SELECT envelope FROM records WHERE status = 'accepted' AND record_id = ?", (issuer,)).fetchall()
+    current = max([current] + [json.loads(row[0]).get("generation", 0) for row in rows])
+    revoked = runtime.db.execute("SELECT 1 FROM records WHERE status = 'accepted' AND envelope LIKE ?", (f'%"identity":"{issuer}"%',)).fetchone()
+    revoked = any(json.loads(row[0]).get("schema") == "revocation"
+                  and json.loads(row[0]).get("payload", {}).get("identity") == issuer
+                  and json.loads(row[0]).get("payload", {}).get("generation") == generation
+                  for row in runtime.db.execute("SELECT envelope FROM records WHERE status = 'accepted'"))
+    if revoked:
+        raise PermissionError("recovery generation is revoked")
     if isinstance(current, int) and generation <= current:
         raise PermissionError("recovery generation is stale or already installed")
     try: signing = SigningKey(_unb64(payload["private"]))
