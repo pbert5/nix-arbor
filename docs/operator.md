@@ -22,9 +22,15 @@ nix run .#arbor-manager -- deployment plan --snapshot deployment.json --format t
 Use `--format json|table|names|ssh|colmena`; the latter two are display
 projections only.
 
-The current wrapper has no `tui` subcommand. There is no supported interactive
-TUI entrypoint to document or rely on; use the explicit, reviewable commands
-above.
+An offline TUI is available through `arbor-manager tui --snapshot FILE`.
+It provides `overview`, `nodes [SCOPE]`, `access PATH`, `identities PATH`,
+`recovery PATH`, `deployment plan`, `deployment apply`, and `diagnostics`
+pages, plus `help` and `quit`. Each screen prints the equivalent CLI command.
+It delegates rendering and redaction to the CLI, does not print acknowledgement
+tokens, and does not retain credentials. Deployment apply is only a request:
+type `confirm APPLY DIGEST BACKEND` with the acknowledgement digest and an
+explicit backend executable; without both, the TUI refuses to deploy. For
+scriptable use, the frontend also accepts `--once COMMAND` and `--script FILE`.
 
 ## Access and external targets
 
