@@ -10,9 +10,10 @@ explicit recovery, but they do not activate legacy services or configuration.
 |---|---|---|---|
 | `canoodle` | `config/hosts.json`, `src/hosts/canoodle/canoodle.nix`, generated hardware module | Identity-only | Desktop/NVIDIA and cluster services require a new host-parity review |
 | `eVolver` | `config/hosts.json`, `src/hosts/eVolver/eVolver.nix`, generated hardware module and facter report | Identity-only | Workstation and network services remain unmanaged |
-| `t320-0` | `config/hosts.json`, `src/hosts/t320-0/t320-0.nix`, generated hardware module | Identity-only | ZFS, tape, media, and network bridge require a separate component review |
+| `t320-0` | `config/hosts.json`, `src/hosts/t320-0/t320-0.nix`, generated hardware module | Migrated machine | `config/machines/t320-0/` now supplies EFI boot, labeled root filesystems, LAN bridge, public SSH access, and the Arbor participant runtime; ZFS, tape, and media workloads remain deferred |
 | `dev-machine` | `src/hosts/dev-machine/dev-machine.nix` | Template-only | Generic users, links, boot, and game service are intentionally not ported |
 
-No SSH keys, credentials, runtime endpoints, generated modules, service
-definitions, or user-specific application state are part of these records.
-Reactivation requires an explicit profile and reviewed local hardware module.
+The suspended legacy records remain provenance only. The migrated machine
+definition uses the public shared SSH access ledger; no credentials, private
+keys, runtime endpoints, or legacy application state are copied from Flake
+Devbox. Deferred services still require explicit profile selection and review.
