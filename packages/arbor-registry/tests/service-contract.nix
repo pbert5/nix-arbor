@@ -1,7 +1,20 @@
 { pkgs, module }:
 let
   evaluated = pkgs.lib.evalModules {
+    specialArgs = { inherit pkgs; };
     modules = [
+      {
+        # evalModules does not provide the NixOS assertion option; the service
+        # contract module uses it to validate its safe runtime paths.
+        options.assertions = pkgs.lib.mkOption {
+          type = pkgs.lib.types.listOf pkgs.lib.types.anything;
+          default = [ ];
+        };
+        options.systemd = pkgs.lib.mkOption {
+          type = pkgs.lib.types.attrsOf pkgs.lib.types.anything;
+          default = { };
+        };
+      }
       module
       {
         cluster.registry.runtime = {
