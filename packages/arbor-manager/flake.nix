@@ -32,7 +32,9 @@
         in
         pkgs.writeShellApplication {
           name = "arbor-manager-tui";
-          runtimeInputs = [ pkgs.coreutils ];
+          # The frontend delegates to the CLI.  Include the same output here
+          # so standalone `nix run .#arbor-manager-tui` is self-contained.
+          runtimeInputs = [ pkgs.coreutils (mkCli system) ];
           text = builtins.readFile ./bin/arbor-manager-tui;
         };
       managerLib = import ./lib { inherit (nixpkgs) lib; };
@@ -188,6 +190,27 @@
                 touch "$out"
                 ${pkgs.bash}/bin/bash ${./tests/cli-operator.sh} ${cli}/bin/arbor-manager
             '';
+        tui =
+          let
+            pkgs = import nixpkgs { inherit system; };
+            tui = mkTui system;
+          in
+          pkgs.runCommand "arbor-manager-tui-check" { nativeBuildInputs = [ pkgs.coreutils pkgs.jq ]; } ''
+            work=$(mktemp -d)
+            trap 'rm -rf "$work"' EXIT
+            snapshot=$(jq -cnS '{
+              format: "arbor-manager/deployment-snapshot", version: 1,
+              snapshot: { roots: ["api"], selector: "local", selected: ["api"], excluded: [], nodes: { api: { system: "x86_64-linux" } } },
+              plan: { backend: "direct", phases: [{name: "canary", names: ["api"], commands: ["inspect"]}] }
+            }')
+            digest=$(printf '%s' "$snapshot" | jq -cS '.snapshot' | sha256sum | cut -d' ' -f1)
+            snapshot=$(jq --arg digest "$digest" '. + {snapshotDigest: $digest}' <<<"$snapshot")
+            full=$(printf '%s' "$snapshot" | jq -cS 'del(.digest)' | sha256sum | cut -d' ' -f1)
+            jq --arg digest "$full" '. + {digest: $digest}' <<<"$snapshot" > "$work/snapshot.json"
+            ${tui}/bin/arbor-manager-tui --snapshot "$work/snapshot.json" --once overview > "$work/output"
+            grep -q 'deployment snapshot' "$work/output"
+            touch "$out"
+          '';
         fixtures =
           let
             fixtureInputs = { inherit nixpkgs; };
