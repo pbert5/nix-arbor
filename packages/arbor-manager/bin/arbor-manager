@@ -104,10 +104,11 @@ done
 redact_filter='
   def secret_key:
     ascii_downcase | gsub("[-_]"; "")
-    | test("secret|password|passphrase|token|credential|private|signingkey|apikey|authorization|accesskey|seed");
+    | test("secret|password|passphrase|token|credential|private|signingkey|apikey|authorization|accesskey|seed|age-secret|opaque");
   def unsafe_string:
     test("^(/nix/store/|/run/|/var/run/)")
     or test("-----BEGIN [^-]*PRIVATE KEY-----")
+    or test("AGE-SECRET|AGE-ENCRYPTED-KEY"; "i")
     or test("^[A-Za-z][A-Za-z0-9+.-]*://[^/?#[:space:]]+:[^/?#[:space:]]+@")
     or test("(^|[?&])(api[_-]?key|access[_-]?token|auth[_-]?token|credential|password|passphrase|secret|token)=[^&#[:space:]]+"; "i")
     or test("^Bearer[[:space:]]+[^[:space:]]+$"; "i");
@@ -135,7 +136,12 @@ if [ "$command" = identity ] || [ "$command" = recovery ] || [ "$command" = exte
         [ -f "$input_file/$candidate" ] && { input_file=$input_file/$candidate; break; }
       done
     fi
-    secure_input "$input_file"
+    if [ "$command" = identity ] || [ "$command" = recovery ]; then
+      secure_input "$input_file"
+    else
+      [ -f "$input_file" ] || die "'$input_file' is not a regular file"
+      [ ! -L "$input_file" ] || die "external target input must not be a symlink"
+    fi
   }
   resolve_input
   payload=$(jq -e -cS . "$input_file") || die "invalid JSON in '$input_file'"
@@ -146,11 +152,11 @@ if [ "$command" = identity ] || [ "$command" = recovery ] || [ "$command" = exte
   if [ "$subcommand" = import ] && [ -n "$output_file" ]; then
     die "$command import never writes raw material; omit --output and use the runtime adapter response"
   fi
-  if [ "$subcommand" = manage ] || [ "$subcommand" = rotate ] || [ "$subcommand" = import ] || { [ "$command" = recovery ] && [ "$subcommand" != import ] && [ -n "$runtime_executable" ]; }; then
+  if [ "$subcommand" = manage ] || [ "$subcommand" = rotate ] || [ "$subcommand" = import ] || { [ "$command" = recovery ] && [ "$subcommand" != import ]; }; then
     [ -n "$runtime_executable" ] || die "$command $subcommand requires --runtime-executable"
     [ -x "$runtime_executable" ] || die "runtime adapter '$runtime_executable' is not executable"
     request=$(jq -n -cS --arg operation "$command/$subcommand" --argjson data "$payload" '{protocol:"arbor-manager/runtime-adapter",version:1,operation:$operation,data:$data}')
-    response=$(printf '%s\n' "$request" | env -i PATH="${PATH:-/usr/bin:/bin}" "$runtime_executable") || die "runtime adapter failed (contract mismatch or runtime unavailable)"
+    response=$(printf '%s\n' "$request" | env -i PATH="${PATH:-/usr/bin:/bin}" "$runtime_executable" 2>/dev/null) || die "runtime adapter failed (contract mismatch or runtime unavailable)"
     jq -e -cS "$redact_filter | select(type == \"object\")" <<<"$response" >/dev/null || die "runtime adapter returned a non-object JSON response (contract mismatch)"
     if [ "$format" = json ]; then redact_json <<<"$response"; else jq -r 'to_entries[] | "\(.key)=\(.value|tostring)"' <<<"$(redact_json <<<"$response")"; fi
     exit 0
@@ -381,7 +387,7 @@ run_direct_backend() {
 
 if [ "$command" = deployment-apply ] && [ "$dry_run" = true ]; then
   if [ "$format" = json ]; then
-    jq -S '{status: "dry-run", applied: false, snapshotDigest, plan, acknowledgement}' <<<"$snapshot"
+    jq -S '{status: "dry-run", applied: false, snapshotDigest, plan, acknowledgement: {digest: (.acknowledgement.digest // null), token: "<redacted>"}}' <<<"$snapshot"
   else
     jq -r '"deployment dry-run", "snapshot=" + .snapshotDigest, "backend=" + (.plan.backend // "unknown"), "selected=" + (.snapshot.selected | join(", "))' <<<"$snapshot"
   fi
@@ -397,7 +403,7 @@ if [ "$command" = deployment-apply ]; then
   actual_plan_digest=$(jq -cS '{snapshotDigest, phases: .plan.phases, risks: (.plan.risks // []), backend: .plan.backend}' <<<"$snapshot" | sha256sum | cut -d' ' -f1)
   [ "$actual_plan_digest" = "$expected_ack" ] || refuse "immutable acknowledgement digest is inconsistent with the plan and snapshot"
   if [ "$acknowledgement" != "$expected_ack" ] && [ "$acknowledgement" != "$expected_token" ]; then
-    refuse "acknowledgement does not match the immutable plan and snapshot (expected digest $expected_ack)"
+    refuse "acknowledgement does not match the immutable plan and snapshot"
   fi
   if [ "$format" = json ]; then
     if ! run_direct_backend; then exit 4; fi
