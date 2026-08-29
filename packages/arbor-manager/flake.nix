@@ -171,6 +171,7 @@
                 if ${cli}/bin/arbor-manager deployment apply --snapshot "$work/batch.json" --acknowledgement "$batch_ack" --backend-executable ${mockBackend} --resume "$work/receipt.json" > "$work/resumed.json"; then :; else exit 1; fi
                 jq -e 'all(.results[]; .resumed == true)' "$work/resumed.json"
                 touch "$out"
+                ${pkgs.bash}/bin/bash ${./tests/cli-operator.sh} ${cli}/bin/arbor-manager
             '';
         fixtures =
           let

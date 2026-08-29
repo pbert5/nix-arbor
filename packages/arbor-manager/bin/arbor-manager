@@ -16,6 +16,10 @@ Usage:
     [--backend-executable FILE] [--backend-timeout SECONDS]
     [--receipt FILE] [--resume FILE]
     [--dry-run] [--format json|text]
+  arbor-manager identity inspect|import|rotate [--path FILE|--source DIR] [--output FILE]
+  arbor-manager recovery inspect|export|import --path FILE [--output FILE]
+  arbor-manager external-target inspect|manage --path FILE [--name NAME]
+  arbor-manager doctor [--status FILE] [--format json|text]
 
 All commands are offline and read an immutable deployment snapshot.
 EOF
@@ -36,6 +40,9 @@ elif [ "$command" = machine ]; then
 elif [ "$command" = deployment ]; then
   subcommand=${1:-}
   shift || true
+elif [ "$command" = identity ] || [ "$command" = recovery ] || [ "$command" = external-target ]; then
+  subcommand=${1:-}
+  shift || true
 fi
 
 snapshot_file=
@@ -48,6 +55,11 @@ backend_executable=
 backend_timeout=300
 receipt_file=
 resume_file=
+input_file=
+output_file=
+status_file=/run/arbor/doctor/status.json
+runtime_executable=
+target_name=
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -61,10 +73,101 @@ while [ "$#" -gt 0 ]; do
     --receipt) [ "$#" -ge 2 ] || die "--receipt requires a file"; receipt_file=$2; shift 2 ;;
     --resume) [ "$#" -ge 2 ] || die "--resume requires a receipt file"; resume_file=$2; shift 2 ;;
     --dry-run) dry_run=true; shift ;;
+    --path|--source|--input) [ "$#" -ge 2 ] || die "$1 requires a file or directory"; input_file=$2; shift 2 ;;
+    --output) [ "$#" -ge 2 ] || die "--output requires a file"; output_file=$2; shift 2 ;;
+    --status) [ "$#" -ge 2 ] || die "--status requires a file"; status_file=$2; shift 2 ;;
+    --runtime-executable|--adapter) [ "$#" -ge 2 ] || die "$1 requires a file"; runtime_executable=$2; shift 2 ;;
+    --target) [ "$#" -ge 2 ] || die "--target requires a name"; target_name=$2; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) die "unknown option '$1'" ;;
   esac
 done
+
+# Operator/runtime commands deliberately do not require a deployment snapshot.
+# They operate on data files or an explicitly supplied adapter.  Adapters get
+# JSON on stdin and must return JSON; this keeps the registry dependency at a
+# stable wire boundary while its runtime API evolves independently.
+# Keep this filter available to both snapshot inspection and operator commands.
+redact_filter='
+  def secret_key:
+    ascii_downcase | gsub("[-_]"; "")
+    | test("secret|password|passphrase|token|credential|private|signingkey|apikey|authorization|accesskey|seed");
+  def unsafe_string:
+    test("^(/nix/store/|/run/|/var/run/)")
+    or test("-----BEGIN [^-]*PRIVATE KEY-----")
+    or test("^[A-Za-z][A-Za-z0-9+.-]*://[^/?#[:space:]]+:[^/?#[:space:]]+@")
+    or test("(^|[?&])(api[_-]?key|access[_-]?token|auth[_-]?token|credential|password|passphrase|secret|token)=[^&#[:space:]]+"; "i")
+    or test("^Bearer[[:space:]]+[^[:space:]]+$"; "i");
+  def redact:
+    if type == "object" then with_entries(if (.key | secret_key) then .value = "<redacted>" else .value |= redact end)
+    elif type == "array" then map(redact)
+    elif type == "string" and unsafe_string then "<redacted>" else . end;
+  redact
+'
+if [ "$command" = identity ] || [ "$command" = recovery ] || [ "$command" = external-target ]; then
+  [ -n "$subcommand" ] || die "$command requires an action"
+  [ "$format" = json ] || [ "$format" = text ] || die "unknown format '$format'"
+  [ -n "$input_file" ] || die "$command $subcommand requires --path (or --source)"
+  redact_json() { jq -cS "$redact_filter"; }
+  secure_input() {
+    [ -r "$1" ] || die "cannot read '$1'"
+    [ -f "$1" ] || die "'$1' is not a regular file"
+    # Private recovery material must not be group/world accessible.
+    mode=$(stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1")
+    case "$mode" in 600|400|640|440) ;; *) die "private input '$1' must have mode 0600 or 0400" ;; esac
+  }
+  resolve_input() {
+    if [ -d "$input_file" ]; then
+      for candidate in identity.json node-identity.json private/identity.json recovery.json targets.json; do
+        [ -f "$input_file/$candidate" ] && { input_file=$input_file/$candidate; break; }
+      done
+    fi
+    secure_input "$input_file"
+  }
+  resolve_input
+  payload=$(jq -e -cS . "$input_file") || die "invalid JSON in '$input_file'"
+  [ -n "$target_name" ] || target_name=$name
+  if [ "$command" = identity ] && [ "$subcommand" = rotate ]; then
+    [ -n "$runtime_executable" ] || die "identity rotate requires --runtime-executable; registry runtime contract unavailable"
+  fi
+  if [ "$subcommand" = manage ] || [ "$subcommand" = rotate ] || { [ "$command" = recovery ] && [ "$subcommand" != import ] && [ -n "$runtime_executable" ]; }; then
+    [ -n "$runtime_executable" ] || die "$command $subcommand requires --runtime-executable"
+    [ -x "$runtime_executable" ] || die "runtime adapter '$runtime_executable' is not executable"
+    request=$(jq -n -cS --arg operation "$command/$subcommand" --argjson data "$payload" '{protocol:"arbor-manager/runtime-adapter",version:1,operation:$operation,data:$data}')
+    response=$(printf '%s\n' "$request" | env -i PATH="${PATH:-/usr/bin:/bin}" "$runtime_executable") || die "runtime adapter failed (contract mismatch or runtime unavailable)"
+    jq -e -cS "$redact_filter | select(type == \"object\")" <<<"$response" >/dev/null || die "runtime adapter returned a non-object JSON response (contract mismatch)"
+    if [ "$format" = json ]; then redact_json <<<"$response"; else jq -r 'to_entries[] | "\(.key)=\(.value|tostring)"' <<<"$(redact_json <<<"$response")"; fi
+    exit 0
+  fi
+  if [ "$command" = external-target ] && [ "$subcommand" = inspect ]; then
+    [ -n "$target_name" ] && payload=$(jq -e -cS --arg name "$target_name" '.[$name] // .targets[$name] // .target[$name] // .target // error("unknown target")' <<<"$payload") || true
+  fi
+  if [ "$command" = identity ] && [ "$subcommand" = import ]; then
+    [ -n "$output_file" ] || die "identity import requires --output"
+    install -m 0600 "$input_file" "$output_file"
+    result=$(jq -n -cS --arg path "$output_file" '{format:"arbor-manager/identity-import",version:1,status:"imported",path:$path}')
+  elif [ "$command" = recovery ] && [ "$subcommand" = import ]; then
+    [ -n "$output_file" ] || die "recovery import requires --output"
+    install -m 0600 "$input_file" "$output_file"
+    result=$(jq -n -cS --arg path "$output_file" '{format:"arbor-manager/recovery-import",version:1,status:"imported",path:$path}')
+  else
+    result=$(jq -n -cS --arg operation "$command/$subcommand" --argjson data "$payload" '{format:"arbor-manager/operator",version:1,operation:$operation,data:$data}' | redact_json)
+  fi
+  if [ "$format" = json ]; then printf '%s\n' "$result"; else jq -r '"\(.operation // .status)", (.data // {} | to_entries[] | "  \(.key)=\(.value|tostring)")' <<<"$result"; fi
+  exit 0
+fi
+
+if [ "$command" = doctor ]; then
+  if [ -r "$status_file" ]; then
+    doctor=$(jq -e -cS "$redact_filter" "$status_file") || die "invalid doctor status JSON '$status_file'"
+  else
+    doctor=$(jq -n -cS --arg path "$status_file" '{version:1,status:"unknown",healthy:false,reason:"runtime status file unavailable",statusPath:$path}')
+  fi
+  healthy=$(jq -r 'if (.healthy? == true or (.status? == "healthy")) then "true" else "false" end' <<<"$doctor")
+  if [ "$format" = json ]; then printf '%s\n' "$doctor"; else jq -r '"doctor status=" + (.status // "unknown"), (if .reason then "reason=" + .reason else empty end)' <<<"$doctor"; fi
+  [ "$healthy" = true ] || exit 1
+  exit 0
+fi
 
 [ -n "$snapshot_file" ] || die "--snapshot is required"
 [ -r "$snapshot_file" ] || die "cannot read snapshot '$snapshot_file'"
