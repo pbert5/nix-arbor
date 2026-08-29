@@ -10,8 +10,8 @@ of—the active definitions under `config/machines/`.
 
 | Host | Evidence inspected | Disposition | Deferred scope |
 |---|---|---|---|
-| `canoodle` | `config/hosts.json`, `src/hosts/canoodle/canoodle.nix`, generated hardware module | Migrated machine | `config/machines/canoodle/` supplies known EFI/ext4 hardware, hardened public SSH access, and the Arbor participant runtime; desktop/NVIDIA workload selection remains deferred |
-| `eVolver` | `config/hosts.json`, `src/hosts/eVolver/eVolver.nix`, generated hardware module and facter report | Migrated machine | `config/machines/eVolver/` supplies known EFI/ext4 hardware, hardened public SSH access, and the Arbor participant runtime; workstation and network workload selection remain deferred |
+| `canoodle` | `config/hosts.json`, `src/hosts/canoodle/canoodle.nix`, generated hardware module | Migrated machine | `config/machines/canoodle/` supplies known EFI/ext4 hardware, hardened public SSH access, the shared Arbor desktop baseline, and the participant runtime; legacy desktop/NVIDIA workload parity remains deferred |
+| `eVolver` | `config/hosts.json`, `src/hosts/eVolver/eVolver.nix`, generated hardware module and facter report | Migrated machine | `config/machines/eVolver/` supplies known EFI/ext4 hardware, hardened public SSH access, the shared Arbor desktop baseline, and the participant runtime; legacy workstation/network workload parity remains deferred |
 | `t320-0` | `config/hosts.json`, `src/hosts/t320-0/t320-0.nix`, generated hardware module | Migrated machine | `config/machines/t320-0/` now supplies EFI boot, labeled root filesystems, LAN bridge, public SSH access, and the Arbor participant runtime; ZFS, tape, and media workloads remain deferred |
 | `dev-machine` | `src/hosts/dev-machine/dev-machine.nix` | Template-only | Generic users, links, boot, and game service are intentionally not ported |
 

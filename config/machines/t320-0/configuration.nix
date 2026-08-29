@@ -30,7 +30,9 @@
           autoconnect = true;
           autoconnect-priority = 200;
         };
-        bridge.stp = false;
+        # Keep the initial dual-uplink definition safe until the physical
+        # topology or an explicit LAG contract is reviewed.
+        bridge.stp = true;
         ipv4.method = "auto";
         ipv6.method = "auto";
       };
