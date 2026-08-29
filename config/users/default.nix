@@ -62,7 +62,7 @@ in
     ];
     linger = true;
     # Public fallback keys only; private keys remain on operator devices.
-    openssh.authorizedKeys.keys = lib.concatMap (set: access.${set}Keys) config.arbor.access.authorizedKeySets;
+    openssh.authorizedKeys.keys = lib.concatMap (set: access."${set}Keys") config.arbor.access.authorizedKeySets;
     /* Historical inline list retained only within this conflict-resolution context;
        the structured access module above is authoritative.
     openssh.authorizedKeys.keys = [
