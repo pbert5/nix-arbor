@@ -1,0 +1,139 @@
+#!/usr/bin/env bash
+# A deliberately small, deterministic terminal frontend for arbor-manager.
+# It delegates every read/write operation to the CLI contract; it never parses
+# or stores credentials and never implements deployment logic itself.
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage: arbor-manager-tui --snapshot FILE [--cli FILE] [--script FILE]
+       arbor-manager-tui --snapshot FILE --once COMMAND [ARG ...]
+
+Commands: overview, nodes [SCOPE], access [PATH], identities [PATH],
+          recovery [PATH], deployment [plan|apply], diagnostics, help, quit
+Deployment apply is destructive and requires: confirm APPLY <acknowledgement> [BACKEND].
+EOF
+}
+
+die() { echo "arbor-manager tui: $*" >&2; exit 2; }
+snapshot=
+cli=${ARBOR_MANAGER_CLI:-arbor-manager}
+script=
+once=
+while (($#)); do
+  case "$1" in
+    --snapshot) (($# >= 2)) || die "--snapshot requires a file"; snapshot=$2; shift 2 ;;
+    --cli) (($# >= 2)) || die "--cli requires a file"; cli=$2; shift 2 ;;
+    --script) (($# >= 2)) || die "--script requires a file"; script=$2; shift 2 ;;
+    --once) (($# >= 2)) || die "--once requires a command"; once=$2; shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    *) die "unknown option '$1'" ;;
+  esac
+done
+[ -n "$snapshot" ] || die "--snapshot is required"
+[ -r "$snapshot" ] || die "cannot read snapshot '$snapshot'"
+
+run_cli() {
+  # Keep CLI output authoritative, including its redaction and refusal rules.
+  "$cli" "$@" --snapshot "$snapshot"
+}
+
+show_help() {
+  cat <<'EOF'
+Arbor Manager (offline TUI)
+  overview             deployment snapshot and selected/excluded nodes
+  nodes [SCOPE]        list nodes (default: selected)
+  access PATH          inspect external access targets (redacted)
+  identities PATH      inspect identity data (redacted)
+  recovery PATH        inspect recovery data (redacted)
+  deployment plan      show immutable deployment plan
+  deployment apply     request a confirmed deployment (digest required)
+  diagnostics          show manager/runtime health
+  quit                 leave the TUI
+
+Every screen includes a copyable CLI equivalent. Values are rendered by the
+CLI's redaction boundary; this frontend does not print acknowledgement tokens.
+EOF
+}
+
+screen() {
+  case "$1" in
+    overview)
+      echo '== Overview =='; run_cli deployment-plan --format text
+      echo 'CLI: arbor-manager deployment plan --snapshot ...' ;;
+    nodes)
+      scope=${2:-selected}; echo "== Nodes ($scope) =="
+      run_cli nodes list --scope "$scope" --format table
+      echo "CLI: arbor-manager nodes list --snapshot ... --scope $scope --format table" ;;
+    access|identities|recovery)
+      path=${2:-}; [ -n "$path" ] || die "$1 requires PATH"
+      case "$1" in
+        access) run_cli external-target inspect --path "$path" --format text ;;
+        identities) run_cli identity inspect --path "$path" --format text ;;
+        recovery) run_cli recovery inspect --path "$path" --format text ;;
+      esac
+      if [ "$1" = access ]; then
+        echo 'CLI: arbor-manager external-target inspect --path ...'
+      else
+        echo "CLI: arbor-manager $1 inspect --path ..."
+      fi ;;
+    deployment)
+      action=${2:-plan}
+      case "$action" in
+        plan) echo '== Deployment plan =='; run_cli deployment plan --format text
+          echo 'CLI: arbor-manager deployment plan --snapshot ...' ;;
+        apply)
+          echo 'Deployment apply changes remote state and requires explicit confirmation.'
+          echo 'CLI: arbor-manager deployment apply --snapshot ... --acknowledgement DIGEST --backend-executable ...'
+          echo 'Use: confirm APPLY DIGEST' ;;
+        *) die "unknown deployment action '$action'" ;;
+      esac ;;
+    diagnostics)
+      echo '== Diagnostics =='; "$cli" doctor --format text
+      echo 'CLI: arbor-manager doctor --format text' ;;
+    help) show_help ;;
+    quit|exit) return 10 ;;
+    *) die "unknown command '$1' (try help)" ;;
+  esac
+}
+
+confirm_apply() {
+  [ "${1:-}" = APPLY ] || die "confirmation must be: confirm APPLY DIGEST [BACKEND]"
+  [ -n "${2:-}" ] || die "confirmation requires acknowledgement digest"
+  # The digest is intentionally passed only to the CLI; it is never sourced
+  # from or printed by this frontend.
+  if [ -n "${3:-}" ]; then
+    run_cli deployment apply --acknowledgement "$2" --backend-executable "$3" --format text
+  else
+    die "confirmation requires a backend executable for a real deployment"
+  fi
+}
+
+process() {
+  local line=$1 cmd
+  local -a argv=()
+  read -r -a argv <<<"$line"
+  cmd=${argv[0]:-}
+  case "$cmd" in
+    confirm) confirm_apply "${argv[@]:1}" ;;
+    '') ;;
+    *) screen "${argv[@]}" ;;
+  esac
+}
+
+if [ -n "$once" ]; then process "$once"; exit 0; fi
+show_help
+if [ -n "$script" ]; then
+  while IFS= read -r line || [ -n "$line" ]; do process "$line"; done <"$script"
+  exit 0
+fi
+while true; do
+  printf 'arbor> ' >&2
+  IFS= read -r line || break
+  set +e
+  process "$line"
+  status=$?
+  set -e
+  [ "$status" -eq 10 ] && break
+  [ "$status" -eq 0 ] || exit "$status"
+done

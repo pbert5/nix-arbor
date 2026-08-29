@@ -121,6 +121,21 @@ $ nix run .#arbor-manager -- deployment-plan --snapshot deployment.json --format
 $ nix run .#arbor-manager -- deployment plan --snapshot deployment.json --format text
 ```
 
+An offline terminal frontend is available as `arbor-manager-tui`. It delegates
+screens to the CLI (so snapshot verification and redaction remain centralized)
+and supports overview, node, access, identity, recovery, deployment, and
+diagnostic screens:
+
+```console
+$ nix run .#arbor-manager-tui -- --snapshot deployment.json
+arbor> overview
+arbor> nodes accessible
+arbor> deployment plan
+```
+
+Deployment apply is gated by an explicit `confirm APPLY DIGEST BACKEND` line;
+the frontend never prints acknowledgement tokens or implements a backend.
+
 `nodes list` supports `all`, `local`, `selected`, `excluded`, `roots`,
 `children`, `descendants`, `parents`, `ancestors`, `peers`, and `accessible`
 scopes. Formats are `table`, `names`, `json`, `ssh`, and `colmena`; JSON is

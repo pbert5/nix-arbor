@@ -25,6 +25,16 @@
           ];
           text = builtins.readFile ./bin/arbor-manager;
         };
+      mkTui =
+        system:
+        let
+          pkgs = import nixpkgs { inherit system; };
+        in
+        pkgs.writeShellApplication {
+          name = "arbor-manager-tui";
+          runtimeInputs = [ pkgs.coreutils ];
+          text = builtins.readFile ./bin/arbor-manager-tui;
+        };
       managerLib = import ./lib { inherit (nixpkgs) lib; };
       snapshot = import ./lib/snapshot.nix { inherit (nixpkgs) lib; };
       lib = managerLib // {
@@ -35,12 +45,17 @@
       inherit lib;
       packages = forAllSystems (system: {
         arbor-manager = mkCli system;
+        arbor-manager-tui = mkTui system;
         default = mkCli system;
       });
       apps = forAllSystems (system: {
         arbor-manager = {
           type = "app";
           program = "${mkCli system}/bin/arbor-manager";
+        };
+        arbor-manager-tui = {
+          type = "app";
+          program = "${mkTui system}/bin/arbor-manager-tui";
         };
         default = {
           type = "app";
