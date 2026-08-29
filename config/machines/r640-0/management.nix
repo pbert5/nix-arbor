@@ -67,8 +67,8 @@
     useRoutingFeatures = "client";
     extraSetFlags = [ "--accept-dns=false" ];
   };
-  # Yggdrasil/Registry are intentionally not imported into this physical
-  # profile. Their future overlay must remain optional to these paths.
+  # Registry participation is projected by the explicit arborParticipant
+  # profile; this physical profile remains limited to host management.
   systemd.tmpfiles.rules = [
     "z /home/ash 2750 ash home-share - -"
     "z /home/madeline 2750 madeline home-share - -"

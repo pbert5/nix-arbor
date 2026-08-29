@@ -1,4 +1,7 @@
 {
   system = "x86_64-linux";
-  profiles = [ "desktop" ];
+  profiles = [
+    "desktop"
+    "arborParticipant"
+  ];
 }

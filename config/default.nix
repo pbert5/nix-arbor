@@ -2,9 +2,11 @@
 let
   networkPolicy = import ./networks.nix;
   r640Users = import ./users;
-  r640Env = import ./env.nix;
+  environment = import ./env.nix;
   r640Sops = import ./sops.nix;
   vscodeRemote = import ./modules/vscode-remote.nix;
+  registryPolicy = import ../packages/arbor-registry/modules/nixos.nix;
+  registryServiceContract = import ../packages/arbor-registry/modules/service-contract.nix;
   serverTools =
     { pkgs, ... }:
     {
@@ -37,7 +39,7 @@ let
     };
   desktop = [
     networkPolicy
-    r640Env
+    environment
     inputs.home-manager.nixosModules.home-manager
     inputs.tilingDesktop.nixosModules.default
     inputs.ashes-desktop-apps.nixosModules.default
@@ -76,6 +78,7 @@ let
   ];
   server = [
     networkPolicy
+    environment
     inputs.home-manager.nixosModules.home-manager
     {
       nix.settings.experimental-features = [
@@ -97,17 +100,34 @@ let
     inputs.sops-nix.nixosModules.sops
     { virtualisation.docker.enable = true; }
     r640Users
-    r640Env
+    environment
     r640Sops
     vscodeRemote
     serverTools
     (import ./machines/r640-0/storage.nix)
     (import ./machines/r640-0/management.nix)
   ];
+  arborParticipant = [
+    registryPolicy
+    registryServiceContract
+    {
+      # This is a public policy/status boundary only. Runtime credentials,
+      # initialization, and unseal remain explicit operator actions.
+      cluster.registry.enable = true;
+      cluster.registry.runtime.enable = true;
+    }
+  ];
   machines = inputs.arbor-manager.lib.mkMachines {
     inherit inputs;
     machinesPath = ./machines;
-    profiles = { inherit desktop server r640; };
+    profiles = {
+      inherit
+        arborParticipant
+        desktop
+        server
+        r640
+        ;
+    };
   };
 in
 {
