@@ -30,6 +30,10 @@ die() { echo "arbor-manager: $*" >&2; exit 2; }
 command=${1:-}
 shift || true
 action=$command
+if [ "$command" = -h ] || [ "$command" = --help ] || [ -z "$command" ]; then
+  usage
+  exit 0
+fi
 if [ "$command" = nodes ]; then
   subcommand=${1:-}
   shift || true
@@ -130,7 +134,7 @@ if [ "$command" = identity ] || [ "$command" = recovery ] || [ "$command" = exte
   if [ "$command" = identity ] && [ "$subcommand" = rotate ]; then
     [ -n "$runtime_executable" ] || die "identity rotate requires --runtime-executable; registry runtime contract unavailable"
   fi
-  if [ "$subcommand" = manage ] || [ "$subcommand" = rotate ] || { [ "$command" = recovery ] && [ "$subcommand" != import ] && [ -n "$runtime_executable" ]; }; then
+  if [ "$subcommand" = manage ] || [ "$subcommand" = rotate ] || [ "$subcommand" = import ] || { [ "$command" = recovery ] && [ "$subcommand" != import ] && [ -n "$runtime_executable" ]; }; then
     [ -n "$runtime_executable" ] || die "$command $subcommand requires --runtime-executable"
     [ -x "$runtime_executable" ] || die "runtime adapter '$runtime_executable' is not executable"
     request=$(jq -n -cS --arg operation "$command/$subcommand" --argjson data "$payload" '{protocol:"arbor-manager/runtime-adapter",version:1,operation:$operation,data:$data}')
@@ -142,17 +146,7 @@ if [ "$command" = identity ] || [ "$command" = recovery ] || [ "$command" = exte
   if [ "$command" = external-target ] && [ "$subcommand" = inspect ]; then
     [ -n "$target_name" ] && payload=$(jq -e -cS --arg name "$target_name" '.[$name] // .targets[$name] // .target[$name] // .target // error("unknown target")' <<<"$payload") || true
   fi
-  if [ "$command" = identity ] && [ "$subcommand" = import ]; then
-    [ -n "$output_file" ] || die "identity import requires --output"
-    install -m 0600 "$input_file" "$output_file"
-    result=$(jq -n -cS --arg path "$output_file" '{format:"arbor-manager/identity-import",version:1,status:"imported",path:$path}')
-  elif [ "$command" = recovery ] && [ "$subcommand" = import ]; then
-    [ -n "$output_file" ] || die "recovery import requires --output"
-    install -m 0600 "$input_file" "$output_file"
-    result=$(jq -n -cS --arg path "$output_file" '{format:"arbor-manager/recovery-import",version:1,status:"imported",path:$path}')
-  else
-    result=$(jq -n -cS --arg operation "$command/$subcommand" --argjson data "$payload" '{format:"arbor-manager/operator",version:1,operation:$operation,data:$data}' | redact_json)
-  fi
+  result=$(jq -n -cS --arg operation "$command/$subcommand" --argjson data "$payload" '{format:"arbor-manager/operator",version:1,operation:$operation,data:$data}' | redact_json)
   if [ "$format" = json ]; then printf '%s\n' "$result"; else jq -r '"\(.operation // .status)", (.data // {} | to_entries[] | "  \(.key)=\(.value|tostring)")' <<<"$result"; fi
   exit 0
 fi
@@ -167,6 +161,10 @@ if [ "$command" = doctor ]; then
   if [ "$format" = json ]; then printf '%s\n' "$doctor"; else jq -r '"doctor status=" + (.status // "unknown"), (if .reason then "reason=" + .reason else empty end)' <<<"$doctor"; fi
   [ "$healthy" = true ] || exit 1
   exit 0
+fi
+
+if [ "$command" = tui ]; then
+  die "tui is not available; use inspect/list commands"
 fi
 
 [ -n "$snapshot_file" ] || die "--snapshot is required"
