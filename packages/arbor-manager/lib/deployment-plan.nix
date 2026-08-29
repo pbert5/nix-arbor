@@ -86,6 +86,15 @@ let
     else
       "nixos-rebuild switch --flake '.#${name}'";
 
+  commandsForBatch =
+    backend: batch:
+    if backend == "colmena" then
+      # Colmena accepts a space-separated target expression, so preserve the
+      # requested batch as one coordinated apply invocation.
+      [ (commandFor backend (lib.concatStringsSep " " batch)) ]
+    else
+      map (commandFor backend) batch;
+
 in
 rec {
   planFromSnapshot =
@@ -186,7 +195,7 @@ rec {
         ++ (lib.optional (batches != [ ]) {
           name = "batches";
           names = batches;
-          commands = map (batch: map (commandFor recommendation.backend) batch) batches;
+          commands = map (commandsForBatch recommendation.backend) batches;
         });
       snapshot = {
         inherit roots selector selected;
