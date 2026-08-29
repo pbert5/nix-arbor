@@ -34,6 +34,14 @@ if [ "$command" = -h ] || [ "$command" = --help ] || [ -z "$command" ]; then
   usage
   exit 0
 fi
+if [ "$command" = tui ]; then
+  tui_bin=$(command -v arbor-manager-tui 2>/dev/null || true)
+  if [ -z "$tui_bin" ] && [ -x "$(dirname "$0")/arbor-manager-tui" ]; then
+    tui_bin=$(dirname "$0")/arbor-manager-tui
+  fi
+  [ -n "$tui_bin" ] && [ -x "$tui_bin" ] || die "arbor-manager-tui is not installed; install the Arbor Manager TUI package"
+  exec "$tui_bin" "$@"
+fi
 if [ "$command" = nodes ]; then
   subcommand=${1:-}
   shift || true
@@ -163,9 +171,6 @@ if [ "$command" = doctor ]; then
   exit 0
 fi
 
-if [ "$command" = tui ]; then
-  die "tui is not available; use inspect/list commands"
-fi
 
 [ -n "$snapshot_file" ] || die "--snapshot is required"
 [ -r "$snapshot_file" ] || die "cannot read snapshot '$snapshot_file'"

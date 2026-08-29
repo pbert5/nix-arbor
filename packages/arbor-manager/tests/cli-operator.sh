@@ -3,6 +3,9 @@ set -euo pipefail
 cli=$1
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
+printf '#!/bin/sh\nprintf "tui-help\\n"\n' >"$work/arbor-manager-tui"
+chmod 700 "$work/arbor-manager-tui"
+PATH="$work:$PATH" "$cli" tui --help | grep -qx tui-help
 "$cli" --help >/dev/null
 printf '%s\n' '{"identity":"node-a","privateKey":"must-not-print"}' >"$work/identity.json"
 chmod 600 "$work/identity.json"
