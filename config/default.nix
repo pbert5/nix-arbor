@@ -101,6 +101,19 @@ let
       home-manager.useUserPackages = true;
     }
   ];
+  # Operator tooling is deliberately a reusable profile.  Participants do
+  # not receive the Manager merely by joining the Arbor runtime; operator
+  # workstations opt into this profile explicitly.
+  arborOperator = [
+    (
+      { inputs, pkgs, ... }:
+      {
+        environment.systemPackages = [
+          inputs.arbor-manager.packages.${pkgs.system}.arbor-manager
+        ];
+      }
+    )
+  ];
   r640 = [
     (import ./access/module.nix)
     {
@@ -117,7 +130,8 @@ let
     serverTools
     (import ./machines/r640-0/storage.nix)
     (import ./machines/r640-0/management.nix)
-  ];
+  ]
+  ++ arborOperator;
   arborParticipant = [
     inputs.arbor-registry.nixosModules.default
     registryServiceContract
