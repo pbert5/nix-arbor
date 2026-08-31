@@ -80,17 +80,17 @@
         "systemd-vaultd": "systemd-vaultd"
       },
       "locked": {
-        "lastModified": 1788198030,
-        "narHash": "sha256-UV0rqfLLFJoqZwl1sbcEP135raYkicFY/CLGQPQYuZA=",
+        "lastModified": 1788199036,
+        "narHash": "sha256-7Bg6t4JfW8FkfBBYWtKttzKCdllb5EnR0okBMllNRpE=",
         "owner": "pbert5",
         "repo": "arbor-registry",
-        "rev": "16e14397b4df270c12f8b1d3a740501666b2b1ab",
+        "rev": "e3019398cf3f3c7cb93aad871a627813435ce3e8",
         "type": "github"
       },
       "original": {
         "owner": "pbert5",
         "repo": "arbor-registry",
-        "rev": "16e14397b4df270c12f8b1d3a740501666b2b1ab",
+        "rev": "e3019398cf3f3c7cb93aad871a627813435ce3e8",
         "type": "github"
       }
     },
