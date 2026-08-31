@@ -4,6 +4,7 @@
   profiles = [
     "desktop"
     "arborParticipant"
+    "privateYggParticipant"
   ];
   hardware.snapshot = {
     format = "arbor/hardware";

@@ -22,18 +22,29 @@ let
     set -eu
     out=${lib.escapeShellArg cfg.statusPath}
     tmp="$out.tmp.$$"
+    rm -f "$out"
     install -d -m 0755 "$(dirname "$out")"
     registry=$(${serviceState cfg.registryService})
     transport=$(${serviceState cfg.transportService})
     vaultd=$(${serviceState cfg.vaultdService})
+    generated_at=$(${pkgs.coreutils}/bin/date +%s)
     registry_ready=0
     if [ -n ${lib.escapeShellArg cfg.registryReadyCommand} ]; then
       ${pkgs.coreutils}/bin/timeout 2s ${lib.escapeShellArg cfg.registryReadyCommand} >/dev/null 2>&1 && registry_ready=1 || true
     fi
     provider=0
-    for ready in /run/arbor-vaultd/ready/*; do
-      [ -e "$ready" ] && provider=1
-    done
+    provider_state='{"enabled":0,"running":0}'
+    if [ -n ${lib.escapeShellArg cfg.providerService} ]; then
+      for ready in /run/arbor-vaultd/ready/*; do
+        if [ -f "$ready" ] && [ "$(stat -c '%a' "$ready" 2>/dev/null || printf 0)" = 644 ] \
+          && ${pkgs.gnugrep}/bin/grep -Eq '^[0-9a-f]{64}$' "$ready"; then
+          provider=1
+          break
+        fi
+      done
+      provider_state=$(${serviceState cfg.providerService})
+      [ "$(printf '%s' "$provider_state" | ${pkgs.jq}/bin/jq -r .running)" = 1 ] || provider=0
+    fi
     registry_installed=false
     transport_installed=false
     [ -x ${lib.escapeShellArg cfg.registryCommand} ] && registry_installed=true || true
@@ -53,8 +64,11 @@ let
       --argjson registry "$registry" --argjson transport "$transport" --argjson vaultd "$vaultd" \
       --argjson initialized "$initialized" --argjson sealed "$sealed" --argjson provider "$provider" \
       --argjson registryInstalled "$registry_installed" --argjson transportInstalled "$transport_installed" \
-      --argjson openbaoInstalled "$openbao_installed" --argjson registryReady "$registry_ready" \
-      '{version: 1, status: (if ($registryReady == 1 and $provider == 1 and $initialized == true and $sealed == false) then "healthy" else "degraded" end), healthy: ($registryReady == 1 and $provider == 1 and $initialized == true and $sealed == false), ready: ($registryReady == 1 and $provider == 1 and $initialized == true and $sealed == false), reason: (if $registryReady != 1 then "registry unavailable" elif $initialized != true then "OpenBao uninitialized" elif $sealed != false then "OpenBao sealed" elif $provider != 1 then "provider unavailable" else null end), registry: ($registry + {installed: $registryInstalled, initialized: null, sealed: null, authenticated: null, ready: ($registryReady == 1)}), transport: ($transport + {installed: $transportInstalled, initialized: null, sealed: null, authenticated: null}), vaultd: ($vaultd + {installed: true, initialized: null, sealed: null, authenticated: null}), openbao: {installed: $openbaoInstalled, initialized: $initialized, sealed: $sealed, authenticated: null}, provider: {installed: true, enabled: null, running: ($provider == 1), initialized: null, sealed: null, authenticated: ($provider == 1)}}' >"$tmp"
+      --argjson openbaoInstalled "$openbao_installed" --argjson registryReady "$registry_ready" --argjson providerState "$provider_state" \
+      --argjson generatedAt "$generated_at" \
+      '{version: 1, status: (if (($registryInstalled and ($registry.enabled == 1) and ($registry.running == 1)) and ($transportInstalled and ($transport.enabled == 1) and ($transport.running == 1)) and ($vaultd.enabled == 1 and $vaultd.running == 1) and ($registryReady == 1) and ($provider == 1) and ($initialized == true) and ($sealed == false)) then "healthy" else "degraded" end), healthy: (($registryInstalled and ($registry.enabled == 1) and ($registry.running == 1)) and ($transportInstalled and ($transport.enabled == 1) and ($transport.running == 1)) and ($vaultd.enabled == 1 and $vaultd.running == 1) and ($registryReady == 1) and ($provider == 1) and ($initialized == true) and ($sealed == false)), ready: (($registryInstalled and ($registry.enabled == 1) and ($registry.running == 1)) and ($transportInstalled and ($transport.enabled == 1) and ($transport.running == 1)) and ($vaultd.enabled == 1 and $vaultd.running == 1) and ($registryReady == 1) and ($provider == 1) and ($initialized == true) and ($sealed == false)), reason: (if (($registryInstalled == false) or ($registry.enabled != 1) or ($registry.running != 1)) then "registry unavailable" elif (($transportInstalled == false) or ($transport.enabled != 1) or ($transport.running != 1)) then "transport unavailable" elif (($vaultd.enabled != 1) or ($vaultd.running != 1)) then "vaultd unavailable" elif ($registryReady != 1) then "registry unavailable" elif ($initialized != true) then "OpenBao uninitialized" elif ($sealed != false) then "OpenBao sealed" elif ($provider != 1) then "provider unavailable" else null end), registry: ($registry + {installed: $registryInstalled, initialized: null, sealed: null, authenticated: null, ready: ($registryReady == 1)}), transport: ($transport + {installed: $transportInstalled, initialized: null, sealed: null, authenticated: null}), vaultd: ($vaultd + {installed: true, initialized: null, sealed: null, authenticated: null}), openbao: {installed: $openbaoInstalled, initialized: $initialized, sealed: $sealed, authenticated: null}, provider: ($providerState + {installed: true, initialized: null, sealed: null, authenticated: ($provider == 1)})}' >"$tmp"
+    ${pkgs.jq}/bin/jq --argjson generatedAt "$generated_at" '. + {generatedAt: $generatedAt}' "$tmp" > "$tmp.generated"
+    mv -f "$tmp.generated" "$tmp"
     chmod 0644 "$tmp"
     mv -f "$tmp" "$out"
   '';
@@ -76,6 +90,11 @@ in
       type = types.str;
       default = "systemd-vaultd.service";
       description = "systemd-vaultd unit observed by the doctor contract.";
+    };
+    providerService = mkOption {
+      type = types.str;
+      default = "";
+      description = "Optional provider unit whose active state is required for provider readiness.";
     };
     openbaoCommand = mkOption {
       type = types.str;
@@ -123,6 +142,13 @@ in
         assertion = cfg.registryReadyCommand == "" || lib.hasPrefix "/" cfg.registryReadyCommand;
         message = "cluster.registry.runtime.registryReadyCommand must be an absolute runtime path";
       }
+      {
+        assertion =
+          lib.hasPrefix "/run/" cfg.statusPath
+          && !lib.hasInfix "/../" cfg.statusPath
+          && !lib.hasSuffix "/.." cfg.statusPath;
+        message = "cluster.registry.runtime.statusPath must be a normalized path under /run";
+      }
     ];
     systemd.targets.arbor-participant = {
       description = "Arbor participant runtime services";
@@ -141,8 +167,6 @@ in
       serviceConfig = {
         Type = "oneshot";
         ExecStart = statusScript;
-        RuntimeDirectory = "arbor";
-        RuntimeDirectoryPreserve = true;
       };
     };
     systemd.timers.arbor-runtime-status = {

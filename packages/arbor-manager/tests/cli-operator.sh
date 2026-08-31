@@ -23,7 +23,7 @@ if "$cli" identity import --path "$work/identity.json" --output "$work/raw-outpu
 test ! -e "$work/raw-output.json"
 if "$cli" recovery export --path "$work/identity.json" >/dev/null 2>"$work/recovery-error"; then exit 1; fi
 grep -q 'requires --runtime-executable' "$work/recovery-error"
-printf '%s\n' '{"status":"healthy","healthy":true}' >"$work/status.json"
+printf '%s\n' '{"status":"healthy","healthy":true,"generatedAt":'"$(date +%s)"'}' >"$work/status.json"
 "$cli" doctor --status "$work/status.json" | jq -e '.healthy == true' >/dev/null
 printf '%s\n' '{"target":{"host":"example.invalid","token":"hidden"}}' >"$work/targets.json"
 chmod 600 "$work/targets.json"

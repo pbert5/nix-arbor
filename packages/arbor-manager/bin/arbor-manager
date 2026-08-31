@@ -184,6 +184,11 @@ if [ "$command" = doctor ]; then
   else
     doctor=$(jq -n -cS --arg path "$status_file" '{version:1,status:"unknown",healthy:false,reason:"runtime status file unavailable",statusPath:$path}')
   fi
+  now=$(date +%s)
+  fresh=$(jq -r --argjson now "$now" '(.generatedAt? | type == "number" and floor == . and . >= ($now - 90))' <<<"$doctor")
+  if [ "$fresh" != true ]; then
+    doctor=$(jq -cS '.status = "degraded" | .healthy = false | .ready = false | .reason = "runtime status is missing or stale"' <<<"$doctor")
+  fi
   healthy=$(jq -r 'if (.healthy? == true or (.status? == "healthy")) then "true" else "false" end' <<<"$doctor")
   if [ "$format" = json ]; then printf '%s\n' "$doctor"; else jq -r '"doctor status=" + (.status // "unknown"), (if .reason then "reason=" + .reason else empty end)' <<<"$doctor"; fi
   [ "$healthy" = true ] || exit 1

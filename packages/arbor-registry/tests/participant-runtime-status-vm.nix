@@ -32,12 +32,12 @@ let
     exec ${transportPackage}/bin/arbor-registryd
   '';
   registryReady = pkgs.writeShellScript "arbor-test-registry-ready" ''
-    token=$(cat /run/arbor-test/registry-token)
-    ${pkgs.python3}/bin/python - "$token" <<'PY'
-    import json, socket, sys
+    ${pkgs.python3}/bin/python - <<'PY'
+    import json, socket
+    with open('/run/arbor-test/registry-token') as f: token = f.read().strip()
     s = socket.socket(socket.AF_UNIX); s.settimeout(1)
     s.connect('/run/arbor-test/registry.sock')
-    s.sendall((json.dumps({'operation': 'health', 'token': sys.argv[1]}) + '\n').encode())
+    s.sendall((json.dumps({'operation': 'health', 'token': token}) + '\n').encode())
     s.shutdown(socket.SHUT_WR)
     value = json.loads(s.recv(4096)); s.close()
     raise SystemExit(0 if value.get('ok') is True and value.get('status') == 'ok' else 1)
@@ -62,6 +62,9 @@ let
     export ARBOR_REGISTRY_SOCKET_TOKEN="$(cat /run/arbor-test/registry-token)"
     exec ${transportPackage}/bin/arbor-registryd
   '';
+  keepalive = pkgs.writeShellScript "arbor-test-keepalive" ''
+    exec ${pkgs.coreutils}/bin/sleep infinity
+  '';
 in
 pkgs.testers.nixosTest {
   name = "arbor-participant-runtime-status";
@@ -77,6 +80,7 @@ pkgs.testers.nixosTest {
       environment.systemPackages = [
         pkgs.openbao
         pkgs.curl
+        pkgs.jq
         pkgs.python3
         manager
       ];
@@ -117,7 +121,7 @@ pkgs.testers.nixosTest {
         wantedBy = [ "multi-user.target" ];
         serviceConfig = {
           Type = "simple";
-          ExecStart = sleeper;
+          ExecStart = keepalive;
         };
       };
 
@@ -126,6 +130,7 @@ pkgs.testers.nixosTest {
         registryService = "arbor-registry.service";
         transportService = "arbor-registry-transport.service";
         vaultdService = "arbor-test-vaultd.service";
+        providerService = "arbor-vault-runtime-api.service";
         registryCommand = "${registry}";
         transportCommand = "${sleeper}";
         openbaoCommand = "${openbaoStatus}";
@@ -164,12 +169,13 @@ pkgs.testers.nixosTest {
     import json
 
     def refresh():
-        machine.succeed("systemctl start arbor-runtime-status.service")
+        machine.succeed("systemctl reset-failed arbor-runtime-status.service; systemctl start arbor-runtime-status.service")
 
     def status():
         raw = machine.succeed("cat /run/arbor/doctor/status.json")
         value = json.loads(raw)
         assert value["version"] == 1
+        assert isinstance(value["generatedAt"], (int, float)) and not isinstance(value["generatedAt"], bool)
         assert isinstance(value["healthy"], bool)
         assert isinstance(value["ready"], bool)
         assert "arbor-test" not in raw
@@ -178,13 +184,17 @@ pkgs.testers.nixosTest {
 
     def doctor(expected_status, expected_reason=None, succeeds=False):
         command = "arbor-manager doctor --format json"
-        exit_code, raw = machine.execute(command)
-        assert exit_code == (0 if succeeds else 1), (exit_code, raw)
+        if succeeds:
+            raw = machine.succeed(command)
+            exit_code = 0
+        else:
+            exit_code, raw = machine.execute(command, check_return=False)
+        assert (exit_code == 0) is succeeds, (exit_code, raw)
         value = json.loads(raw)
-        assert value["status"] == expected_status
-        assert value["healthy"] is succeeds
+        assert value["status"] == expected_status, (value, raw)
+        assert value["healthy"] is succeeds, (value, raw)
         if expected_reason:
-            assert value["reason"] == expected_reason
+            assert value["reason"] == expected_reason, (value, raw)
 
     start_all()
     machine.wait_for_unit("arbor-participant.target")
@@ -193,7 +203,7 @@ pkgs.testers.nixosTest {
     machine.wait_for_unit("arbor-registry-transport.service")
     machine.wait_for_unit("arbor-test-vaultd.service")
     machine.succeed("systemctl is-enabled arbor-registry.service arbor-registry-transport.service arbor-test-vaultd.service")
-    machine.wait_until_succeeds("curl --fail --silent http://127.0.0.1:8080/health")
+    machine.wait_until_succeeds("${registryReady}")
     refresh()
     value = status()
     assert value["registry"]["installed"] and value["registry"]["enabled"] and value["registry"]["running"], value
@@ -202,50 +212,60 @@ pkgs.testers.nixosTest {
     assert value["provider"]["installed"] and not value["provider"]["authenticated"], value
     doctor("degraded", "OpenBao uninitialized")
 
-    machine.succeed("install -d -m 0700 /run/arbor-test && bao operator init -key-shares=1 -key-threshold=1 -format=json >/run/arbor-test/init.json")
-    machine.succeed("jq -r .root_token /run/arbor-test/init.json >/run/arbor-test/root-token && chmod 600 /run/arbor-test/root-token")
-    machine.succeed("jq -r '.unseal_keys_b64[0]' /run/arbor-test/init.json >/run/arbor-test/unseal-key && chmod 600 /run/arbor-test/unseal-key")
+    machine.succeed("export BAO_ADDR=http://127.0.0.1:8200; install -d -m 0700 /run/arbor-test && umask 077 && bao operator init -key-shares=1 -key-threshold=1 -format=json >/run/arbor-test/init.json")
+    machine.succeed("chmod 600 /run/arbor-test/init.json && jq -r .root_token /run/arbor-test/init.json >/run/arbor-test/root-token && chmod 600 /run/arbor-test/root-token")
+    machine.succeed("jq -r '.unseal_keys_b64[0]' /run/arbor-test/init.json >/run/arbor-test/unseal-key && chmod 600 /run/arbor-test/unseal-key && rm /run/arbor-test/init.json")
     refresh()
     value = status()
-    assert value["openbao"]["initialized"] is True and value["openbao"]["sealed"] is True
-    assert not value["provider"]["authenticated"]
+    assert value["openbao"]["initialized"] is True and value["openbao"]["sealed"] is True, value
+    assert not value["provider"]["authenticated"], value
     doctor("degraded", "OpenBao sealed")
 
-    machine.succeed("bao operator unseal \"$(cat /run/arbor-test/unseal-key)\"")
-    machine.succeed("BAO_TOKEN=$(cat /run/arbor-test/root-token) bao kv put secret/arbor/db url=postgres://synthetic/db")
+    machine.succeed("cat /run/arbor-test/unseal-key | jq -R '{key: .}' | curl --fail --silent --request PUT --data-binary @- http://127.0.0.1:8200/v1/sys/unseal | jq -e '.sealed == false'")
+    machine.succeed("export BAO_ADDR=http://127.0.0.1:8200; BAO_TOKEN=$(cat /run/arbor-test/root-token) bao secrets enable -path=secret kv-v2")
+    machine.succeed("export BAO_ADDR=http://127.0.0.1:8200; BAO_TOKEN=$(cat /run/arbor-test/root-token) bao kv put secret/arbor/db url=postgres://synthetic/db")
     refresh()
     value = status()
-    assert value["openbao"]["initialized"] is True and value["openbao"]["sealed"] is False
-    assert not value["provider"]["authenticated"]
+    assert value["openbao"]["initialized"] is True and value["openbao"]["sealed"] is False, value
+    assert not value["provider"]["authenticated"], value
     doctor("degraded", "provider unavailable")
 
     machine.succeed("systemctl reset-failed arbor-vault-runtime-api-init.service; systemctl restart arbor-vault-runtime-api-init.service")
     machine.succeed("systemctl restart arbor-vault-runtime-api.service")
     machine.wait_for_unit("arbor-vault-runtime-api.service")
+    machine.wait_until_succeeds("test -f /run/arbor-vaultd/ready/api")
     refresh()
     value = status()
-    assert value["provider"]["running"] and value["provider"]["authenticated"]
+    assert value["provider"]["running"] and value["provider"]["authenticated"], value
+    refresh()
+    value = status()
+    assert value["provider"]["running"] and value["provider"]["authenticated"], value
     doctor("healthy", succeeds=True)
 
-    machine.succeed("rm -f /run/arbor-vaultd/ready/api")
+    machine.succeed("systemctl stop arbor-vault-runtime-api.service")
     refresh()
     value = status()
-    assert not value["provider"]["authenticated"]
+    assert not value["provider"]["running"] and not value["provider"]["authenticated"], value
     doctor("degraded", "provider unavailable")
     machine.succeed("systemctl restart arbor-vault-runtime-api.service")
     machine.wait_for_unit("arbor-vault-runtime-api.service")
+    machine.wait_until_succeeds("test -f /run/arbor-vaultd/ready/api")
+    refresh()
+    value = status()
+    assert value["provider"]["running"] and value["provider"]["authenticated"], value
 
     machine.succeed("systemctl stop arbor-registry.service")
     refresh()
     value = status()
-    assert value["registry"]["installed"] and value["registry"]["enabled"] and not value["registry"]["running"]
-    assert not value["registry"]["ready"]
+    assert value["registry"]["installed"] and value["registry"]["enabled"] and not value["registry"]["running"], value
+    assert not value["registry"]["ready"], value
     doctor("degraded", "registry unavailable")
     machine.succeed("systemctl start arbor-registry.service")
     machine.wait_for_unit("arbor-registry.service")
+    machine.wait_until_succeeds("${registryReady}")
     refresh()
     value = status()
-    assert value["registry"]["ready"] and value["ready"]
+    assert value["registry"]["ready"] and value["ready"], value
     doctor("healthy", succeeds=True)
   '';
 }

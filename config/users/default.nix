@@ -32,18 +32,21 @@ in
     }
     {
       assertion =
-        builtins.length config.users.users.ash.openssh.authorizedKeys.keys >= 9
-        &&
-          builtins.length (
+        builtins.length config.users.users.ash.openssh.authorizedKeys.keys
+          >= builtins.length access.operatorKeys
+        && (
+          !lib.elem "deployment" config.arbor.access.authorizedKeySets
+          || builtins.length (
             builtins.filter (
               key:
               lib.hasPrefix "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAbYbxGzSboO3llrd28uOHpybxTLrbDZN/QmY0crRxU0" key
             ) config.users.users.ash.openssh.authorizedKeys.keys
           ) == 1
+        )
         && lib.all (
           key: lib.hasPrefix "ssh-" key || lib.hasPrefix "ecdsa-" key
         ) config.users.users.ash.openssh.authorizedKeys.keys;
-      message = "Ash must retain the recovered public SSH key set without private material.";
+      message = "Ash must retain the public operator/deployment SSH keys without private material.";
     }
   ];
   programs.zsh.enable = true;

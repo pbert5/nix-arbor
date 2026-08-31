@@ -3,5 +3,6 @@
   profiles = [
     "desktop"
     "arborParticipant"
+    "privateYggParticipant"
   ];
 }

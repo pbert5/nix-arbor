@@ -103,7 +103,12 @@ let
   ];
   r640 = [
     (import ./access/module.nix)
-    { arbor.access.authorizedKeySets = [ "operator" "deployment" ]; }
+    {
+      arbor.access.authorizedKeySets = [
+        "operator"
+        "deployment"
+      ];
+    }
     inputs.sops-nix.nixosModules.sops
     { virtualisation.docker.enable = true; }
     r640Users
@@ -123,12 +128,39 @@ let
       cluster.registry.runtime.enable = true;
     }
   ];
+  privateYggParticipant = [
+    inputs.yggdrasil-private.nixosModules.default
+    (
+      {
+        config,
+        inputs,
+        pkgs,
+        ...
+      }:
+      {
+        # This is the special Arbor Network Manager mode.  The private-Ygg
+        # module owns transport, pinning, firewall separation, and the
+        # provider service; accepted node records are supplied separately
+        # when this host is enrolled.
+        _module.args = {
+          hostName = config.networking.hostName;
+          hostInventory.dendrites = [ "network/yggdrasil-private" ];
+          site.networks.privateYggdrasil.networkManager = {
+            enable = true;
+            package = inputs.arbor-network-manager.packages.${pkgs.system}.default;
+            socket = "/run/arbor/ygg-provider.sock";
+          };
+        };
+      }
+    )
+  ];
   machines = inputs.arbor-manager.lib.mkMachines {
     inherit inputs;
     machinesPath = ./machines;
     profiles = {
       inherit
         arborParticipant
+        privateYggParticipant
         desktop
         server
         r640
