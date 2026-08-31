@@ -23,8 +23,8 @@
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.home-manager.follows = "home-manager";
     };
-    arbor-manager.url = "github:pbert5/arbor-manager/fa7cce54ab5e12747326822f92cfdd4e735efbfc";
-    arbor-registry.url = "github:pbert5/arbor-registry/049ad43";
+    arbor-manager.url = "github:pbert5/arbor-manager/e8713ce";
+    arbor-registry.url = "github:pbert5/arbor-registry/09818ae";
     arbor-network-manager.url = "github:pbert5/arbor-network-manager";
     yggdrasil-private.url = "git+https://github.com/pbert5/yggdrasil-private.git?ref=main";
   };
