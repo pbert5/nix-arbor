@@ -1,8 +1,9 @@
 # Physical access-matrix verification
 
 This is a redacted operator runbook for the bootstrap SSH paths preserved by
-the Arbor migration. It records configuration intent only; no physical SSH
-verification was performed from the repository worker environment.
+the Arbor migration. The bounded observations below were performed on
+2026-08-31; pending entries are intentionally not inferred from transport
+reachability.
 
 ## Public identities
 
@@ -14,6 +15,10 @@ verification was performed from the repository worker environment.
   public key.
 - `r640DeploymentKeys`: the recovered `r640-0` public deployment key. The
   corresponding private key is not in Git, Nix source, or the Nix store.
+- `r640EvolverDeployer`: a newly generated runtime-only Ed25519 identity on
+  r640, fingerprint `SHA256:78Qwb3eauvwxVczH8W1vJ17Vs74bgEME8fgO+vYeA/E`.
+  Only its public half was authorized on eVolver; the private half is not
+  recorded here.
 
 Only public keys and their labels belong in this repository. Do not copy a
 private SSH key into the repository, a Nix expression, command arguments, or
@@ -40,15 +45,18 @@ TCP connection as authentication proof.
 | --- | --- | --- | --- | --- |
 | Laptop -> r640-0 | pending operator check | pending | pending | no |
 | Laptop -> desktoptoodle | pending operator check | pending | pending | no |
-| Laptop -> eVolver | pending operator check | pending | pending | no |
+| Laptop -> eVolver | PASS (root; deploy_rsa) | pending | pending | pre-convergence |
 | desktoptoodle -> r640-0 | pending operator check | pending | pending | no |
 | desktoptoodle -> eVolver | pending operator check | pending | pending | no |
-| r640-0 -> eVolver | pending runtime-identity check | pending | pending | no |
+| r640-0 -> eVolver | PASS (root; dedicated runtime identity) | pending | pending | pre-convergence |
 
-The r640-0 -> eVolver check must use the existing managed deployment identity
-if it is provisioned through the runtime secret boundary. If it is absent,
-stop and provision it through that boundary before testing; do not invent a
-replacement identity in Nix.
+The r640-0 -> eVolver check passed with the dedicated runtime identity listed
+above. The identity was generated on r640 and is not a Nix or Git input. The
+older r640 cluster-leader key was not accepted as Arbor deployment evidence.
+
+r640 itself remains blocked for activation: `ash@192.168.86.40` is reachable,
+but `sudo -n` reports that a password is required and root SSH is denied.
+No password was placed in automation and no broad sudo rule was installed.
 
 ## Failure and recovery checks
 
