@@ -156,6 +156,26 @@ Claude should follow the same dependency-aware delegation and safe worktree
 principles described above where its current agent system supports them,
 without copying Codex-specific configuration or mechanisms.
 
+### Component publication and deployment locks
+
+Child flakes are independently versioned. During development, a checkout under
+`packages/` and `nix-arbor-local` path overrides are appropriate for focused
+testing and integration experiments. They do not identify what a physical host
+will consume.
+
+When component work is ready to be consumed by the root integration branch or
+deployment candidate, the owning/integrating agent must commit and validate the
+component, publish the validated commit to its canonical repository when
+authorized, and update the root input and `flake.lock` to that exact immutable
+revision. Then run root checks and the deployment build without local override
+helpers, and prove the resolved revisions with `nix flake metadata` or the
+`nix-arbor-locked-metadata` app. Do not update unrelated inputs.
+
+Local component success is not physical integration success. A deployment
+handoff must report the exact component SHAs in the lock; a nested checkout,
+passing local override test, or successful evaluation with an implicit path
+override is not deployment readiness.
+
 ## Completion and merge
 
 For a normal task, a validated agent branch merges itself into its identified

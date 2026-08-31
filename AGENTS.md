@@ -39,6 +39,21 @@ belong in independent flakes and repositories.
   files, validation, known issues, and review readiness. See
   `docs/agent-workflows.md`.
 
+### Published component and lock discipline
+
+- `packages/` checkouts may be newer than remote flake inputs; they are valid
+  for development, focused tests, and local override experiments.
+- When independently versioned component work is ready for root integration or
+  deployment, commit and validate it, publish it to the canonical repository,
+  then update the root input and `flake.lock` to that exact published revision.
+- Validate the root and deployment candidate without local component overrides,
+  and report the exact locked component revisions in the handoff. Update only
+  intended inputs; do not advance every lock opportunistically.
+- Local component success is not physical integration success. A remote flake
+  input is deployment-ready only when its canonical repository contains the
+  validated commit and the root `flake.lock` resolves to that published
+  revision.
+
 ## Subagent execution
 
 - For substantial tasks, the owning agent constructs a dependency graph, fans
