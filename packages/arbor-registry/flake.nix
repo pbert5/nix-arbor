@@ -101,6 +101,11 @@
           module = serviceContractModule;
           pkgs = import nixpkgs { inherit system; };
         };
+        participant-runtime-status-vm = import ./tests/participant-runtime-status-vm.nix {
+          module = serviceContractModule;
+          runtimeModule = vaultRuntimeModule;
+          pkgs = import nixpkgs { inherit system; };
+        };
         vault-upstream = import ./tests/vault-upstream.nix {
           inherit nixpkgs system;
           pkgs = import nixpkgs { inherit system; };
