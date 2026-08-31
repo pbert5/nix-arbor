@@ -24,7 +24,7 @@
       inputs.home-manager.follows = "home-manager";
     };
     arbor-manager.url = "github:pbert5/arbor-manager/4eb20b5f41a5a39fe3d428129aeb80a0b5dd60a8";
-    arbor-registry.url = "github:pbert5/arbor-registry/b720c615b237aa6ff5465c29aa5798042b44bcb4";
+    arbor-registry.url = "github:pbert5/arbor-registry/abdf534bae09de6a4044fb5e9d4f5919596f713d";
     arbor-network-manager.url = "github:pbert5/arbor-network-manager";
     yggdrasil-private.url = "git+https://github.com/pbert5/yggdrasil-private.git?ref=main";
   };
