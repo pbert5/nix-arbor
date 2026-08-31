@@ -34,6 +34,19 @@ scriptable use, the frontend also accepts `--once COMMAND` and `--script FILE`.
 
 ## Access and external targets
 
+### Local genesis and graph joining
+
+Local genesis initializes one node as a standalone Arbor graph. It is not
+external enrollment: the node's runtime-held key signs only its own generation
+1 identity and local authority domain. A later parent or peer relationship is
+an accepted graph change that adds bounded authority; it does not replace the
+node identity. Parent loss or partition leaves the node's self-root valid.
+
+Use the component's runtime/manager identity-init command once that operator
+surface is installed, and inspect the resulting public identity, generation,
+local-root status, and relationship counts before joining another graph. Never
+hand-author private keys or put them in command arguments.
+
 These operations read JSON data files and redact secrets in output. Private
 inputs must be regular files with mode `0600`, `0400`, `0640`, or `0440`.
 

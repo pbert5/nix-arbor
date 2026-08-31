@@ -73,6 +73,10 @@ belong in independent flakes and repositories.
 Nix teaching material belongs in `cheats/` and `docs/`, not in this durable
 repository policy.
 
+Arbor is not a single-root PKI: every node begins as a self-rooted local
+authority domain; accepted graph relationships and bounded capabilities add
+external authority, and parent loss must not invalidate local identity.
+
 ## Output-aware shell commands
 
 `RTK.md` provides optional guidance for Rust Token Killer (RTK). Agents may
