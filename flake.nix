@@ -23,8 +23,8 @@
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.home-manager.follows = "home-manager";
     };
-    arbor-manager.url = "github:pbert5/arbor-manager/4eb20b5f41a5a39fe3d428129aeb80a0b5dd60a8";
-    arbor-registry.url = "github:pbert5/arbor-registry/abdf534bae09de6a4044fb5e9d4f5919596f713d";
+    arbor-manager.url = "github:pbert5/arbor-manager/fa7cce54ab5e12747326822f92cfdd4e735efbfc";
+    arbor-registry.url = "github:pbert5/arbor-registry/64d07c4";
     arbor-network-manager.url = "github:pbert5/arbor-network-manager";
     yggdrasil-private.url = "git+https://github.com/pbert5/yggdrasil-private.git?ref=main";
   };

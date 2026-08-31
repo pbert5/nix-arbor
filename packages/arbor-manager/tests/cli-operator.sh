@@ -29,3 +29,20 @@ printf '%s\n' '{"target":{"host":"example.invalid","token":"hidden"}}' >"$work/t
 chmod 600 "$work/targets.json"
 "$cli" external-target inspect --path "$work/targets.json" --name target | jq -e '.data.token == "<redacted>"' >/dev/null
 if "$cli" doctor --status "$work/missing.json" >/dev/null 2>&1; then exit 1; fi
+
+cat >"$work/identity-adapter" <<'EOF'
+#!/bin/sh
+set -eu
+request=$(cat)
+operation=$(printf '%s' "$request" | jq -r .operation)
+case "$operation" in
+  identity/inspect) jq -n '{nodeId:"node-a", initialized:true, generation:1, publicFingerprint:"fp", localGenesis:true, selfRooted:true, parents:[], peers:[], privateKey:"must-not-print"}' ;;
+  identity/init-self) jq -n '{status:"accepted", nodeId:"node-a", initialized:true, generation:1, publicFingerprint:"fp", localGenesis:true, privateKey:"must-not-print"}' ;;
+  registry/summary) jq -n '{records:{total:219,accepted:2,quarantined:217},projection:{total:1},localIdentity:{nodeId:"node-a",initialized:false,localGenesis:false,conflict:false}, privateKey:"must-not-print"}' ;;
+  *) exit 1 ;;
+esac
+EOF
+chmod 700 "$work/identity-adapter"
+"$cli" identity inspect --runtime-executable "$work/identity-adapter" | jq -e '.nodeId == "node-a" and .privateKey == null' >/dev/null
+"$cli" identity init-self --node-id node-a --domain example.internal --runtime-executable "$work/identity-adapter" | jq -e '.nodeId == "node-a" and .localGenesis == true and .privateKey == null' >/dev/null
+"$cli" registry summary --node-id node-a --runtime-executable "$work/identity-adapter" | jq -e '.records.total == 219 and .localIdentity.conflict == false and .privateKey == null' >/dev/null

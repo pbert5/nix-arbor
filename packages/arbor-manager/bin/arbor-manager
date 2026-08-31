@@ -17,6 +17,8 @@ Usage:
     [--receipt FILE] [--resume FILE]
     [--dry-run] [--format json|text]
   arbor-manager identity inspect|import|rotate [--path FILE|--source DIR] [--runtime-executable FILE]
+  arbor-manager identity init-self --node-id NODE [--domain DOMAIN] --runtime-executable FILE
+  arbor-manager registry summary --node-id NODE --runtime-executable FILE
   arbor-manager recovery inspect|export|import --path FILE [--runtime-executable FILE]
   arbor-manager external-target inspect|manage --path FILE [--name NAME]
   arbor-manager doctor [--status FILE] [--format json|text]
@@ -56,6 +58,9 @@ elif [ "$command" = deployment ]; then
 elif [ "$command" = identity ] || [ "$command" = recovery ] || [ "$command" = external-target ]; then
   subcommand=${1:-}
   shift || true
+elif [ "$command" = registry ]; then
+  subcommand=${1:-}
+  shift || true
 fi
 
 snapshot_file=
@@ -73,6 +78,8 @@ output_file=
 status_file=/run/arbor/doctor/status.json
 runtime_executable=
 target_name=
+node_id=
+domain=
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -91,6 +98,8 @@ while [ "$#" -gt 0 ]; do
     --status) [ "$#" -ge 2 ] || die "--status requires a file"; status_file=$2; shift 2 ;;
     --runtime-executable|--adapter) [ "$#" -ge 2 ] || die "$1 requires a file"; runtime_executable=$2; shift 2 ;;
     --target) [ "$#" -ge 2 ] || die "--target requires a name"; target_name=$2; shift 2 ;;
+    --node-id) [ "$#" -ge 2 ] || die "--node-id requires a node"; node_id=$2; shift 2 ;;
+    --domain) [ "$#" -ge 2 ] || die "--domain requires a domain"; domain=$2; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) die "unknown option '$1'" ;;
   esac
@@ -118,10 +127,12 @@ redact_filter='
     elif type == "string" and unsafe_string then "<redacted>" else . end;
   redact
 '
-if [ "$command" = identity ] || [ "$command" = recovery ] || [ "$command" = external-target ]; then
+if [ "$command" = registry ] || [ "$command" = identity ] || [ "$command" = recovery ] || [ "$command" = external-target ]; then
   [ -n "$subcommand" ] || die "$command requires an action"
   [ "$format" = json ] || [ "$format" = text ] || die "unknown format '$format'"
-  [ -n "$input_file" ] || die "$command $subcommand requires --path (or --source)"
+  if ! { [ "$command" = registry ] || { [ "$command" = identity ] && { [ "$subcommand" = init-self ] || [ "$subcommand" = inspect ]; }; }; }; then
+    [ -n "$input_file" ] || die "$command $subcommand requires --path (or --source)"
+  fi
   redact_json() { jq -cS "$redact_filter"; }
   secure_input() {
     [ -r "$1" ] || die "cannot read '$1'"
@@ -143,8 +154,17 @@ if [ "$command" = identity ] || [ "$command" = recovery ] || [ "$command" = exte
       [ ! -L "$input_file" ] || die "external target input must not be a symlink"
     fi
   }
-  resolve_input
-  payload=$(jq -e -cS . "$input_file") || die "invalid JSON in '$input_file'"
+  if [ -n "$input_file" ]; then
+    resolve_input
+    payload=$(jq -e -cS . "$input_file") || die "invalid JSON in '$input_file'"
+  else
+    if [ "$command" = identity ] && [ "$subcommand" = inspect ] && [ -z "${node_id:-$name}" ]; then
+      payload='{}'
+    else
+      [ -n "${node_id:-$name}" ] || die "$command $subcommand requires --node-id"
+      payload=$(jq -n -cS --arg nodeId "${node_id:-$name}" --arg domain "$domain" '{nodeId:$nodeId} + (if $domain == "" then {} else {domain:$domain} end)')
+    fi
+  fi
   [ -n "$target_name" ] || target_name=$name
   if [ "$command" = identity ] && [ "$subcommand" = rotate ]; then
     [ -n "$runtime_executable" ] || die "identity rotate requires --runtime-executable; registry runtime contract unavailable"
@@ -152,17 +172,17 @@ if [ "$command" = identity ] || [ "$command" = recovery ] || [ "$command" = exte
   if [ "$subcommand" = import ] && [ -n "$output_file" ]; then
     die "$command import never writes raw material; omit --output and use the runtime adapter response"
   fi
-  if [ "$subcommand" = manage ] || [ "$subcommand" = rotate ] || [ "$subcommand" = import ] || { [ "$command" = recovery ] && [ "$subcommand" != import ]; }; then
+  if [ "$command" = registry ] || [ "$subcommand" = init-self ] || [ "$subcommand" = manage ] || [ "$subcommand" = rotate ] || [ "$subcommand" = import ] || { [ "$command" = recovery ] && [ "$subcommand" != import ]; }; then
     [ -n "$runtime_executable" ] || die "$command $subcommand requires --runtime-executable"
     [ -x "$runtime_executable" ] || die "runtime adapter '$runtime_executable' is not executable"
     request=$(jq -n -cS --arg operation "$command/$subcommand" --argjson data "$payload" '{protocol:"arbor-manager/runtime-adapter",version:1,operation:$operation,data:$data}')
     response=$(printf '%s\n' "$request" | env -i PATH="${PATH:-/usr/bin:/bin}" "$runtime_executable" 2>/dev/null) || die "runtime adapter failed (contract mismatch or runtime unavailable)"
     jq -e -cS "$redact_filter | select(type == \"object\")" <<<"$response" >/dev/null || die "runtime adapter returned a non-object JSON response (contract mismatch)"
-    if [ "$command" = identity ] || [ "$command" = recovery ]; then
+    if [ "$command" = identity ] || [ "$command" = recovery ] || [ "$command" = registry ]; then
       # Runtime responses may contain opaque private receipt material. Keep a
       # deliberately tiny public receipt projection; never heuristic-redact a
       # neutral key and accidentally print its value.
-      response=$(jq -cS '{format:(.format // "arbor-manager/runtime-response"),version:(.version // 1),status:(.status // "accepted"),operation:(.operation // null),accepted:(.accepted // null),digest:(.digest // null)}' <<<"$response")
+      response=$(jq -cS '{format:(.format // "arbor-manager/runtime-response"),version:(.version // 1),status:(.status // "accepted"),operation:(.operation // null),accepted:(.accepted // null),digest:(.digest // null),nodeId:(.nodeId // .localIdentity.nodeId // null),initialized:(.initialized // .localIdentity.initialized // null),generation:(.generation // .localIdentity.generation // null),publicFingerprint:(.publicFingerprint // null),localGenesis:(.localGenesis // .localIdentity.localGenesis // null),selfRooted:(.selfRooted // .localIdentity.selfRooted // null),parents:(.parents // .localIdentity.parents // null),peers:(.peers // .localIdentity.peers // null),records:(.records // null),projection:(.projection // null)}' <<<"$response")
     fi
     if [ "$format" = json ]; then redact_json <<<"$response"; else jq -r 'to_entries[] | "\(.key)=\(.value|tostring)"' <<<"$(redact_json <<<"$response")"; fi
     exit 0
