@@ -18,6 +18,7 @@
   # account by config/users; no private deployment material is evaluated.
   arbor.access.authorizedKeySets = [
     "operator"
+    "deployment"
     "r640EvolverDeployer"
   ];
   users.users.root.openssh.authorizedKeys.keys = (import ../../access).r640EvolverDeployerKeys;
