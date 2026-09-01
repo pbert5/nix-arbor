@@ -5,7 +5,6 @@
       lib.types.enum [
         "operator"
         "deployment"
-        "r640EvolverDeployer"
       ]
     );
     default = [ "operator" ];

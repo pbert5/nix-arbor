@@ -12,7 +12,7 @@ Usage:
   agent-worktree clean [--force]
   agent-worktree cleanup-merged [--force]
 
-Worktrees live under the primary checkout in ./worktrees/.
+Worktrees live beside the primary checkout in ../nix-arbor-worktrees/.
 Branches use agent/<agent-name>/<task-slug>.
 EOF
 }
@@ -25,7 +25,7 @@ case "$common_git_dir" in
 esac
 primary_root=$(cd "$(dirname "$common_git_dir")" && pwd)
 repo_name=$(basename "$primary_root")
-workspace_root="$primary_root/worktrees"
+workspace_root="$(dirname "$primary_root")/${repo_name}-worktrees"
 default_branch=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null || true)
 default_branch=${default_branch#origin/}
 default_branch=${default_branch:-main}

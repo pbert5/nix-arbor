@@ -64,6 +64,24 @@ for the repository's local workflow.
 
 ## Graph semantics
 
+Every node begins as an independently valid, self-rooted one-node authority
+domain. Local genesis is an explicit runtime operation that binds generation 1
+to the node's own runtime-held key and identity. It may establish only that
+identity's local lifecycle and capability root; it cannot claim or authorize a
+foreign identity. This is distinct from external enrollment: a self-signed
+enrollment request proves possession, while an accepted graph relationship
+grants bounded external authority.
+
+Adding a parent relationship adds an accepted authority path without replacing
+the child's identity or its local-genesis provenance. Peer relationships add
+peer/cohort connectivity and any explicitly delegated peer capability, but do
+not imply parent authority. Multiple parents preserve separate paths. When an
+edge is suspended, severed, or unavailable, the child remains a valid
+self-rooted node while the corresponding external path is absent. Two existing
+graphs can therefore merge through a newly accepted bridge and later partition
+back into independently valid graphs; no global root or reinitialization is
+required. Transport reachability is only delivery, never trust.
+
 Relationships are immutable signed assertions plus state-transition records.
 They contain `relationshipId`, `from`, `to`, `kind`, `scope`, `autonomy`,
 `status`, `priority`, `issuer`, `authorityRoot`, `generation`, and provenance.

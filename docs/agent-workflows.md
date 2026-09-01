@@ -2,7 +2,7 @@
 
 The repository contract is **one task = one branch = one worktree**. The
 primary checkout is for integration and review; agents work in sibling
-directories under `./worktrees/`.
+directories under `../nix-arbor-worktrees/`.
 
 ## Starting work
 
@@ -11,15 +11,15 @@ submodules:
 
 ```sh
 ./scripts/agent-worktree new workspace-infra luna
-cd worktrees/agent-luna-workspace-infra
+cd ../nix-arbor-worktrees/agent-luna-workspace-infra
 nix develop
 ```
 
 Native Git equivalent:
 
 ```sh
-git worktree add -b agent/luna/my-task worktrees/agent-luna-my-task HEAD
-git -C worktrees/agent-luna-my-task submodule update --init
+git worktree add -b agent/luna/my-task ../nix-arbor-worktrees/agent-luna-my-task HEAD
+git -C ../nix-arbor-worktrees/agent-luna-my-task submodule update --init
 ```
 
 Start Codex or Claude only after entering that worktree:
@@ -156,14 +156,25 @@ Claude should follow the same dependency-aware delegation and safe worktree
 principles described above where its current agent system supports them,
 without copying Codex-specific configuration or mechanisms.
 
-### Component ownership and pins
+### Component publication and deployment locks
 
-`packages/arbor-manager` and `packages/arbor-registry` are Git submodules
-backed by their standalone repositories. Change implementation only in a
-child-repository branch/worktree, then update the parent gitlink. Root `main`
-pins component `main`; root `arbor-infra-dev` pins component `arbor-infra-dev`.
-Remote flake inputs remain authoritative for normal builds; initialized
-submodules are selected locally only with `--override-input`.
+Child flakes are independently versioned. During development, a checkout under
+`packages/` and `nix-arbor-local` path overrides are appropriate for focused
+testing and integration experiments. They do not identify what a physical host
+will consume.
+
+When component work is ready to be consumed by the root integration branch or
+deployment candidate, the owning/integrating agent must commit and validate the
+component, publish the validated commit to its canonical repository when
+authorized, and update the root input and `flake.lock` to that exact immutable
+revision. Then run root checks and the deployment build without local override
+helpers, and prove the resolved revisions with `nix flake metadata` or the
+`nix-arbor-locked-metadata` app. Do not update unrelated inputs.
+
+Local component success is not physical integration success. A deployment
+handoff must report the exact component SHAs in the lock; a nested checkout,
+passing local override test, or successful evaluation with an implicit path
+override is not deployment readiness.
 
 ## Completion and merge
 

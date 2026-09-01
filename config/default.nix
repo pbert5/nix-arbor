@@ -2,8 +2,16 @@
 let
   networkPolicy = import ./networks.nix;
   r640Users = import ./users;
-  r640Env = import ./env.nix;
+  environment = import ./env.nix;
+  r640Sops = import ./sops.nix;
   vscodeRemote = import ./modules/vscode-remote.nix;
+  registryServiceContract =
+    if builtins.hasAttr "service-contract" inputs.arbor-registry.nixosModules then
+      inputs.arbor-registry.nixosModules.service-contract
+    else
+      # Compatibility for locks predating the exported module; input wins as
+      # soon as the Registry input publishes the service-contract export.
+      import ../packages/arbor-registry/modules/service-contract.nix;
   serverTools =
     { pkgs, ... }:
     {
@@ -36,6 +44,7 @@ let
     };
   desktop = [
     networkPolicy
+    environment
     inputs.home-manager.nixosModules.home-manager
     inputs.tilingDesktop.nixosModules.default
     inputs.ashes-desktop-apps.nixosModules.default
@@ -74,6 +83,7 @@ let
   ];
   server = [
     networkPolicy
+    environment
     inputs.home-manager.nixosModules.home-manager
     {
       nix.settings.experimental-features = [
@@ -91,6 +101,19 @@ let
       home-manager.useUserPackages = true;
     }
   ];
+  # Operator tooling is deliberately a reusable profile.  Participants do
+  # not receive the Manager merely by joining the Arbor runtime; operator
+  # workstations opt into this profile explicitly.
+  arborOperator = [
+    (
+      { inputs, pkgs, ... }:
+      {
+        environment.systemPackages = [
+          inputs.arbor-manager.packages.${pkgs.system}.arbor-manager
+        ];
+      }
+    )
+  ];
   r640 = [
     (import ./access/module.nix)
     {
@@ -102,16 +125,61 @@ let
     inputs.sops-nix.nixosModules.sops
     { virtualisation.docker.enable = true; }
     r640Users
-    r640Env
+    r640Sops
     vscodeRemote
     serverTools
     (import ./machines/r640-0/storage.nix)
     (import ./machines/r640-0/management.nix)
+  ]
+  ++ arborOperator;
+  arborParticipant = [
+    inputs.arbor-registry.nixosModules.default
+    registryServiceContract
+    {
+      # This is a public policy/status boundary only. Runtime credentials,
+      # initialization, and unseal remain explicit operator actions.
+      cluster.registry.enable = true;
+      cluster.registry.runtime.enable = true;
+    }
+  ];
+  privateYggParticipant = [
+    inputs.yggdrasil-private.nixosModules.default
+    (
+      {
+        config,
+        inputs,
+        pkgs,
+        ...
+      }:
+      {
+        # This is the special Arbor Network Manager mode.  The private-Ygg
+        # module owns transport, pinning, firewall separation, and the
+        # provider service; accepted node records are supplied separately
+        # when this host is enrolled.
+        _module.args = {
+          hostName = config.networking.hostName;
+          hostInventory.dendrites = [ "network/yggdrasil-private" ];
+          site.networks.privateYggdrasil.networkManager = {
+            enable = true;
+            package = inputs.arbor-network-manager.packages.${pkgs.system}.default;
+            socket = "/run/arbor/ygg-provider.sock";
+          };
+        };
+      }
+    )
   ];
   machines = inputs.arbor-manager.lib.mkMachines {
     inherit inputs;
     machinesPath = ./machines;
-    profiles = { inherit desktop server r640; };
+    profiles = {
+      inherit
+        arborParticipant
+        privateYggParticipant
+        desktop
+        server
+        r640
+        ;
+    };
   };
 in
 {

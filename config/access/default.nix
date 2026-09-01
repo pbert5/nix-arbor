@@ -1,15 +1,19 @@
-# Intentionally public SSH key material. Keep operator and deployment
-# grants separate so hosts can opt into either set explicitly.
-{
-  operatorKeys = [
-    "ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBPnLRavaTbytLjtdaM/SXSLpdg3Z0MUvpYEoyKDcDk7GO/tbeIKQxz6kysk2G/UiO7x8Ulhe1bbkgBkwi+8TR5Y= ash-iphone"
-    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIK37SqGag+fd939XSZT+ytV3/KOzI6K9N/sDq3nye27O ash@windows-machine"
+# Intentionally public SSH key material. Keep identity subsets explicit while
+# preserving the aggregate grants used by existing host profiles.
+let
+  laptopOperatorKeys = [
     "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKKJ8mhwR1PeloNNp5vzroZaQ4ga0x1TLi2f/2DX1lPs admin@toptoodle"
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAFydFttzC+KAWxqvvf7COwr+XRi4hsyaiCw/D5yFhju phsilbert@gmail.com"
+  ];
+  recoveryOperatorKeys = [
+    "ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBPnLRavaTbytLjtdaM/SXSLpdg3Z0MUvpYEoyKDk7GO/tbeIKQxz6kysk2G/UiO7x8Ulhe1bbkgBkwi+8TR5Y= ash-iphone"
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIK37SqGag+fd939XSZT+ytV3/KOzI6K9N/sDq3nye27O ash@windows-machine"
     "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKRnn0GgKyiHU+v4oBbOp40e3hpEZOZ/iKW9Jhtpaker bertinert"
   ];
-  r640EvolverDeployerKeys = [
-    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINa/sAnukQD4gdu8zZ/m3+SavLJNrtjJcC4swgebGnZN r640-0"
-  ];
+in
+{
+  inherit laptopOperatorKeys recoveryOperatorKeys;
+  operatorKeys = laptopOperatorKeys ++ recoveryOperatorKeys;
   deploymentKeys = [
     "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAbYbxGzSboO3llrd28uOHpybxTLrbDZN/QmY0crRxU0 ash@desktoptoodle cluster leader"
     "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDE3UBc1SScbr08iKGk3vRBqDjHekPfwioFsHilyYriurgxzrnFAHfMPIDKp0mDFBAYRJlClDPqstGGiqzHG+ZX02qDVbVT98le9DDA9LPMsRfCYcQVm+lJ4g22ILcsA1fa60wVq0XQBnoqCfjQzhFDI1jkDxVl6Z7B6sC3OUZnkv+OXYY/xWpoHEHEF0zv+7sDg/mAFSbVY1UiOQVwTPymRPZCAMDxNrpVaqZNQ4mHmk/TMqN/XCA8Qg7Ehj6n7K+XUsfu/GS+MCzCcQvQ7ChLqLDbwXFIIvoaX/Rf6xnD0aABcMwvMs4hfSQ5s9wAeM/ngC6BmORpKALR32EFWQZbYBh6Bt5QlXhkzv5oNXUzMRrRa3yyHpOYDD8cpKNWOM88vociki63lOssKFiG+nSDAmCCg4z0yLDa481Di0Tk1fDBGmVeUwwsYJldQRbtmk4ksOJyrS23RQHSEouqTwC0/bWDj5iKUZ7uF8jtNrfJY4QhthkUkYKSgvW5dQAxlB8= root@truenas"
