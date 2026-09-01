@@ -1,4 +1,5 @@
 .worktrees/
+worktrees/
 .agent-state/
 .direnv/
 result

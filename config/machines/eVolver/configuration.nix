@@ -1,4 +1,9 @@
-{ inputs, lib, ... }:
+{
+  config,
+  inputs,
+  lib,
+  ...
+}:
 {
   imports = [
     ../../access/module.nix
@@ -45,6 +50,19 @@
     };
   };
 
+  # Use compressed RAM as the first pressure tier, with the declarative
+  # swapfile in hardware-configuration.nix as an emergency buffer.  25% is
+  # intentionally conservative for this 8 GiB-class host.
+  zramSwap = {
+    enable = true;
+    memoryPercent = 25;
+    priority = 100;
+  };
+  systemd.oomd = {
+    enable = true;
+    enableUserSlices = true;
+  };
+
   # Keep the existing controller release and state roots intact across
   # rebuilds. The release is maintained outside this flake; these units make
   # its lifecycle declarative without importing application secrets or data.
@@ -85,6 +103,54 @@
       NoNewPrivileges = true;
     };
   };
+
+  # Preserve the access path and controller during pressure without making
+  # every process unkillable.  Ordinary user workloads remain reclaimable.
+  systemd.services.sshd.serviceConfig = {
+    OOMScoreAdjust = -900;
+    ManagedOOMPreference = "avoid";
+  };
+  systemd.services.tailscaled.serviceConfig = {
+    OOMScoreAdjust = -700;
+    ManagedOOMPreference = "avoid";
+  };
+  systemd.services.evolver-controller.serviceConfig = {
+    OOMScoreAdjust = -500;
+    ManagedOOMPreference = "avoid";
+  };
+  systemd.services.evolver-hardware.serviceConfig = {
+    OOMScoreAdjust = -400;
+    ManagedOOMPreference = "avoid";
+  };
+
+  assertions = [
+    {
+      assertion = config.zramSwap.enable && config.zramSwap.memoryPercent == 25;
+      message = "eVolver must retain its conservative zram pressure tier";
+    }
+    {
+      assertion = lib.any (
+        swap: swap.device == "/var/lib/swapfile" && swap.size == 8192
+      ) config.swapDevices;
+      message = "eVolver must retain its 8 GiB emergency swapfile";
+    }
+    {
+      assertion = config.systemd.services.sshd.serviceConfig.OOMScoreAdjust == -900;
+      message = "eVolver SSH must retain its OOM survival preference";
+    }
+    {
+      assertion = config.systemd.services.tailscaled.serviceConfig.OOMScoreAdjust == -700;
+      message = "eVolver Tailscale must retain its OOM survival preference";
+    }
+    {
+      assertion = config.systemd.services.evolver-controller.serviceConfig.OOMScoreAdjust == -500;
+      message = "eVolver controller must retain its OOM survival preference";
+    }
+    {
+      assertion = config.systemd.services.evolver-hardware.serviceConfig.OOMScoreAdjust == -400;
+      message = "eVolver hardware service must retain its OOM survival preference";
+    }
+  ];
 
   # INTENTIONALLY HEADLESS: eVolver is an always-available server host.
   systemd.sleep.settings.Sleep = {

@@ -2,7 +2,7 @@
 
 The repository contract is **one task = one branch = one worktree**. The
 primary checkout is for integration and review; agents work in sibling
-directories under `../nix-arbor-worktrees/`.
+directories under `./worktrees/`.
 
 ## Starting work
 
@@ -11,15 +11,15 @@ submodules:
 
 ```sh
 ./scripts/agent-worktree new workspace-infra luna
-cd ../nix-arbor-worktrees/agent-luna-workspace-infra
+cd worktrees/agent-luna-workspace-infra
 nix develop
 ```
 
 Native Git equivalent:
 
 ```sh
-git worktree add -b agent/luna/my-task ../nix-arbor-worktrees/agent-luna-my-task HEAD
-git -C ../nix-arbor-worktrees/agent-luna-my-task submodule update --init
+git worktree add -b agent/luna/my-task worktrees/agent-luna-my-task HEAD
+git -C worktrees/agent-luna-my-task submodule update --init
 ```
 
 Start Codex or Claude only after entering that worktree:

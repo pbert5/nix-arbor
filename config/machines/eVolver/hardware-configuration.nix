@@ -31,7 +31,18 @@
       "dmask=0077"
     ];
   };
-  swapDevices = [ ];
+  # The host has 7.5 GiB RAM and ample ext4 capacity.  Keep an 8 GiB
+  # disk-backed emergency tier available behind zram; this is not hibernation
+  # storage and hibernation remains disabled in the machine configuration.
+  swapDevices = [
+    {
+      # nixpkgs 26.11 requires a label field in this submodule; force the
+      # file path so the label helper does not reinterpret it as a block path.
+      device = lib.mkForce "/var/lib/swapfile";
+      label = "evolver-swap";
+      size = 8192;
+    }
+  ];
 
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
   hardware.cpu.intel.updateMicrocode = lib.mkDefault config.hardware.enableRedistributableFirmware;
