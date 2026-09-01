@@ -92,6 +92,13 @@ let
     }
   ];
   r640 = [
+    (import ./access/module.nix)
+    {
+      arbor.access.authorizedKeySets = [
+        "operator"
+        "deployment"
+      ];
+    }
     inputs.sops-nix.nixosModules.sops
     { virtualisation.docker.enable = true; }
     r640Users
