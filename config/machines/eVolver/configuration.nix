@@ -31,6 +31,10 @@
     dataDir = "/home/ash/.config/syncthing";
     configDir = "/home/ash/.config/syncthing";
     guiAddress = "127.0.0.1:8384";
+    # The retained live configuration is one schema revision newer than the
+    # currently pinned package. Keep the existing state and let Syncthing
+    # perform its supported compatibility read during the migration.
+    extraFlags = [ "--allow-newer-config" ];
   };
   services.openssh = {
     enable = true;
