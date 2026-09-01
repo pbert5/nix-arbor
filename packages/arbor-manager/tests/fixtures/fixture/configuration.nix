@@ -1,4 +1,0 @@
-{ ... }:
-{
-  networking.firewall.enable = false;
-}

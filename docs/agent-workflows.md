@@ -156,6 +156,15 @@ Claude should follow the same dependency-aware delegation and safe worktree
 principles described above where its current agent system supports them,
 without copying Codex-specific configuration or mechanisms.
 
+### Component ownership and pins
+
+`packages/arbor-manager` and `packages/arbor-registry` are Git submodules
+backed by their standalone repositories. Change implementation only in a
+child-repository branch/worktree, then update the parent gitlink. Root `main`
+pins component `main`; root `arbor-infra-dev` pins component `arbor-infra-dev`.
+Remote flake inputs remain authoritative for normal builds; initialized
+submodules are selected locally only with `--override-input`.
+
 ## Completion and merge
 
 For a normal task, a validated agent branch merges itself into its identified
