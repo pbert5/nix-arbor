@@ -216,9 +216,9 @@ cleanup never accepts force.
 Native commands remain useful when the helper is unavailable:
 
 ```sh
-git worktree add -b agent/name/task worktrees/agent-name-task origin/main
+git worktree add -b agent/name/task ./worktrees/agent-name-task origin/main
 git worktree list
-git worktree remove worktrees/agent-name-task
+git worktree remove ./worktrees/agent-name-task
 git worktree prune
 git branch --merged main
 ```
