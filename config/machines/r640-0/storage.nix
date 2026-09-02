@@ -1,3 +1,6 @@
+let
+  dockerDataRoot = "/mypool/docker_data";
+in
 {
   config,
   lib,
@@ -12,6 +15,10 @@
   boot.zfs.extraPools = [ "mypool" ];
   boot.zfs.forceImportRoot = false;
   boot.zfs.forceImportAll = false;
+
+  # Docker must not start against an unmounted pool and accidentally create a
+  # fallback data root on the root filesystem.
+  systemd.services.docker.unitConfig.RequiresMountsFor = [ dockerDataRoot ];
 
   systemd.services.zfs-home-links = {
     description = "Expose existing mypool directories to r640 users";
