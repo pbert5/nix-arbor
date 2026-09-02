@@ -82,6 +82,17 @@ in
     home.homeDirectory = "/home/ash";
     home.stateVersion = "26.05";
     programs.git.enable = true;
+    programs.btop = {
+      enable = true;
+      settings = {
+        # ZFS mounts are not fstab entries; explicitly show the mounted pool
+        # filesystem without listing its underlying devices or datasets.
+        use_fstab = false;
+        only_physical = false;
+        zfs_hide_datasets = true;
+        disks_filter = "/ /mypool";
+      };
+    };
     programs.git.settings = {
       user = {
         name = "ash-r640-0";
