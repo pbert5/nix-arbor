@@ -9,7 +9,7 @@ belong in independent flakes and repositories.
 - One agent task = one branch = one worktree. Do not edit another agent's
   checkout or use the primary checkout for task changes.
 - Use `agent/<agent-or-role>/<task-slug>` for agent branches. Prefer the
-  `scripts/agent-worktree` helper, with worktrees outside this repository.
+  `scripts/agent-worktree` helper, with worktrees under `./worktrees/`.
 - Read the closest `AGENTS.md` before changing a subtree. `packages/` contains
   active component checkouts; `references/` contains material for inspection,
   not dependencies to modify casually.
