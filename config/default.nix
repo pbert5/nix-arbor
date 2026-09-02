@@ -51,6 +51,12 @@ let
         ];
         nixpkgs.config.allowUnfree = true;
         system.stateVersion = "26.05";
+        services.openssh.enable = true;
+        services.openssh.settings = {
+          PasswordAuthentication = false;
+          KbdInteractiveAuthentication = false;
+          PermitRootLogin = "prohibit-password";
+        };
         users.users.ash = {
           isNormalUser = true;
           description = "Ash";
