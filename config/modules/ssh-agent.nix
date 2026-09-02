@@ -10,6 +10,7 @@ let
     "bal-lab"
     "desktoptoodle"
     "evolver"
+    "gitpub gitpub.wei.wisc.edu"
     "r640-0"
     "root-evolver"
   ];
@@ -17,6 +18,7 @@ let
     bal-lab = "/home/ash/.ssh/bal-lab-glbrc-ed25519";
     desktoptoodle = "/home/ash/.ssh/r640-0";
     evolver = "/home/ash/.ssh/arbor-r640-evolver-deployer";
+    "gitpub gitpub.wei.wisc.edu" = "/home/ash/.ssh/gitpub-wei-wisc-ed25519";
     r640-0 = "/home/ash/.ssh/cluster-leader-ed25519";
     root-evolver = "/home/ash/.ssh/arbor-r640-evolver-deployer";
   };
@@ -68,7 +70,7 @@ in
       assertion =
         lib.sort builtins.lessThan (builtins.attrNames sshHosts)
         == lib.sort builtins.lessThan expectedAliases;
-      message = "Arbor SSH aliases must remain the explicit five-entry host allowlist.";
+      message = "Arbor SSH aliases must remain the explicit six-entry host allowlist.";
     }
     {
       assertion = lib.all (

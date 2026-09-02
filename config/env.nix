@@ -70,6 +70,15 @@
             addKeysToAgent = "no";
             forwardAgent = false;
           };
+          "gitpub gitpub.wei.wisc.edu" = {
+            hostname = "gitpub.wei.wisc.edu";
+            user = "git";
+            identityFile = "/home/ash/.ssh/gitpub-wei-wisc-ed25519";
+            identitiesOnly = true;
+            identityAgent = "$SSH_AUTH_SOCK";
+            addKeysToAgent = "no";
+            forwardAgent = false;
+          };
         };
       };
       description = "Transitional public registry fallback; dynamic runtime data may replace it later.";
