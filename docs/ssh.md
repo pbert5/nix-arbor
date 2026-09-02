@@ -23,11 +23,14 @@ These are three separate pieces:
 * the SSH `Host` alias selects the endpoint, user, and identity.
 
 The five aliases in the current matrix are an explicit allowlist. Every entry
-uses `IdentitiesOnly yes`, `IdentityAgent $SSH_AUTH_SOCK`, and one exact path
-under `/home/ash/.ssh/`; wildcard paths and embedded private key material are
-rejected by host assertions. The agent service does not provision or load
-identities. An operator or the runtime identity owner must make the matching
-private key available and load it with `ssh-add`.
+uses `IdentitiesOnly yes`, `IdentityAgent $SSH_AUTH_SOCK`,
+`AddKeysToAgent no`, `ForwardAgent no`, and one exact path from the checked-in
+allowlist under `/home/ash/.ssh/`; host assertions reject any other path. The
+agent service does not provision or load identities. Explicitly loaded keys
+expire after eight hours, and the lingering user service is restarted every
+twelve hours to clean up the agent and its socket. An operator or the runtime
+identity owner must make the matching private key available and load it with
+`ssh-add`.
 
 The current source-side private identity paths are:
 
@@ -57,8 +60,13 @@ arbor-ssh-diagnose <alias>
 It reports the session socket, agent listing, and selected public
 configuration fields. It does not print key contents or provision credentials.
 
-This should show the intended `hostname`, `user`, `identityfile`, and
-`identitiesonly`. Do not disable host-key verification. To add an alias,
+This should show the intended `hostname`, `user`, `identityfile`,
+`identitiesonly`, `addkeystoagent no`, and `forwardagent false`. Do not disable
+host-key verification. No stable host fingerprints are currently recorded in
+the declarative catalog, so Arbor retains OpenSSH's default known-hosts
+verification rather than inventing fingerprints. Recording verified
+fingerprints remains security debt for a future operator-led enrollment.
+To add an alias,
 first establish its stable endpoint and target-side public-key grant, then add
 one catalog entry with an explicit identity where needed and add the matching
 runtime provisioning record. Registry endpoint metadata may replace the

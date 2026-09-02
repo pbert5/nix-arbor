@@ -13,12 +13,13 @@ let
     "r640-0"
     "root-evolver"
   ];
-  safeIdentityPath =
-    path:
-    lib.hasPrefix "/home/ash/.ssh/" path
-    && !lib.hasInfix "*" path
-    && !lib.hasInfix "?" path
-    && !lib.hasInfix "PRIVATE" path;
+  expectedIdentityFiles = {
+    bal-lab = "/home/ash/.ssh/bal-lab-glbrc-ed25519";
+    desktoptoodle = "/home/ash/.ssh/r640-0";
+    evolver = "/home/ash/.ssh/deploy_rsa";
+    r640-0 = "/home/ash/.ssh/cluster-leader-ed25519";
+    root-evolver = "/home/ash/.ssh/r640-0";
+  };
   diagnose = pkgs.writeShellApplication {
     name = "arbor-ssh-diagnose";
     runtimeInputs = [ pkgs.openssh ];
@@ -45,7 +46,11 @@ in
     services.ssh-agent = {
       enable = true;
       socket = "arbor-ssh-agent/socket";
+      # Keys are added explicitly by the operator/runtime identity owner.
+      # This bounds how long an explicitly loaded key remains available.
+      defaultMaximumIdentityLifetime = 8 * 60 * 60;
     };
+    systemd.user.services.ssh-agent.Service.RuntimeMaxSec = "12h";
   };
 
   environment.systemPackages = [ diagnose ];
@@ -73,9 +78,11 @@ in
         in
         host.identitiesOnly == true
         && host.identityAgent == "$SSH_AUTH_SOCK"
-        && safeIdentityPath host.identityFile
+        && host.identityFile == expectedIdentityFiles.${alias}
+        && host.addKeysToAgent == "no"
+        && host.forwardAgent == false
       ) expectedAliases;
-      message = "Arbor SSH aliases must use explicit safe identity paths and the Ash agent; no globs or private material are allowed.";
+      message = "Arbor SSH aliases must use the exact allowlisted identity path, the Ash agent, AddKeysToAgent no, and ForwardAgent no.";
     }
   ];
 }
