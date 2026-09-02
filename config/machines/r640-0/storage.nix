@@ -42,7 +42,10 @@ in
     '';
   };
 
-  virtualisation.docker.daemon.settings."data-root" = dockerDataRoot;
+  virtualisation.docker.daemon.settings = {
+    "data-root" = dockerDataRoot;
+    "storage-driver" = "zfs";
+  };
   nix.settings = {
     build-dir = nixBuildDir;
     build-users-group = "nixbld";
@@ -90,6 +93,10 @@ in
     {
       assertion = lib.elem storageDirectories config.systemd.services.nix-daemon.requires;
       message = "The Nix daemon must require the mounted mypool directory service";
+    }
+    {
+      assertion = config.virtualisation.docker.daemon.settings."storage-driver" == "zfs";
+      message = "r640-0 Docker storage driver must remain zfs on mypool";
     }
   ];
 
