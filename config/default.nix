@@ -3,7 +3,8 @@ let
   networkPolicy = import ./networks.nix;
   r640Users = import ./users;
   r640Env = import ./env.nix;
-  vscodeRemote = import ./modules/vscode-remote.nix;
+  vscodeRemoteModule = import ./modules/vscode-remote.nix;
+  vscodeRemote = [ vscodeRemoteModule ];
   serverTools =
     { pkgs, ... }:
     {
@@ -125,7 +126,7 @@ let
     { virtualisation.docker.enable = true; }
     r640Users
     r640Env
-    vscodeRemote
+    vscodeRemoteModule
     serverTools
     (import ./machines/r640-0/storage.nix)
     (import ./machines/r640-0/management.nix)
@@ -133,7 +134,14 @@ let
   machines = inputs.arbor-manager.lib.mkMachines {
     inherit inputs;
     machinesPath = ./machines;
-    profiles = { inherit desktop server r640; };
+    profiles = {
+      inherit
+        desktop
+        server
+        r640
+        vscodeRemote
+        ;
+    };
   };
 in
 {
