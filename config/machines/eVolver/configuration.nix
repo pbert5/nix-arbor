@@ -125,6 +125,20 @@
 
   assertions = [
     {
+      assertion = lib.any (
+        key:
+        lib.hasPrefix "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINa/sAnukQD4gdu8zZ/m3+SavLJNrtjJcC4swgebGnZN" key
+      ) config.users.users.ash.openssh.authorizedKeys.keys;
+      message = "eVolver Ash must authorize the r640 machine public SSH key";
+    }
+    {
+      assertion = lib.any (
+        key:
+        lib.hasPrefix "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINa/sAnukQD4gdu8zZ/m3+SavLJNrtjJcC4swgebGnZN" key
+      ) config.users.users.root.openssh.authorizedKeys.keys;
+      message = "eVolver root must authorize the r640 machine public SSH key";
+    }
+    {
       assertion = config.zramSwap.enable && config.zramSwap.memoryPercent == 25;
       message = "eVolver must retain its conservative zram pressure tier";
     }

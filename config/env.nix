@@ -20,7 +20,42 @@
           ashHome = "/home/ash";
           madelineHome = "/home/madeline";
         };
-        sshHosts = { };
+        sshHosts = {
+          # Transitional static endpoint catalog.  These addresses are the
+          # current Tailscale/underlay endpoints recorded by the legacy
+          # bootstrap inventory; Registry endpoint records can replace this
+          # projection later without changing the aliases.
+          evolver = {
+            hostname = "100.97.84.12";
+            user = "ash";
+            identityFile = "/home/ash/.ssh/deploy_rsa";
+            identitiesOnly = true;
+          };
+          root-evolver = {
+            hostname = "100.97.84.12";
+            user = "root";
+            identityFile = "/home/ash/.ssh/r640-0";
+            identitiesOnly = true;
+          };
+          desktoptoodle = {
+            hostname = "100.112.11.124";
+            user = "ash";
+            identityFile = "/home/ash/.ssh/r640-0";
+            identitiesOnly = true;
+          };
+          r640-0 = {
+            hostname = "100.110.27.100";
+            user = "ash";
+            identityFile = "/home/ash/.ssh/cluster-leader-ed25519";
+            identitiesOnly = true;
+          };
+          bal-lab = {
+            hostname = "bal-lab.glbrc.org";
+            user = "psilbert";
+            identityFile = "/home/ash/.ssh/bal-lab-glbrc-ed25519";
+            identitiesOnly = true;
+          };
+        };
       };
       description = "Transitional public registry fallback; dynamic runtime data may replace it later.";
     };

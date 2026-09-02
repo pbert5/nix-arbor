@@ -37,40 +37,56 @@ let
   desktop = [
     networkPolicy
     inputs.home-manager.nixosModules.home-manager
+    inputs.sops-nix.nixosModules.sops
     inputs.tilingDesktop.nixosModules.default
     inputs.ashes-desktop-apps.nixosModules.default
-    {
-      nix.settings.experimental-features = [
-        "nix-command"
-        "flakes"
-      ];
-      nixpkgs.config.allowUnfree = true;
-      system.stateVersion = "26.05";
-      users.users.ash = {
-        isNormalUser = true;
-        description = "Ash";
-        extraGroups = [
-          "networkmanager"
-          "wheel"
+    (import ./access/module.nix)
+    r640Env
+    (
+      { config, ... }:
+      {
+        nix.settings.experimental-features = [
+          "nix-command"
+          "flakes"
         ];
-      };
-      home-manager.useGlobalPkgs = true;
-      home-manager.useUserPackages = true;
-      home-manager.users.ash = {
-        imports = [
-          inputs.ashzsh.homeModules.default
-          inputs.tilingDesktop.homeModules.hyprland
-          inputs.ashes-desktop-apps.homeModules.default
-        ];
-        home.stateVersion = "26.05";
-        home.username = "ash";
-        home.homeDirectory = "/home/ash";
-        ashesDesktopApps = {
-          enable = true;
-          sets = [ "desktop.core" ];
+        nixpkgs.config.allowUnfree = true;
+        system.stateVersion = "26.05";
+        users.users.ash = {
+          isNormalUser = true;
+          description = "Ash";
+          extraGroups = [
+            "networkmanager"
+            "wheel"
+          ];
         };
-      };
-    }
+        home-manager.useGlobalPkgs = true;
+        home-manager.useUserPackages = true;
+        home-manager.users.ash = {
+          imports = [
+            inputs.ashzsh.homeModules.default
+            inputs.tilingDesktop.homeModules.hyprland
+            inputs.ashes-desktop-apps.homeModules.default
+          ];
+          home.stateVersion = "26.05";
+          home.username = "ash";
+          home.homeDirectory = "/home/ash";
+          ashesDesktopApps = {
+            enable = true;
+            sets = [ "desktop.core" ];
+          };
+          programs.ssh = {
+            enable = true;
+            enableDefaultConfig = false;
+            matchBlocks = config.arbor.environment.public.sshHosts;
+          };
+        };
+
+        # The r640 machine identity is a narrowly scoped public grant.  The
+        # matching private identity remains runtime-only on the source host.
+        arbor.access.authorizedKeySets = [ "r640EvolverDeployer" ];
+        users.users.ash.openssh.authorizedKeys.keys = (import ./access).r640EvolverDeployerKeys;
+      }
+    )
   ];
   server = [
     networkPolicy
