@@ -3,8 +3,11 @@
 Arbor's transitional public SSH host catalog lives in
 `config/env.nix`, under `arbor.environment.public.sshHosts`. Home Manager
 projects that catalog into Ash's and Madeline's SSH configuration on managed
-hosts. The catalog contains routing facts, remote users, and explicit
-identity-file paths; it does not contain private key contents.
+hosts. Ash also receives Home Manager's native `ssh-agent` user service on
+`r640-0` and `desktoptoodle`; shell/session initialization exports
+`SSH_AUTH_SOCK` for that service. The catalog contains routing facts, remote
+users, and explicit identity-file paths; it does not contain private key
+contents.
 
 Public keys accepted by managed machines live in `config/access/default.nix`.
 A machine opts into named public grants through
@@ -18,6 +21,13 @@ These are three separate pieces:
 * the destination's `authorized_keys` contains a public key;
 * the source user's runtime environment supplies the matching private identity;
 * the SSH `Host` alias selects the endpoint, user, and identity.
+
+The five aliases in the current matrix are an explicit allowlist. Every entry
+uses `IdentitiesOnly yes`, `IdentityAgent $SSH_AUTH_SOCK`, and one exact path
+under `/home/ash/.ssh/`; wildcard paths and embedded private key material are
+rejected by host assertions. The agent service does not provision or load
+identities. An operator or the runtime identity owner must make the matching
+private key available and load it with `ssh-add`.
 
 The current source-side private identity paths are:
 
@@ -37,6 +47,15 @@ Inspect effective routing and identity selection with:
 ```sh
 ssh -G <alias>
 ```
+
+For a bounded local diagnostic (it never connects), run:
+
+```sh
+arbor-ssh-diagnose <alias>
+```
+
+It reports the session socket, agent listing, and selected public
+configuration fields. It does not print key contents or provision credentials.
 
 This should show the intended `hostname`, `user`, `identityfile`, and
 `identitiesonly`. Do not disable host-key verification. To add an alias,

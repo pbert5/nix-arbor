@@ -1,6 +1,7 @@
 { inputs, ... }:
 let
   networkPolicy = import ./networks.nix;
+  sshAgent = import ./modules/ssh-agent.nix;
   r640Users = import ./users;
   r640Env = import ./env.nix;
   vscodeRemoteModule = import ./modules/vscode-remote.nix;
@@ -41,6 +42,7 @@ let
     inputs.sops-nix.nixosModules.sops
     inputs.tilingDesktop.nixosModules.default
     inputs.ashes-desktop-apps.nixosModules.default
+    sshAgent
     (import ./access/module.nix)
     r640Env
     (
@@ -123,6 +125,7 @@ let
       ];
     }
     inputs.sops-nix.nixosModules.sops
+    sshAgent
     { virtualisation.docker.enable = true; }
     r640Users
     r640Env
