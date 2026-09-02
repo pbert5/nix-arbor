@@ -28,7 +28,7 @@
           evolver = {
             hostname = "100.97.84.12";
             user = "ash";
-            identityFile = "/home/ash/.ssh/deploy_rsa";
+            identityFile = "/home/ash/.ssh/arbor-r640-evolver-deployer";
             identitiesOnly = true;
             identityAgent = "$SSH_AUTH_SOCK";
             addKeysToAgent = "no";
@@ -37,7 +37,7 @@
           root-evolver = {
             hostname = "100.97.84.12";
             user = "root";
-            identityFile = "/home/ash/.ssh/r640-0";
+            identityFile = "/home/ash/.ssh/arbor-r640-evolver-deployer";
             identitiesOnly = true;
             identityAgent = "$SSH_AUTH_SOCK";
             addKeysToAgent = "no";

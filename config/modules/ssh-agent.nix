@@ -16,9 +16,9 @@ let
   expectedIdentityFiles = {
     bal-lab = "/home/ash/.ssh/bal-lab-glbrc-ed25519";
     desktoptoodle = "/home/ash/.ssh/r640-0";
-    evolver = "/home/ash/.ssh/deploy_rsa";
+    evolver = "/home/ash/.ssh/arbor-r640-evolver-deployer";
     r640-0 = "/home/ash/.ssh/cluster-leader-ed25519";
-    root-evolver = "/home/ash/.ssh/r640-0";
+    root-evolver = "/home/ash/.ssh/arbor-r640-evolver-deployer";
   };
   diagnose = pkgs.writeShellApplication {
     name = "arbor-ssh-diagnose";
