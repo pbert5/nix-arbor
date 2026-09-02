@@ -3,8 +3,11 @@
 Arbor's transitional public SSH host catalog lives in
 `config/env.nix`, under `arbor.environment.public.sshHosts`. Home Manager
 projects that catalog into Ash's and Madeline's SSH configuration on managed
-hosts. The catalog contains routing facts, remote users, and explicit
-identity-file paths; it does not contain private key contents.
+hosts. Ash also receives Home Manager's native `ssh-agent` user service on
+`r640-0` and `desktoptoodle`; shell/session initialization exports
+`SSH_AUTH_SOCK` for that service. The catalog contains routing facts, remote
+users, and explicit identity-file paths; it does not contain private key
+contents.
 
 Public keys accepted by managed machines live in `config/access/default.nix`.
 A machine opts into named public grants through
@@ -18,6 +21,16 @@ These are three separate pieces:
 * the destination's `authorized_keys` contains a public key;
 * the source user's runtime environment supplies the matching private identity;
 * the SSH `Host` alias selects the endpoint, user, and identity.
+
+The five aliases in the current matrix are an explicit allowlist. Every entry
+uses `IdentitiesOnly yes`, `IdentityAgent $SSH_AUTH_SOCK`,
+`AddKeysToAgent no`, `ForwardAgent no`, and one exact path from the checked-in
+allowlist under `/home/ash/.ssh/`; host assertions reject any other path. The
+agent service does not provision or load identities. Explicitly loaded keys
+expire after eight hours, and the lingering user service is restarted every
+twelve hours to clean up the agent and its socket. An operator or the runtime
+identity owner must make the matching private key available and load it with
+`ssh-add`.
 
 The current source-side private identity paths are:
 
@@ -38,8 +51,22 @@ Inspect effective routing and identity selection with:
 ssh -G <alias>
 ```
 
-This should show the intended `hostname`, `user`, `identityfile`, and
-`identitiesonly`. Do not disable host-key verification. To add an alias,
+For a bounded local diagnostic (it never connects), run:
+
+```sh
+arbor-ssh-diagnose <alias>
+```
+
+It reports the session socket, agent listing, and selected public
+configuration fields. It does not print key contents or provision credentials.
+
+This should show the intended `hostname`, `user`, `identityfile`,
+`identitiesonly`, `addkeystoagent no`, and `forwardagent false`. Do not disable
+host-key verification. No stable host fingerprints are currently recorded in
+the declarative catalog, so Arbor retains OpenSSH's default known-hosts
+verification rather than inventing fingerprints. Recording verified
+fingerprints remains security debt for a future operator-led enrollment.
+To add an alias,
 first establish its stable endpoint and target-side public-key grant, then add
 one catalog entry with an explicit identity where needed and add the matching
 runtime provisioning record. Registry endpoint metadata may replace the

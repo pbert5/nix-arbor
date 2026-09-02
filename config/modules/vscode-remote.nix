@@ -17,11 +17,11 @@
   assertions = [
     {
       assertion = config.programs.nix-ld.enable;
-      message = "r640 must keep nix-ld enabled for VS Code Remote-SSH";
+      message = "VS Code Remote-SSH requires nix-ld to be enabled";
     }
     {
       assertion = lib.elem pkgs.stdenv.cc.cc.lib config.programs.nix-ld.libraries;
-      message = "r640 nix-ld must provide stdenv.cc.cc.lib for libstdc++.so.6";
+      message = "VS Code Remote-SSH requires stdenv.cc.cc.lib for libstdc++.so.6";
     }
   ];
 }

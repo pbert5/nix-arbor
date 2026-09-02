@@ -3,6 +3,7 @@
   hostname = "eVolver";
   profiles = [
     "server"
+    "vscodeRemote"
   ];
   hardware.snapshot = {
     format = "arbor/hardware";

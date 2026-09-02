@@ -30,30 +30,45 @@
             user = "ash";
             identityFile = "/home/ash/.ssh/deploy_rsa";
             identitiesOnly = true;
+            identityAgent = "$SSH_AUTH_SOCK";
+            addKeysToAgent = "no";
+            forwardAgent = false;
           };
           root-evolver = {
             hostname = "100.97.84.12";
             user = "root";
             identityFile = "/home/ash/.ssh/r640-0";
             identitiesOnly = true;
+            identityAgent = "$SSH_AUTH_SOCK";
+            addKeysToAgent = "no";
+            forwardAgent = false;
           };
           desktoptoodle = {
             hostname = "100.112.11.124";
             user = "ash";
             identityFile = "/home/ash/.ssh/r640-0";
             identitiesOnly = true;
+            identityAgent = "$SSH_AUTH_SOCK";
+            addKeysToAgent = "no";
+            forwardAgent = false;
           };
           r640-0 = {
             hostname = "100.110.27.100";
             user = "ash";
             identityFile = "/home/ash/.ssh/cluster-leader-ed25519";
             identitiesOnly = true;
+            identityAgent = "$SSH_AUTH_SOCK";
+            addKeysToAgent = "no";
+            forwardAgent = false;
           };
           bal-lab = {
             hostname = "bal-lab.glbrc.org";
             user = "psilbert";
             identityFile = "/home/ash/.ssh/bal-lab-glbrc-ed25519";
             identitiesOnly = true;
+            identityAgent = "$SSH_AUTH_SOCK";
+            addKeysToAgent = "no";
+            forwardAgent = false;
           };
         };
       };
