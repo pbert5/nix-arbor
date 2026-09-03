@@ -14,6 +14,7 @@ let
         gh
         curl
         wget
+        devcontainer
         jq
         yq-go
         ripgrep

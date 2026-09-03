@@ -213,12 +213,12 @@ that are dirty, unmerged, or still needed by another active effort in place.
 `--force` is available only on an explicitly named `remove` command. Bulk
 cleanup never accepts force.
 
-Native commands remain useful:
+Native commands remain useful when the helper is unavailable:
 
 ```sh
-git worktree add -b agent/name/task ../nix-arbor-worktrees/agent-name-task HEAD
+git worktree add -b agent/name/task ./worktrees/agent-name-task origin/main
 git worktree list
-git worktree remove ../nix-arbor-worktrees/agent-name-task
+git worktree remove ./worktrees/agent-name-task
 git worktree prune
 git branch --merged main
 ```

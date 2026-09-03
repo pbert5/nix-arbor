@@ -78,8 +78,11 @@ case "$cmd" in
     [ ! -e "$path" ] || { echo "worktree path already exists: $path" >&2; exit 1; }
     git show-ref --verify --quiet "refs/heads/$branch" && { echo "branch already exists: $branch" >&2; exit 1; }
     mkdir -p "$workspace_root"
-    base=$default_branch
-    git show-ref --verify --quiet "refs/heads/$base" || base=HEAD
+    base="refs/remotes/origin/$default_branch"
+    git show-ref --verify --quiet "$base" || {
+      base="$default_branch"
+      git show-ref --verify --quiet "refs/heads/$base" || base=HEAD
+    }
     git worktree add -b "$branch" "$path" "$base"
     # Initialize direct submodules. Some reference repositories contain
     # historical gitlinks without a .gitmodules mapping, so recursive mode
