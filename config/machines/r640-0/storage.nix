@@ -55,7 +55,10 @@ in
   # Docker is socket-activated, so ordering alone is insufficient: require
   # the pool directory service and check the mount at every daemon start.
   systemd.services.docker = {
-    path = [ pkgs.zfs pkgs.nftables ];
+    path = [
+      pkgs.zfs
+      pkgs.nftables
+    ];
     requires = [ storageDirectories ];
     after = [ storageDirectories ];
     serviceConfig.ExecStartPre = "${pkgs.util-linux}/bin/mountpoint -q ${poolRoot}";
