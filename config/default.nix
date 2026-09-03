@@ -41,6 +41,8 @@ let
     inputs.home-manager.nixosModules.home-manager
     inputs.sops-nix.nixosModules.sops
     inputs.tilingDesktop.nixosModules.default
+    inputs.tilingDesktop.nixosModules.niri
+    inputs.tilingDesktop.nixosModules.tuigreet
     inputs.ashes-desktop-apps.nixosModules.default
     sshAgent
     (import ./access/module.nix)
@@ -68,12 +70,18 @@ let
             "wheel"
           ];
         };
+        services.tilingDesktop.tuigreet = {
+          enable = true;
+          defaultSession = "niri";
+          defaultSessionCommand = "niri-session";
+          mode = "text";
+        };
         home-manager.useGlobalPkgs = true;
         home-manager.useUserPackages = true;
         home-manager.users.ash = {
           imports = [
             inputs.ashzsh.homeModules.default
-            inputs.tilingDesktop.homeModules.hyprland
+            inputs.tilingDesktop.homeModules.niri
             inputs.ashes-desktop-apps.homeModules.default
           ];
           home.stateVersion = "26.05";
