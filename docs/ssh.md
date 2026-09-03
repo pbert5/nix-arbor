@@ -73,3 +73,11 @@ first establish its stable endpoint and target-side public-key grant, then add
 one catalog entry with an explicit identity where needed and add the matching
 runtime provisioning record. Registry endpoint metadata may replace the
 transitional static addresses later; it must not silently broaden grants.
+
+## Mosh on r640-0
+
+Mosh is available on `r640-0` for mobile clients such as Termius. Use SSH to
+bootstrap and authenticate as `ash`, for example
+`ash@<r640-0 Tailscale address>`; Mosh traffic then uses UDP ports `60000-61000`
+on `tailscale0` only. Keep `tmux` available above Mosh when processes or shell
+work should persist independently of the client connection.

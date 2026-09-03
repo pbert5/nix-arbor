@@ -1,4 +1,10 @@
 { config, lib, ... }:
+let
+  moshPortRange = {
+    from = 60000;
+    to = 61000;
+  };
+in
 {
   networking.hostName = "r640-0";
   networking.networkmanager = {
@@ -61,7 +67,25 @@
       assertion = config.networking.networkmanager.unmanaged == [ "tailscale0" ];
       message = "r640-0 must keep tailscale0 outside NetworkManager management";
     }
+    {
+      assertion = config.programs.mosh.enable && !config.programs.mosh.openFirewall;
+      message = "r640-0 Mosh must be enabled without opening its ports globally";
+    }
+    {
+      assertion =
+        config.networking.firewall.interfaces.tailscale0.allowedUDPPortRanges == [ moshPortRange ];
+      message = "r640-0 must allow Mosh UDP 60000-61000 on tailscale0";
+    }
+    {
+      assertion = !(lib.elem moshPortRange config.networking.firewall.allowedUDPPortRanges);
+      message = "r640-0 must not allow the Mosh UDP range on every interface";
+    }
   ];
+  programs.mosh = {
+    enable = true;
+    openFirewall = false;
+  };
+  networking.firewall.interfaces.tailscale0.allowedUDPPortRanges = [ moshPortRange ];
   services.tailscale = {
     enable = true;
     useRoutingFeatures = "client";
