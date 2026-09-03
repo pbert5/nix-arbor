@@ -14,7 +14,7 @@ sudo nixos-rebuild test --flake .#desktoptoodle
 
 The BitLocker game disk integration is enabled for the confirmed live UUID
 `657ff291-de57-40c0-80d9-9362895587e8`, while recovery files remain operator-
-local under `/home/ash/.config/bitlocker-recovery/`. The unit is wanted by
+provisioned under `/etc/nix-arbor/secrets/desktoptoodle/bitlocker/`. The unit is wanted by
 `multi-user.target`, not required by local-fs, so an absent disk does not block
 boot. The module never formats, repairs, or resizes the volume.
 

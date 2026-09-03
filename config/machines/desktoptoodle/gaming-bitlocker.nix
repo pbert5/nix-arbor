@@ -10,6 +10,7 @@ let
   mountPoint = "/mnt/bitlocker/piss_boi";
   compatData = "/home/ash/.local/share/Steam/steamapps/compatdata-piss-boi";
   libraryCompatData = "${mountPoint}/games/steamapps/compatdata";
+  ownedMarker = "/run/nix-arbor/bitlocker-pissBoi.opened";
   unlockUnit = "bitlocker-unlock-pissBoi.service";
   mountUnit = "bitlocker-mount-pissBoi.service";
   compatTargetUnit = "steam-bitlocker-compatdata-target.service";
@@ -56,7 +57,7 @@ in
     # symlink intentionally remains useful once the disk is unlocked.
     systemd.tmpfiles.rules = [
       "d ${mountPoint} 0755 root root - -"
-      "L+ /home/ash/piss_boi - - - - ${mountPoint}"
+      "L /home/ash/piss_boi - - - - ${mountPoint}"
       "d /home/ash/.local 0755 ash users - -"
       "d /home/ash/.local/share 0755 ash users - -"
       "d /home/ash/.local/share/Steam 0755 ash users - -"
@@ -77,6 +78,8 @@ in
         serviceConfig = {
           Type = "oneshot";
           RemainAfterExit = true;
+          RuntimeDirectory = "nix-arbor";
+          RuntimeDirectoryMode = "0700";
           ExecStart = pkgs.writeShellScript "bitlocker-unlock-pissBoi" ''
             set -eu
             mapper_name=${lib.escapeShellArg mapperName}
@@ -93,6 +96,7 @@ in
               fi
               if ${pkgs.cryptsetup}/bin/cryptsetup open --batch-mode \
                 --type bitlk --key-file "$key_file" "$device" "$mapper_name"; then
+                ${pkgs.coreutils}/bin/touch ${lib.escapeShellArg ownedMarker}
                 exit 0
               fi
             done
@@ -102,9 +106,10 @@ in
           '';
           ExecStop = pkgs.writeShellScript "bitlocker-close-pissBoi" ''
             set -eu
-            if [ -e /dev/mapper/${lib.escapeShellArg mapperName} ]; then
+            if [ -e ${lib.escapeShellArg ownedMarker} ] && [ -e /dev/mapper/${lib.escapeShellArg mapperName} ]; then
               ${pkgs.cryptsetup}/bin/cryptsetup close ${lib.escapeShellArg mapperName}
             fi
+            ${pkgs.coreutils}/bin/rm -f ${lib.escapeShellArg ownedMarker}
           '';
         };
       };
@@ -134,7 +139,7 @@ in
             owner_uid="$(${pkgs.coreutils}/bin/id -u ash)"
             owner_gid="$(${pkgs.coreutils}/bin/id -g ash)"
             ${pkgs.util-linux}/bin/mount -t ntfs3 \
-              -o "uid=$owner_uid,gid=$owner_gid,umask=0022,windows_names,force" \
+              -o "uid=$owner_uid,gid=$owner_gid,umask=0077,windows_names" \
               /dev/mapper/${lib.escapeShellArg mapperName} "$mount_point"
           '';
           ExecStop = pkgs.writeShellScript "bitlocker-umount-pissBoi" ''

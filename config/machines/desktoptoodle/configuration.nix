@@ -32,8 +32,8 @@
     enable = true;
     device = "/dev/disk/by-uuid/657ff291-de57-40c0-80d9-9362895587e8";
     keyFiles = [
-      "/home/ash/.config/bitlocker-recovery/E07B243F.recovery"
-      "/home/ash/.config/bitlocker-recovery/0EE6F93C.recovery"
+      "/etc/nix-arbor/secrets/desktoptoodle/bitlocker/E07B243F.recovery"
+      "/etc/nix-arbor/secrets/desktoptoodle/bitlocker/0EE6F93C.recovery"
     ];
   };
 }

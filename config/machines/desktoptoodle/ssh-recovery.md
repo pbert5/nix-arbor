@@ -9,7 +9,7 @@ paths are the user's `~/.ssh/authorized_keys` and
 ## Declared access
 
 The `desktoptoodle` profile explicitly grants the r640 machine public key to
-`ash` (`r640EvolverDeployer`). It does not grant a key to `root`. The source
+`ash` and `root` (`r640EvolverDeployer`). The source
 private key is runtime-only at `/home/ash/.ssh/r640-0`; it is not generated or
 stored by Arbor. The normal source-side alias is `desktoptoodle`, which targets
 `ash` and uses that identity through Ash's SSH agent.
@@ -25,13 +25,12 @@ On the read-only inspection of the host named `desktoptoodle`,
 `/etc/ssh/authorized_keys.d/root` contained six public keys. The files were
 root-owned and mode `0444`; only key types, counts, comments, and fingerprints
 were inspected. This does not match the checked-out desktoptoodle evaluation
-(Ash: one key; root: zero keys).
+(Ash: one key; root: one narrowly scoped key).
 
-Therefore the live root keys are not evidence of a durable Arbor grant. A
-future activation of this checkout may remove them as part of normal
-declarative reconciliation. Do not activate a desktoptoodle generation until
-the operator has confirmed a physical-console or other out-of-band recovery
-path and decided whether root SSH recovery is intended.
+The declared root key is an accepted temporary recovery path; root remains
+key-only and the private identity stays outside Git and the Nix store. Keep a
+physical-console or other out-of-band recovery path available during the
+first activation.
 
 ## Safe recovery checks
 
