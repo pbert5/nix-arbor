@@ -77,7 +77,9 @@ in
       message = "r640-0 must allow Mosh UDP 60000-61000 on tailscale0";
     }
     {
-      assertion = !(lib.elem moshPortRange config.networking.firewall.allowedUDPPortRanges);
+      assertion = lib.all (
+        range: range.to < moshPortRange.from || range.from > moshPortRange.to
+      ) config.networking.firewall.allowedUDPPortRanges;
       message = "r640-0 must not allow the Mosh UDP range on every interface";
     }
   ];
