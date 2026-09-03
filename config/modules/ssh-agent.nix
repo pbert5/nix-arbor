@@ -50,7 +50,15 @@ in
       # This bounds how long an explicitly loaded key remains available.
       defaultMaximumIdentityLifetime = 8 * 60 * 60;
     };
-    systemd.user.services.ssh-agent.Service.RuntimeMaxSec = "12h";
+    systemd.user.services.ssh-agent.Service = {
+      RuntimeMaxSec = "12h";
+      # Home Manager's ssh-agent service does not manage the parent directory.
+      # Keep it private and remove only this service's socket before binding so
+      # a prior dead agent cannot prevent a restart.
+      RuntimeDirectory = "arbor-ssh-agent";
+      RuntimeDirectoryMode = "0700";
+      ExecStartPre = "${pkgs.coreutils}/bin/rm -f -- %t/arbor-ssh-agent/socket";
+    };
   };
 
   environment.systemPackages = [ diagnose ];

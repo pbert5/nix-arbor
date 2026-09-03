@@ -26,9 +26,11 @@ The five aliases in the current matrix are an explicit allowlist. Every entry
 uses `IdentitiesOnly yes`, `IdentityAgent $SSH_AUTH_SOCK`,
 `AddKeysToAgent no`, `ForwardAgent no`, and one exact path from the checked-in
 allowlist under `/home/ash/.ssh/`; host assertions reject any other path. The
-agent service does not provision or load identities. Explicitly loaded keys
-expire after eight hours, and the lingering user service is restarted every
-twelve hours to clean up the agent and its socket. An operator or the runtime
+agent service does not provision or load identities. Its private runtime
+directory is managed by systemd; before each start, only the configured socket
+pathname is removed so a stale socket from a dead agent cannot prevent a
+restart. Explicitly loaded keys expire after eight hours, and the lingering
+user service is restarted every twelve hours. An operator or the runtime
 identity owner must make the matching private key available and load it with
 `ssh-add`.
 
