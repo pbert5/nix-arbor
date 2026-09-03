@@ -1,6 +1,10 @@
 { config, lib, ... }:
 {
-  imports = [ ./graphics.nix ];
+  imports = [
+    ./gaming-bitlocker.nix
+    ./graphics.nix
+    ./peripherals.nix
+  ];
 
   boot.loader.systemd-boot.enable = true;
   boot.loader.systemd-boot.configurationLimit = 20;
@@ -19,4 +23,17 @@
       message = "desktoptoodle must authorize the r640 machine public SSH key for Ash";
     }
   ];
+
+  # This is the existing, narrowly scoped machine recovery grant.  It is
+  # public-key-only; no private key or root password is declared here.
+  users.users.root.openssh.authorizedKeys.keys = (import ../../access).r640EvolverDeployerKeys;
+
+  arbor.desktoptoodle.gamingBitlocker = {
+    enable = true;
+    device = "/dev/disk/by-uuid/657ff291-de57-40c0-80d9-9362895587e8";
+    keyFiles = [
+      "/home/ash/.config/bitlocker-recovery/E07B243F.recovery"
+      "/home/ash/.config/bitlocker-recovery/0EE6F93C.recovery"
+    ];
+  };
 }

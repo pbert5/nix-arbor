@@ -189,5 +189,10 @@ in
         wantedBy = [ "multi-user.target" ];
       }
     ];
+
+    # Steam itself remains available even while the optional BitLocker device
+    # is locked or absent.  Enabling the mount integration is a separate,
+    # operator-gated decision after its device and runtime key paths are known.
+    home-manager.users.ash.ashesDesktopApps.sets = lib.mkAfter [ "desktop.gaming" ];
   };
 }
