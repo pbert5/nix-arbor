@@ -85,6 +85,9 @@
     enable = true;
     enableUserSlices = true;
   };
+  # The host may still contain the former Home Manager btop file. Preserve it
+  # once during ownership transfer instead of making activation fail.
+  home-manager.backupFileExtension = "nix-arbor-backup";
 
   # Preserve the access path during pressure without making every process
   # unkillable.  Docker owns the eVOLVER edge service lifecycle.
