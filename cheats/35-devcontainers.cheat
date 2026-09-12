@@ -1,0 +1,88 @@
+% devcontainers, containers, development
+
+# Dev Containers need a running Docker-compatible engine; verify the client and daemon separately
+docker version
+
+# Confirm the current account can use Docker without sudo
+docker info
+
+# Create the conventional configuration directory before adding devcontainer.json
+mkdir -p .devcontainer
+
+# Start or reuse the development container described by .devcontainer/devcontainer.json
+devcontainer up --workspace-folder .
+
+# Print the resolved container id and configuration details after startup
+devcontainer read-configuration --workspace-folder .
+
+# Run a command in the configured workspace container without opening an interactive shell
+devcontainer exec --workspace-folder . -- npm test
+
+# Open an interactive shell in the workspace container
+devcontainer exec --workspace-folder . -- bash
+
+# VS Code: use “Dev Containers: Reopen in Container” after adding or changing configuration
+# VS Code: use “Dev Containers: Rebuild and Reopen in Container” after Dockerfile, feature, or build changes
+
+# A minimal devcontainer.json needs an image or build definition; keep the workspace folder mounted by default
+# Example fields: { "name": "project", "image": "mcr.microsoft.com/devcontainers/base:ubuntu" }
+
+# Use build when the project owns its image; context is relative to devcontainer.json unless overridden
+# Example fields: { "build": { "dockerfile": "Dockerfile", "context": ".." } }
+
+# Keep editor-only tooling declarative with customizations.vscode.extensions and customizations.vscode.settings
+# Put container-wide setup in postCreateCommand; it runs after creation, not on every editor attach
+
+# Use remoteUser to avoid root-owned files in the bind-mounted workspace
+# Example field: { "remoteUser": "vscode" }
+
+# Forward a service port to the host and give VS Code a predictable browser behavior
+# Example fields: { "forwardPorts": [3000], "portsAttributes": { "3000": { "onAutoForward": "openBrowser" } } }
+
+# Add a named volume for a dependency cache; named volumes survive container rebuilds
+# Example field: { "mounts": ["source=project-npm-cache,target=/home/vscode/.npm,type=volume"] }
+
+# Inspect the generated container, including labels that identify its workspace
+docker ps --all --filter label=devcontainer.local_folder="$PWD"
+
+# List all containers before deleting anything; devcontainer names normally include “devcontainer”
+docker ps --all
+
+# View startup output from a selected container when creation or lifecycle hooks fail
+docker logs <container>
+
+# Open a root shell only for diagnosis; use the configured remote user for normal work
+docker exec --interactive --tty --user root <container> bash
+
+# Inspect mounts, image, user, and environment without entering the container
+docker inspect <container>
+
+# Watch CPU, memory, and process use for the selected development container
+docker stats <container>
+
+# Rebuild the development container without cached image layers when diagnosing build problems
+devcontainer build --workspace-folder . --no-cache
+
+# Stop a no-longer-needed development container; this preserves it for later inspection
+docker stop <container>
+
+# Remove a stopped development container after checking its name and mounts
+docker rm <container>
+
+# Remove an unused named cache volume only after checking consumers; this deletes the cached contents
+docker volume ls
+
+# Inspect a named volume to confirm its mount point and labels before removal
+docker volume inspect <volume>
+
+# Never put credentials in devcontainer.json, a Dockerfile ARG, or image layers
+# Pass required secrets through the editor/CLI environment, a secret mount, or an uncommitted local environment file
+
+# Prefer a non-root remoteUser, minimal capabilities, and explicit port forwarding for shared development environments
+# Avoid mounting the Docker socket unless the container genuinely needs to control the host daemon
+
+# For Nix projects, keep reproducible tools in flake devShells and enter them inside the container
+nix develop
+
+# Check a Nix flake from inside the development container
+nix flake check
