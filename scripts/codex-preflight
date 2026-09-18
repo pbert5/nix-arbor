@@ -117,8 +117,14 @@ if [[ -n $repo_root ]]; then
   else
     record flake NOT_READY "flake.nix is missing"
   fi
-  submodule_state=$(git -C "$repo_root" submodule status --recursive 2>/dev/null || true)
-  if [[ $submodule_state == *$'\n-'* || $submodule_state == -* ]]; then
+  if submodule_state=$(git -C "$repo_root" submodule status --recursive 2>/dev/null); then
+    submodule_status_rc=0
+  else
+    submodule_status_rc=$?
+  fi
+  if ((submodule_status_rc != 0)); then
+    record submodules NOT_READY "git submodule status --recursive failed (exit $submodule_status_rc)"
+  elif [[ $submodule_state == *$'\n-'* || $submodule_state == -* ]]; then
     record submodules RECOMMENDATION "one or more submodules are uninitialized"
   elif [[ $submodule_state == *$'\n+'* || $submodule_state == +* ]]; then
     record submodules RECOMMENDATION "one or more submodules differ from the recorded commit"
