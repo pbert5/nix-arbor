@@ -2,7 +2,12 @@
 
 Planning snapshot: 2026-09-18.
 
-This document records the current implementation and bring-up state for the Arbor infrastructure carried on `arbor-infra-dev`. GitHub tracking issue [#9](https://github.com/pbert5/nix-arbor/issues/9) is the durable execution contract. Workstream issues [#10](https://github.com/pbert5/nix-arbor/issues/10) through [#16](https://github.com/pbert5/nix-arbor/issues/16) own the remaining work.
+This document records the current implementation and bring-up state for the
+Arbor infrastructure carried into the WS1 reconciliation branch. GitHub
+tracking issue [#9](https://github.com/pbert5/nix-arbor/issues/9) is the durable
+execution contract. Workstream issues [#10](https://github.com/pbert5/nix-arbor/issues/10)
+through [#16](https://github.com/pbert5/nix-arbor/issues/16) own the remaining
+work.
 
 ## Executive summary
 
@@ -10,13 +15,13 @@ Arbor Manager and Arbor Registry are no longer missing architectural foundations
 
 The remaining work is primarily production integration:
 
-1. reconcile the development branch with current `main`
-2. finish runtime secret consumer delivery and production OpenBao auth
-3. bootstrap two real Registry participants on the private network
-4. establish accepted live relationships and service/endpoint discovery
-5. execute one harmless real remote deployment through Arbor Manager
-6. prove live identity-generation recovery
-7. integrate, independently review, audit GitHub relationships, and promote the result
+1. finish runtime secret consumer delivery and production OpenBao auth
+2. bootstrap two real Registry participants on the private network
+3. establish accepted live relationships and service/endpoint discovery
+4. execute one harmless real remote deployment through Arbor Manager
+5. prove live identity-generation recovery
+6. complete final integration, independent review, GitHub relationship audit,
+   and authorized promotion
 
 A cluster should not be described as operational until the live acceptance conditions in issue #9 are satisfied.
 
@@ -24,15 +29,17 @@ A cluster should not be described as operational until the live acceptance condi
 
 ### Nix Arbor
 
-At the planning snapshot:
+WS1 reconciliation provenance:
 
 - `main`: `9c5f2b4f37db7b9d336e70db498e3d272eba1314`
-- `arbor-infra-dev`: `92eefd1359d9faaeca73a8033ca59d456bb19786`
+- `arbor-infra-dev`: `3f1349c138cb0cc91abfc419112cd35965be12ef`
 - merge base: `ae1f29cc82f3ea6fe93f02769930e6c5cd08c6c3`
-- status: diverged
-- development branch: 8 commits ahead, 33 commits behind `main`
+- reconciled WS1 merge checkpoint: `9239a61cd34db8538eb06f1ab898b5d883236f86`
+- final reviewed branch: `agent/workstream-owner/ws1-arbor-main-reconcile`
+- draft PR: #18
 
-The branch must be reconciled deliberately. Do not force-reset, blindly rebase, or resolve conflicts with blanket ours/theirs.
+The WS1 branch is the reviewed integration candidate and retains two-parent
+ancestry. It does not authorize a default-branch merge or live activation.
 
 ### Arbor Manager
 
