@@ -16,6 +16,36 @@ belong in independent flakes and repositories.
 - Keep changes scoped to the request. Do not silently change architecture or
   port whole subsystems from a reference repository.
 
+## Execution contract
+
+Substantial work is run by a thin primary executor over first-order
+workstream owners. The executor is deterministic: it owns the approved task
+graph, owner lifecycle, dependency transitions, concurrency and nested-capacity
+reserve, shared-resource locks, terminal-packet collection, predefined
+checker/reviewer/adviser routing, and durable status bookkeeping. It does not
+design, decompose ambiguity, implement, debug, review diffs, interpret
+failures, resolve semantic conflicts, or validate product claims. Those
+judgments belong to the named owner, specialist, reviewer, or human.
+
+An owner starts only from a `PROMPT_READY` issue/worktree/branch contract. The
+contract names the objective, approved approach, parent, base SHA, dependencies,
+ownership boundaries, shared resources, interfaces, acceptance and test
+contracts, review contract, integration target, and human-stop boundaries.
+Owners may implement, publish durable checkpoints, and use bounded depth-2
+specialists while reserving capacity for those specialists. They return one
+compact terminal packet and trust audit; raw transcripts are not executor
+state. Do not re-plan approved PROMPT_READY work unless new evidence invalidates
+the contract.
+
+The executor supervises passive-first: observe lifecycle/status, read existing
+output, inspect GitHub/PR/CI/artifact evidence, and wait. It sends input only
+for a concrete unblock, changed constraint, safety issue, requested
+clarification, or scope/resource conflict; routine status pings are forbidden.
+Merge, release, deployment, destructive migration, credential/account
+changes, and physical actuation remain human stops unless the issue contract
+explicitly grants the narrower authority. An open PR or pending human review
+is not itself a failure.
+
 ## Change and handoff expectations
 
 - Prefer native Nix and Git commands. Run the narrowest useful checks, then
