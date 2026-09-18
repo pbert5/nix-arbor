@@ -1,5 +1,13 @@
 let
   access = import ../access;
+  accountSecretPath =
+    { config, name, ... }:
+    if config.arbor.environment.secrets.provider == "external-files" then
+      config.arbor.environment.externalFiles.files.${name}.path
+    else
+      config.sops.secrets.${
+        if name == "ashPasswordHash" then "ash-password" else "madeline-password"
+      }.path;
 in
 {
   config,
@@ -26,18 +34,20 @@ in
       assertion =
         builtins.length config.users.users.ash.openssh.authorizedKeys.keys
         >= builtins.length access.operatorKeys
-        &&
-          builtins.length (
-            builtins.filter (
-              key:
-              lib.hasPrefix "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAbYbxGzSboO3llrd28uOHpybxTLrbDZN/QmY0crRxU0" key
-              || lib.hasPrefix "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINa/sAnukQD4gdu8zZ/m3+SavLJNrtjJcC4swgebGnZN" key
-            ) config.users.users.ash.openssh.authorizedKeys.keys
-          ) >= 1
+        && (
+          !lib.elem "deployment" config.arbor.access.authorizedKeySets
+          ||
+            builtins.length (
+              builtins.filter (
+                key:
+                lib.hasPrefix "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAbYbxGzSboO3llrd28uOHpybxTLrbDZN/QmY0crRxU0" key
+              ) config.users.users.ash.openssh.authorizedKeys.keys
+            ) == 1
+        )
         && lib.all (
           key: lib.hasPrefix "ssh-" key || lib.hasPrefix "ecdsa-" key
         ) config.users.users.ash.openssh.authorizedKeys.keys;
-      message = "Ash must retain the recovered public SSH key set without private material.";
+      message = "Ash must retain the public operator/deployment SSH keys without private material.";
     }
   ];
   programs.zsh.enable = true;
@@ -59,7 +69,11 @@ in
     openssh.authorizedKeys.keys = lib.concatMap (
       set: access."${set}Keys"
     ) config.arbor.access.authorizedKeySets;
-    hashedPasswordFile = lib.mkIf config.arbor.environment.secrets.enable config.sops.secrets.ash-password.path;
+    hashedPasswordFile = lib.mkIf config.arbor.environment.secrets.enable (accountSecretPath {
+      inherit config;
+      name = "ashPasswordHash";
+    });
+    # The provider-aware accountSecretPath above preserves external-file support.
   };
   users.users.madeline = {
     uid = 1001;
@@ -74,7 +88,10 @@ in
       "home-share"
     ];
     openssh.authorizedKeys.keys = [ ];
-    hashedPasswordFile = lib.mkIf config.arbor.environment.secrets.enable config.sops.secrets.madeline-password.path;
+    hashedPasswordFile = lib.mkIf config.arbor.environment.secrets.enable (accountSecretPath {
+      inherit config;
+      name = "madelinePasswordHash";
+    });
   };
   home-manager.users.ash = {
     imports = [ inputs.ashzsh.homeModules.default ];
