@@ -11,6 +11,13 @@ Start with [the operator guide](docs/operator.md). It covers the current
 `arbor-manager` CLI, offline inspection, access and external targets, private
 recovery-data handling, health checks, migration dispositions, and deployment.
 
+The current Arbor Manager + Arbor Registry bring-up status, verified branch and
+component provenance, remaining live-acceptance work, dependency graph, and
+GitHub workstream ledger are recorded in
+[docs/arbor-infra-current-state.md](docs/arbor-infra-current-state.md).
+The durable tracking issue is
+[#9](https://github.com/pbert5/nix-arbor/issues/9).
+
 For a development shell:
 
 ```sh
@@ -30,10 +37,10 @@ only after the operator checks in [docs/operator.md](docs/operator.md).
 
 ## Project map
 
-- `config/` — local machine facts and trusted composition
-- `packages/` — independently versioned component flakes
-- `docs/` — architecture, operations, and migration records
-- `cheats/` — Navi learning and command reference
+- `config/` - local machine facts and trusted composition
+- `packages/` - independently versioned component flakes
+- `docs/` - architecture, operations, migration records, and current Arbor bring-up state
+- `cheats/` - Navi learning and command reference
 
 The remote flake inputs are reproducible defaults. Local component checkouts
 under `packages/` are optional development overrides; see [DEV.md](DEV.md).
