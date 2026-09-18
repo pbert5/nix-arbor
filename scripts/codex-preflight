@@ -1,0 +1,237 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Read-only readiness probe for Codex work in this repository. Do not add
+# commands here that mutate the checkout, user configuration, credentials, or
+# hosts. The probe reports observations rather than attempting repairs.
+
+usage() {
+  cat <<'EOF'
+Usage: scripts/codex-preflight [options]
+
+Options:
+  --json              Emit one machine-readable JSON object.
+  --base SHA          Require HEAD to have SHA as an ancestor.
+  --head SHA          Require HEAD to equal SHA.
+  --require-github    Treat missing GitHub CLI/auth/API access as NOT_READY.
+  --check-flake       Run `nix flake check --no-update-lock-file`.
+  -h, --help          Show this help.
+
+Environment:
+  CODEX_SHARED_RESOURCES       Comma-separated resources claimed by this task.
+  CODEX_SHARED_RESOURCE_OWNER  Owner identifier for those resources.
+  CODEX_PREFLIGHT_SKIP_NIX     Set to 1 to skip the dev-shell probe.
+EOF
+}
+
+json_mode=0
+require_github=0
+check_flake=0
+expected_base=""
+expected_head=""
+
+while (($#)); do
+  case "$1" in
+    --json) json_mode=1 ;;
+    --require-github) require_github=1 ;;
+    --check-flake) check_flake=1 ;;
+    --base)
+      (($# >= 2)) || { echo "--base requires a SHA" >&2; exit 2; }
+      expected_base=$2; shift
+      ;;
+    --head)
+      (($# >= 2)) || { echo "--head requires a SHA" >&2; exit 2; }
+      expected_head=$2; shift
+      ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "unknown option: $1" >&2; usage >&2; exit 2 ;;
+  esac
+  shift
+done
+
+repo_root=""
+branch=""
+head=""
+overall="READY"
+declare -a names=()
+declare -a states=()
+declare -a details=()
+
+record() {
+  local name=$1 state=$2 detail=$3
+  names+=("$name")
+  states+=("$state")
+  details+=("$detail")
+  if [[ $state == NOT_READY ]]; then
+    overall=NOT_READY
+  elif [[ $state == RECOMMENDATION && $overall == READY ]]; then
+    overall=READY_WITH_RECOMMENDATIONS
+  fi
+}
+
+json_escape() {
+  local value=$1
+  value=${value//\\/\\\\}
+  value=${value//"/\\"}
+  value=${value//$'\n'/\\n}
+  value=${value//$'\r'/\\r}
+  printf '%s' "$value"
+}
+
+if repo_root=$(git rev-parse --show-toplevel 2>/dev/null); then
+  record repo READY "$repo_root"
+  head=$(git rev-parse HEAD 2>/dev/null || true)
+  branch=$(git symbolic-ref --quiet --short HEAD 2>/dev/null || printf detached)
+  [[ -n $head ]] || record git_head NOT_READY "unable to resolve HEAD"
+  if [[ $branch == detached ]]; then
+    record branch RECOMMENDATION "detached HEAD; create a task branch before mutation"
+  else
+    record branch READY "$branch"
+  fi
+  if [[ -n $expected_head ]]; then
+    [[ $head == "$expected_head" ]] && record expected_head READY "$head" || record expected_head NOT_READY "expected $expected_head, found $head"
+  fi
+  if [[ -n $expected_base ]]; then
+    if git merge-base --is-ancestor "$expected_base" HEAD 2>/dev/null; then
+      record expected_base READY "$expected_base is an ancestor of HEAD"
+    else
+      record expected_base NOT_READY "$expected_base is not an ancestor of HEAD"
+    fi
+  else
+    record expected_base RECOMMENDATION "base SHA not supplied; pass --base SHA for a reproducible launch"
+  fi
+  if [[ -n $(git status --porcelain) ]]; then
+    record worktree RECOMMENDATION "working tree has uncommitted changes"
+  else
+    record worktree READY "clean"
+  fi
+else
+  record repo NOT_READY "not inside a Git worktree"
+fi
+
+if [[ -n $repo_root ]]; then
+  agents_file="$repo_root/AGENTS.md"
+  [[ -r $agents_file ]] && record agents READY "$agents_file" || record agents NOT_READY "root AGENTS.md is unreadable or missing"
+  if [[ -f "$repo_root/flake.nix" ]]; then
+    record flake READY "flake.nix present"
+  else
+    record flake NOT_READY "flake.nix is missing"
+  fi
+  submodule_state=$(git -C "$repo_root" submodule status --recursive 2>/dev/null || true)
+  if [[ $submodule_state == *$'\n-'* || $submodule_state == -* ]]; then
+    record submodules RECOMMENDATION "one or more submodules are uninitialized"
+  elif [[ $submodule_state == *$'\n+'* || $submodule_state == +* ]]; then
+    record submodules RECOMMENDATION "one or more submodules differ from the recorded commit"
+  else
+    record submodules READY "initialized and at recorded commits"
+  fi
+else
+  record agents NOT_READY "repository root unavailable"
+  record flake NOT_READY "repository root unavailable"
+  record submodules RECOMMENDATION "repository root unavailable"
+fi
+
+if command -v codex >/dev/null 2>&1; then
+  codex_version=$(codex --version 2>/dev/null | head -n 1 || true)
+  record codex READY "${codex_version:-codex available}; runtime capability is not fully observable"
+else
+  record codex RECOMMENDATION "codex executable is unavailable in PATH"
+fi
+
+if [[ -n $repo_root && -r "$repo_root/.codex/config.toml" ]]; then
+  configured_threads=$(awk -F= '/^[[:space:]]*max_concurrent_threads_per_session[[:space:]]*=/{gsub(/[[:space:]]/, "", $2); print $2; exit}' "$repo_root/.codex/config.toml")
+  record codex_config READY "project config present${configured_threads:+; configured concurrency $configured_threads (runtime limit may differ)}"
+else
+  record codex_config RECOMMENDATION "project Codex config is unavailable"
+fi
+
+project_roles=0
+[[ -d "$repo_root/.codex/agents" ]] && project_roles=$(find "$repo_root/.codex/agents" -maxdepth 1 -type f -name '*.toml' | wc -l | tr -d ' ')
+codex_home=${CODEX_HOME:-${HOME:-}/.codex}
+personal_roles=0
+[[ -d "$codex_home/agents" ]] && personal_roles=$(find "$codex_home/agents" -maxdepth 1 -type f -name '*.toml' | wc -l | tr -d ' ')
+if ((project_roles > 0 || personal_roles > 0)); then
+  record roles READY "project roles: $project_roles; personal roles: $personal_roles"
+else
+  record roles RECOMMENDATION "no project or personal role templates are visible"
+fi
+
+if command -v nix >/dev/null 2>&1; then
+  if [[ ${CODEX_PREFLIGHT_SKIP_NIX:-0} == 1 ]]; then
+    record nix RECOMMENDATION "Nix probe skipped by CODEX_PREFLIGHT_SKIP_NIX"
+  elif nix develop --command true >/dev/null 2>&1; then
+    record nix READY "nix develop --command true succeeded"
+  else
+    record nix NOT_READY "nix develop --command true failed"
+  fi
+else
+  record nix NOT_READY "nix executable is unavailable in PATH"
+fi
+
+if command -v rtk >/dev/null 2>&1; then
+  record rtk READY "rtk available (optional output wrapper)"
+else
+  record rtk RECOMMENDATION "rtk unavailable; optional"
+fi
+
+if command -v gh >/dev/null 2>&1; then
+  if gh auth status >/dev/null 2>&1; then
+    record github_auth READY "gh auth status succeeded; token value not inspected"
+    if gh api user --silent >/dev/null 2>&1; then
+      record github_api READY "GitHub API read succeeded; response discarded"
+    elif ((require_github)); then
+      record github_api NOT_READY "GitHub API read failed"
+    else
+      record github_api RECOMMENDATION "GitHub API read failed"
+    fi
+  elif ((require_github)); then
+    record github_auth NOT_READY "gh is present but authenticated access failed"
+    record github_api NOT_READY "GitHub API not attempted because auth failed"
+  else
+    record github_auth RECOMMENDATION "gh is present but authenticated access failed"
+    record github_api RECOMMENDATION "GitHub API not attempted because auth failed"
+  fi
+elif ((require_github)); then
+  record github_auth NOT_READY "gh executable is unavailable in PATH"
+  record github_api NOT_READY "GitHub API unavailable because gh is missing"
+else
+  record github_auth RECOMMENDATION "gh executable is unavailable in PATH"
+  record github_api RECOMMENDATION "GitHub API unavailable because gh is missing"
+fi
+
+if [[ -n ${CODEX_SHARED_RESOURCES:-} && -z ${CODEX_SHARED_RESOURCE_OWNER:-} ]]; then
+  record shared_resources NOT_READY "resources are declared but CODEX_SHARED_RESOURCE_OWNER is unset"
+elif [[ -n ${CODEX_SHARED_RESOURCES:-} ]]; then
+  record shared_resources READY "declared resources have owner $CODEX_SHARED_RESOURCE_OWNER"
+else
+  record shared_resources RECOMMENDATION "no shared-resource claim supplied"
+fi
+record safety READY "diagnostic only; no credentials, hosts, hardware, or checkout state are mutated"
+
+if ((check_flake)); then
+  if nix flake check --no-update-lock-file >/dev/null 2>&1; then
+    record flake_check READY "nix flake check succeeded"
+  else
+    record flake_check NOT_READY "nix flake check failed"
+  fi
+fi
+
+if ((json_mode)); then
+  printf '{"classification":"%s","checks":[' "$overall"
+  for ((i = 0; i < ${#names[@]}; i++)); do
+    ((i)) && printf ','
+    printf '{"name":"%s","state":"%s","detail":"%s"}' \
+      "$(json_escape "${names[i]}")" "$(json_escape "${states[i]}")" "$(json_escape "${details[i]}")"
+  done
+  printf ']}\n'
+else
+  printf 'classification: %s\n' "$overall"
+  for ((i = 0; i < ${#names[@]}; i++)); do
+    printf '%-18s %-15s %s\n' "${names[i]}" "${states[i]}" "${details[i]}"
+  done
+fi
+
+if [[ $overall == NOT_READY ]]; then
+  exit 1
+fi
+exit 0
