@@ -1,9 +1,6 @@
 { ... }:
 {
-  imports = [
-    ../../access/module.nix
-    ../../users
-  ];
+  imports = [ ../../users ];
 
   arbor.access.authorizedKeySets = [
     "operator"

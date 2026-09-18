@@ -3,8 +3,6 @@ let
   access = import ../../access;
 in
 {
-  imports = [ ../../access/module.nix ];
-
   networking.hostName = "canoodle";
   networking.networkmanager.enable = true;
 
