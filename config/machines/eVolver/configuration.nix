@@ -8,7 +8,6 @@
 {
   imports = [
     ../../access/module.nix
-    ../../env.nix
     ../../users/default.nix
     inputs.sops-nix.nixosModules.sops
   ];
