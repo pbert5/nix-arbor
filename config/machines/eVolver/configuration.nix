@@ -40,6 +40,10 @@
     docker-compose
     devcontainer
     uv
+    nodejs
+    pkgs.codex
+    rtk
+    inputs.codex-switch.packages.${pkgs.system}.codex-switch
     jq
     ripgrep
     fd
