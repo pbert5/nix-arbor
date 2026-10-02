@@ -35,26 +35,24 @@ repository's scope.
 
 ## Prompt capsules and `/goal`
 
-For substantial work, the prompt-loader (or the owner working from the issue)
-hydrates a compact capsule only after reading the closest `AGENTS.md`. A
-capsule contains the current objective, approved design, parent, base/head,
+For substantial work, start from the current issue contract and the closest
+`AGENTS.md`. Keep the working context to the objective, approved design,
 dependencies, ownership and shared-resource boundaries, interfaces,
-acceptance/test/review contracts, integration target, and human stops. Broad
-GitHub/history retrieval belongs in the loader or a bounded scout; do not dump
-large issue histories, logs, or transcripts into the executor context.
+acceptance/test/review contracts, integration target, and human stops. Read
+broader history only when needed; do not dump large issue histories, logs, or
+transcripts into the working context. Reusable prompt-loader and executor
+roles belong in personal Codex configuration, not this repository.
 
 `PROMPT_READY` is the design-before-prompt gate. Do not launch implementation
-from an ambiguous issue and do not re-plan an approved capsule without fresh
-evidence. The primary executor receives capsules, stream states, and terminal
-packets—not raw owner transcripts—and keeps nested capacity available for the
-owner’s bounded depth-2 specialists.
+from an ambiguous issue and do not re-plan an approved contract without fresh
+evidence. The primary executor receives compact contracts, stream states, and
+terminal packets—not raw owner transcripts—and accounts for nested capacity
+according to the live runtime and task contract.
 
-Use Codex `/goal` for the persistent, verified end state of a long-running
-session. It is distinct from mutable issue decomposition: the issue may gain
-checkpoints, blockers, or workstream details while `/goal` remains the tested
-completion contract. Close the goal only after the acceptance evidence and
-required review/integration conditions are satisfied; otherwise preserve the
-exact next state and blocker in the terminal packet.
+Use Codex `/goal` for a persistent, verified end state when the task uses one.
+Keep GitHub issues and Session handoffs as the durable project ledger. Close a
+goal only after its acceptance evidence and required review/integration
+conditions are satisfied; otherwise record the exact next state and blocker.
 
 ## Passive supervision and safety
 

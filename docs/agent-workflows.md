@@ -43,20 +43,17 @@ contains all of the following:
 - acceptance, test, and review contracts; and
 - human-stop boundaries.
 
-The prompt-loader retrieves this minimum current capsule from GitHub and the
-relevant repository instructions. It may perform broad history/GitHub
-retrieval, but passes the executor and owner compact current facts rather than
-raw histories or logs. A PROMPT_READY owner executes the approved contract;
-fresh evidence that invalidates it is reported as a blocker for an explicit
-decision, not silently re-planned.
+The prompt-loader may retrieve broad history and then pass compact current
+facts rather than raw logs. A PROMPT_READY owner executes the approved
+contract; fresh evidence that invalidates it is reported for resolution rather
+than silently re-planned.
 
-The first-order owner owns one issue, worktree, branch, and (normally) early
-draft PR. It may implement directly and may reserve bounded depth-2 capacity
-for scouts, advisers, implementers, verifiers, reviewers, or repair workers.
-It owns local verification and review/repair, durable checkpoints, and the
-terminal packet. The thin primary executor routes only predefined nodes and
-records state; it does not become the architect, implementer, debugger, or
-reviewer.
+The first-order owner owns its issue, worktree, branch, implementation,
+verification, review/repair, durable checkpoints, and terminal packet. It may
+use bounded specialists when the task contract and live runtime allow it. The
+primary executor owns cross-workstream dependencies, lifecycle, concurrency,
+and durable orchestration state; it does not implement or review stream-local
+changes.
 
 Codex Cloud environments can select `scripts/codex-setup` as their supported
 setup script. It initializes direct submodules and evaluates the dev shell
@@ -67,122 +64,24 @@ If a child repository has its own valid
 `.gitmodules`, initialize that child recursively with
 `git -C packages/<component> submodule update --init --recursive`.
 
-## Dependency-aware delegation
+## Project roles and delegation
 
-For any substantial task, the approved design should include a lightweight,
-ephemeral task graph instead of doing the whole task serially. Claude agents
-should apply the same model when their current agent system supports
-delegation. The thin executor keeps the approved graph in session state; no
-persistent task database is needed.
+Stable, reusable Codex roles (including prompt loaders, executors, owners,
+implementers, verifiers, and reviewers) belong in personal Codex configuration.
+This repository registers only the Nix specialist and integration-test roles
+under `.codex/agents/`, `.agents/roles/`, and `.claude/agents/`; they do not
+define a generic execution topology.
 
-Classify each task as one of:
+Use delegation only when the task contract and live client support it. Treat
+the current runtime concurrency and depth as capabilities to observe, not
+limits to infer from repository configuration. Keep mutable work isolated to
+one branch and worktree. Use a non-mutating mode or isolated worktree for
+checks that can change caches, submodules, generated files, or lock files.
 
-- `READY`: all prerequisites are complete and a worker can start now.
-- `BLOCKED`: waiting on named prerequisite tasks; keep it in a queue.
-- `INTEGRATION`: authorized owner or human-owned composition/boundary work after implementation.
-- `REVIEW`: independent adversarial inspection near the end.
-- `VALIDATION`: focused or final checks against the integrated result.
-
-After a graph is approved, the executor identifies READY tasks and dispatches
-independent work concurrently. When an owner finishes, it consumes the
-terminal packet, updates the graph, and immediately dispatches newly
-unblocked tasks. Architecture, decomposition, semantic decisions, integration
-preparation, and synthesis belong to the named owner or human authority, not
-the executor. Do not create busy-work merely to fill a slot: useful bounded
-work takes priority over maximizing concurrency. Do not wait for an entire
-wave when one completed prerequisite already unblocks useful work.
-
-For each graph entry, track at least its task ID, state, prerequisites, owner,
-write set/worktree (if mutable), and deliverable or validation evidence. A
-failed prerequisite blocks its dependents until the authorized owner or human
-repairs, replaces, or cancels it; record that decision in the handoff.
-
-There are two independent forms of concurrency:
-
-1. Read-only reasoning concurrency covers repository audits, upstream research,
-   test inventories, failure investigation, and reviews. These agents return
-   findings and do not need separate worktrees when their commands are
-   non-mutating.
-2. Mutable implementation concurrency covers agents that edit files. One
-   mutable task owns one branch and one worktree. Partition write sets to avoid
-   overlap; serialize tasks that must change the same files, then integrate
-   branches in dependency order rather than completion order.
-
-Tests and investigations that can update ignored files, build outputs,
-submodule state, caches, or locks are mutable for isolation purposes even when
-they do not commit source changes; run them in a dedicated worktree or use a
-strictly non-mutating mode.
-
-The workstream owner remains responsible for its bounded objective, local
-implementation, review/repair, and evidence. The executor only performs the
-mechanical lifecycle and routing defined by the approved graph. Use the
-specialized roles deliberately: architect/researcher for discovery,
-implementer for isolated changes, nix-specialist for Nix semantics,
-integration-test for workflow checks, and reviewer for independent challenge.
-
-Prefer several waves when the task warrants it:
-
-```text
-discovery -> implementation -> integration -> independent review/validation
-         -> targeted fixes -> final validation -> merge
-```
-
-Review and validation should fan out again near the end. The reviewer should
-not be the agent that implemented the reviewed change when an independent
-context is available.
-
-### Example task graph
-
-For a hypothetical task, “Add a new machine deployment subsystem”:
-
-```text
-DISCOVERY WAVE (all READY, concurrent)
-A  inspect Arbor Manager
-B  inspect legacy deployment code
-C  research native nixos-rebuild deployment
-D  audit existing tests
-
-IMPLEMENTATION WAVE
-E  deployment library          <- A + B + C
-F  test fixtures                <- A + D
-G  documentation                <- C
-
-INTEGRATION
-H  integrate deployment + tests <- E + F + G
-
-REVIEW / VALIDATION (concurrent, after H)
-I  independent reviewer
-J  Nix specialist review
-K  integration tests
-
-FINISH
-L  targeted fixes               <- I + J + K
-M  final validation             <- L
-N  merge                        <- M
-```
-
-Tasks E, F, and G enter the waiting queue initially and are dispatched as
-their prerequisites complete. If only A and D finish, F becomes `READY` even
-while E remains `BLOCKED`; the executor should dispatch F immediately.
-
-### Delegation and handoff
-
-Use the small role briefs in `.agents/roles/`. Claude wrappers live in
-`.claude/agents/`, and Codex custom agents are registered under `.codex/agents/`.
-
-A normal handoff includes branch, worktree path, commit SHA(s), summary, files
-changed, validation, known issues, and whether it is ready for review. A
-reviewer should inspect `git diff <base>...<branch>` and the branch's checks
-before cherry-picking or merging.
-
-Concurrency is an observed runtime capability, not a promised topology. The
-executor must retain an explicit nested-capacity reserve before dispatching
-first-order owners; an owner may consume only its bounded depth-2 allowance.
-Do not invent project configuration keys for DAGs or scheduling.
-
-Claude should follow the same dependency-aware delegation and safe worktree
-principles described above where its current agent system supports them,
-without copying Codex-specific configuration or mechanisms.
+A handoff records the branch/worktree, base and final commit, summary,
+validation, review outcome, blockers, follow-ups, and exact next action. An
+independent reviewer inspects the assigned diff and evidence; the owner repairs
+blocking findings and requests re-review before returning a terminal packet.
 
 ### Component ownership and pins
 
@@ -193,18 +92,11 @@ pins component `main`; root `arbor-infra-dev` pins component `arbor-infra-dev`.
 Remote flake inputs remain authoritative for normal builds; initialized
 submodules are selected locally only with `--override-input`.
 
-## State machine and supervision
+## Lifecycle and supervision
 
-Use these machine-actionable states:
-
-`READY` -> `RUNNING` -> `VERIFYING` -> `READY_FOR_REVIEW` -> `REVIEWING` ->
-`READY_FOR_INTEGRATION` -> `INTEGRATING` -> `VALIDATING` -> `DONE`.
-
-An authorized transition may instead enter `BLOCKED_DEPENDENCY`,
-`BLOCKED_SHARED_RESOURCE`, `BLOCKED_ENVIRONMENT`, `BLOCKED_AUTHORIZATION`,
-`BLOCKED_AMBIGUOUS`, `BLOCKED_EXTERNAL`, or `BLOCKED_DESTRUCTIVE`. The owner
-provides evidence and the executor records the deterministic transition;
-semantic decisions are delegated to the responsible owner/reviewer or human.
+Track the lifecycle states needed by the active workstream. Record blockers
+with evidence and name the authority or dependency needed to resolve them;
+repository guidance does not prescribe a universal state machine.
 
 Supervision is passive-first: observe lifecycle and status, read already
 available output, inspect GitHub/PR/CI/artifacts, and wait. Do not send routine

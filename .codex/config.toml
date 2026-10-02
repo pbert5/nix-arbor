@@ -3,9 +3,8 @@
 # AGENTS.md is the policy source; `nix develop` is the canonical environment.
 
 [agents]
-# Do not turn this project file into a fixed topology or consume the nested
-# delegation reserve. The primary executor observes the live runtime cap and
-# reserves capacity before an owner delegates depth-2 specialists.
+# Do not turn this project file into a fixed execution topology. Follow the
+# active task contract and observed runtime capabilities for delegation.
 enabled = true
 
 [agents.nix-specialist]

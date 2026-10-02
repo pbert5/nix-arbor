@@ -69,21 +69,20 @@ is not itself a failure.
   files, validation, known issues, and review readiness. See
   `docs/agent-workflows.md`.
 
-## Subagent execution
+## Delegation and project roles
 
-- For substantial tasks, the owning agent constructs a dependency graph, fans
-  out independent ready work to focused subagents, retains dependent work in a
-  waiting queue, and dispatches it as prerequisites complete.
-- Keep useful bounded work flowing when ready; continuously synthesize findings
-  and retain architecture, integration, and final decisions in the owning
-  session. Use the repository roles deliberately rather than spawning generic
-  clones.
-- Read-only research, testing, and review agents may share repository
-  visibility only when their commands are non-mutating. Give tests or tools
-  that may change checkout state, caches, submodules, or generated files an
-  isolated worktree. Every concurrent mutable implementation task gets its own
-  `agent/<agent-or-role>/<task-slug>` branch and worktree; never let mutable
-  agents edit the same checkout concurrently.
+- Follow the live task contract for delegation, concurrency, model, and depth;
+  repository files do not promise runtime capabilities or impose a fixed task
+  graph.
+- Keep stable, reusable Codex roles in the user's personal Codex configuration.
+  Project `.codex/agents` contains only Nix Arbor-specific roles: Nix semantics
+  and repository integration validation.
+- Use delegation only when the active agent runtime supports it and the task
+  contract permits it. Every concurrent mutable task gets its own
+  `agent/<agent-or-role>/<task-slug>` branch and worktree. Read-only reviewers
+  may inspect the assigned branch without editing it.
+- Preserve the assigned worktree boundary for any check that can change
+  checkout state, caches, submodules, or generated files.
 
 Nix teaching material belongs in `cheats/` and `docs/`, not in this durable
 repository policy.
