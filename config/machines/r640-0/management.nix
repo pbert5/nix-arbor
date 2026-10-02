@@ -107,9 +107,16 @@ in
     script = ''
       set -eu
       destination=/home/madeline/flake
-      target=/home/ash/flake
+      target=/home/ash/flake/projects/nix-arbor
       if [ -L "$destination" ]; then
-        [ "$(readlink "$destination")" = "$target" ] || echo "leaving conflicting symlink $destination"
+        current=$(readlink "$destination")
+        if [ "$current" = "$target" ]; then
+          :
+        elif [ "$current" = /home/ash/flake ]; then
+          ln -sfn -- "$target" "$destination"
+        else
+          echo "leaving conflicting symlink $destination"
+        fi
       elif [ -e "$destination" ]; then
         echo "leaving existing path $destination"
       elif [ -d "$target" ]; then
