@@ -43,7 +43,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-image-build-${{ github.repository }}-${{ github.sha }}
+  # Cache writes share one trusted-main tag per caller repository/image.
+  # Serialize source revisions from this repository to prevent concurrent retargets.
+  group: ci-image-build-${{ github.repository }}
   cancel-in-progress: false
 
 jobs:
