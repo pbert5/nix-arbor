@@ -74,6 +74,38 @@ jobs:
           submodules: recursive
           persist-credentials: false
 
+      - name: Guard producer contract checkout path
+        shell: bash
+        run: |
+          set -euo pipefail
+          contract_checkout="$GITHUB_WORKSPACE/.nix-arbor-workflow-contract"
+          [[ ! -e "$contract_checkout" && ! -L "$contract_checkout" ]]
+
+      - name: Check out the pinned reusable workflow source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .nix-arbor-workflow-contract
+          persist-credentials: false
+
+      - name: Stage producer-owned contract schemas
+        shell: bash
+        env:
+          WORKFLOW_REPOSITORY: ${{ job.workflow_repository }}
+          WORKFLOW_SHA: ${{ job.workflow_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$WORKFLOW_REPOSITORY" == pbert5/nix-arbor ]]
+          [[ "$WORKFLOW_SHA" =~ ^[0-9a-f]{40}$ ]]
+          contract_checkout="$GITHUB_WORKSPACE/.nix-arbor-workflow-contract"
+          contract_dir="$RUNNER_TEMP/ci-image-contract"
+          [[ -d "$contract_checkout" && ! -L "$contract_checkout" ]]
+          bash "$contract_checkout/scripts/stage-ci-image-contract.sh" \
+            "$contract_checkout" "$contract_dir" "$WORKFLOW_SHA"
+          rm -rf -- "$contract_checkout"
+          printf 'CI_IMAGE_CONTRACT_DIR=%s\n' "$contract_dir" >> "$GITHUB_ENV"
+
       - name: Prepare isolated Docker client configuration
         shell: bash
         run: |
@@ -114,7 +146,7 @@ jobs:
           [[ "$REGISTRY_PASSWORD" != *$'\n'* && "$REGISTRY_PASSWORD" != *$'\r'* ]]
           [[ "$REGISTRY_READER_PASSWORD" != *$'\n'* && "$REGISTRY_READER_PASSWORD" != *$'\r'* ]]
           jq -e --arg repo "$EXPECTED_REPOSITORY" \
-            --from-file "$GITHUB_WORKSPACE/schemas/ci-image-manifest-validation.jq" \
+            --from-file "$CI_IMAGE_CONTRACT_DIR/ci-image-manifest-validation.jq" \
             "$IMAGE_MANIFEST" >/dev/null
 
           image_count=$(jq '.images | length' "$IMAGE_MANIFEST")
@@ -259,7 +291,7 @@ jobs:
               --arg reference "$image_ref" \
               --arg pullReference "$pull_ref" \
               --arg digest "$digest" \
-              --from-file "$GITHUB_WORKSPACE/schemas/ci-image-evidence.jq" \
+              --from-file "$CI_IMAGE_CONTRACT_DIR/ci-image-evidence.jq" \
               > "$RUNNER_TEMP/ci-image-evidence/$name.json"
 
             if [[ "$VERIFY_CACHE" == true ]]; then

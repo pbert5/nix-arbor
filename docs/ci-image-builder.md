@@ -9,10 +9,17 @@ it does not use the physical host Docker socket.
 Call the workflow only from a protected trusted branch. The workflow rejects
 pull request events, mismatched caller repositories, non-protected refs, short
 source revisions, unapproved registry hostnames, and malformed inventories.
-Separate registry reader and writer credentials are passed as `workflow_call` secrets and are never
-written to a derivation, checkout, image build argument, or committed file.
-Only non-secret build arguments are allowed. Do not pass secret values through
-Docker build arguments or build contexts.
+Separate registry reader and writer credentials are passed as `workflow_call`
+secrets and are never written to a derivation, checkout, image build argument,
+or committed file. Only non-secret build arguments are allowed. Do not pass
+secret values through Docker build arguments or build contexts.
+
+The workflow checks out its own producer repository at the exact reusable
+workflow commit reported by `job.workflow_repository` and `job.workflow_sha`.
+It stages only the trusted validation/evidence schema files in runner temporary
+storage, verifies the checked out SHA, and removes that producer checkout
+before building. Consumer repositories need only provide their manifest and
+Dockerfiles; they do not need to copy Nix Arbor schema files.
 
 ## Consumer inventory
 
@@ -83,8 +90,9 @@ jobs:
       registry_password: ${{ secrets.PRIVATE_REGISTRY_WRITER_PASSWORD }}
 ```
 
-Configure those reader and writer secrets only for the protected environment/branch after WS-I
-has verified the private HTTPS endpoint, ACLs, and credentials. Never expose
+Configure those reader and writer secrets only for the protected
+environment/branch after WS-I has verified the private HTTPS endpoint, ACLs,
+and credentials. Never expose
 them to public-fork or pull-request workflows. The workflow itself accepts
 only `push` and `workflow_dispatch` on the configured protected branch.
 
