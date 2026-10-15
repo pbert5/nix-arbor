@@ -30,6 +30,10 @@ on:
         default: false
         type: boolean
     secrets:
+      registry_reader_username:
+        required: true
+      registry_reader_password:
+        required: true
       registry_username:
         required: true
       registry_password:
@@ -57,8 +61,6 @@ jobs:
     timeout-minutes: 90
     env:
       REGISTRY_HOST: ${{ inputs.registry_host }}
-      REGISTRY_USERNAME: ${{ secrets.registry_username }}
-      REGISTRY_PASSWORD: ${{ secrets.registry_password }}
       IMAGE_MANIFEST: ${{ inputs.manifest }}
       EXPECTED_REPOSITORY: ${{ inputs.repository }}
       SOURCE_SHA: ${{ github.sha }}
@@ -89,6 +91,8 @@ jobs:
       - name: Validate inventory and build immutable images
         shell: bash
         env:
+          REGISTRY_READER_USERNAME: ${{ secrets.registry_reader_username }}
+          REGISTRY_READER_PASSWORD: ${{ secrets.registry_reader_password }}
           REGISTRY_USERNAME: ${{ secrets.registry_username }}
           REGISTRY_PASSWORD: ${{ secrets.registry_password }}
         run: |
@@ -104,6 +108,11 @@ jobs:
           [[ "$IMAGE_MANIFEST" != /* && "$IMAGE_MANIFEST" != .. && "$IMAGE_MANIFEST" != ../* && "$IMAGE_MANIFEST" != */../* && "$IMAGE_MANIFEST" != */.. ]]
           [[ -r "$IMAGE_MANIFEST" ]]
           [[ -n "$REGISTRY_USERNAME" && -n "$REGISTRY_PASSWORD" ]]
+          [[ -n "$REGISTRY_READER_USERNAME" && -n "$REGISTRY_READER_PASSWORD" ]]
+          [[ "$REGISTRY_USERNAME" != *$'\n'* && "$REGISTRY_USERNAME" != *$'\r'* && "$REGISTRY_USERNAME" != *:* ]]
+          [[ "$REGISTRY_READER_USERNAME" != *$'\n'* && "$REGISTRY_READER_USERNAME" != *$'\r'* && "$REGISTRY_READER_USERNAME" != *:* ]]
+          [[ "$REGISTRY_PASSWORD" != *$'\n'* && "$REGISTRY_PASSWORD" != *$'\r'* ]]
+          [[ "$REGISTRY_READER_PASSWORD" != *$'\n'* && "$REGISTRY_READER_PASSWORD" != *$'\r'* ]]
           jq -e --arg repo "$EXPECTED_REPOSITORY" \
             --from-file "$GITHUB_WORKSPACE/schemas/ci-image-manifest-validation.jq" \
             "$IMAGE_MANIFEST" >/dev/null
@@ -119,17 +128,47 @@ jobs:
           git submodule status --recursive >> "$RUNNER_TEMP/ci-image-evidence/source.txt"
 
           metadata_dir=$(mktemp -d "$RUNNER_TEMP/build-metadata.XXXXXX")
+          # DOCKER_CONFIG is exported by the preceding setup step through GITHUB_ENV.
+          # shellcheck disable=SC2153
+          writer_auth="$DOCKER_CONFIG/registry-writer.curl"
+          reader_auth="$DOCKER_CONFIG/registry-reader.curl"
+          write_curl_auth() {
+            local destination=$1 username=$2 password=$3 escaped
+            escaped=${username//\\/\\\\}:${password//\\/\\\\}
+            escaped=${escaped//\"/\\\"}
+            printf 'user = "%s"\n' "$escaped" > "$destination"
+            chmod 0600 "$destination"
+          }
+          write_curl_auth "$writer_auth" "$REGISTRY_USERNAME" "$REGISTRY_PASSWORD"
+          write_curl_auth "$reader_auth" "$REGISTRY_READER_USERNAME" "$REGISTRY_READER_PASSWORD"
+          writer_host="$REGISTRY_HOST"
+          reader_host="${REGISTRY_HOST%:8443}"
           verify_builder=
           cleanup() {
             if [[ -n "$verify_builder" ]]; then
               docker buildx rm "$verify_builder" >/dev/null 2>&1 || true
             fi
             docker logout "$REGISTRY_HOST" >/dev/null 2>&1 || true
+            docker logout "$reader_host" >/dev/null 2>&1 || true
+            rm -f "$writer_auth" "$reader_auth"
             rm -rf "$metadata_dir"
           }
           trap cleanup EXIT
           printf '%s' "$REGISTRY_PASSWORD" | docker login "$REGISTRY_HOST" \
             --username "$REGISTRY_USERNAME" --password-stdin
+          printf '%s' "$REGISTRY_READER_PASSWORD" | docker login "$reader_host" \
+            --username "$REGISTRY_READER_USERNAME" --password-stdin
+
+          registry_head() {
+            local auth_file=$1 endpoint=$2 manifest_path=$3 headers_file=$4
+            curl --config "$auth_file" --silent --show-error --output /dev/null \
+              --dump-header "$headers_file" --write-out '%{http_code}' --head \
+              --header 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json' \
+              "https://$endpoint$manifest_path"
+          }
+          digest_header() {
+            awk 'BEGIN { IGNORECASE=1 } /^Docker-Content-Digest:/ { gsub("\\r", "", $2); print $2; exit }' "$1"
+          }
 
           while IFS= read -r image; do
             name=$(jq -r '.name' <<<"$image")
@@ -160,17 +199,21 @@ jobs:
               docker_args+=(--build-arg "$key=$value")
             done < <(jq -r '(.buildArgs // {}) | to_entries[] | @base64' <<<"$image")
 
-            # A replay may reuse the existing immutable artifact; normal runs
-            # refuse to retarget it. Registry reachability failures still fail
-            # the authenticated build/push below.
-            if docker buildx imagetools inspect "$image_ref" >/dev/null 2>&1; then
+            manifest_path="$artifact_path/manifests/sha-$SOURCE_SHA"
+            writer_headers="$metadata_dir/$name-writer.headers"
+            reader_headers="$metadata_dir/$name-reader.headers"
+            if ! status=$(registry_head "$writer_auth" "$writer_host" "$manifest_path" "$writer_headers"); then
+              echo "registry writer tag lookup failed: $image_ref" >&2
+              exit 1
+            fi
+            if [[ "$status" == 200 ]]; then
               [[ "$VERIFY_CACHE" == true ]] || {
                 echo "immutable image tag already exists: $image_ref" >&2
                 exit 1
               }
-              digest=$(docker buildx imagetools inspect "$image_ref" | sed -n 's/^Digest: //p' | head -n 1)
+              digest=$(digest_header "$writer_headers")
               [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
-            else
+            elif [[ "$status" == 404 ]]; then
               docker buildx build \
                 --file "$context/$dockerfile" \
                 --platform "$platforms" \
@@ -184,8 +227,21 @@ jobs:
                 "${docker_args[@]}" \
                 "$context"
               digest=$(jq -er '.["containerimage.digest"] | select(test("^sha256:[0-9a-f]{64}$"))' "$metadata_file")
+              if ! status=$(registry_head "$writer_auth" "$writer_host" "$manifest_path" "$writer_headers"); then
+                echo "registry writer post-push lookup failed: $image_ref" >&2
+                exit 1
+              fi
+              [[ "$status" == 200 && "$(digest_header "$writer_headers")" == "$digest" ]]
+            else
+              echo "registry writer tag lookup returned HTTP $status; refusing to publish" >&2
+              exit 1
             fi
 
+            if ! status=$(registry_head "$reader_auth" "$reader_host" "$manifest_path" "$reader_headers"); then
+              echo "registry reader digest lookup failed: $pull_ref" >&2
+              exit 1
+            fi
+            [[ "$status" == 200 && "$(digest_header "$reader_headers")" == "$digest" ]]
             docker buildx imagetools inspect --raw "$pull_ref@$digest" >/dev/null
             docker pull "$pull_ref@$digest" >/dev/null
             dockerfile_digest=$(sha256sum "$context/$dockerfile" | cut -d ' ' -f 1)

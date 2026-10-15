@@ -9,7 +9,7 @@ it does not use the physical host Docker socket.
 Call the workflow only from a protected trusted branch. The workflow rejects
 pull request events, mismatched caller repositories, non-protected refs, short
 source revisions, unapproved registry hostnames, and malformed inventories.
-Registry write credentials are passed as `workflow_call` secrets and are never
+Separate registry reader and writer credentials are passed as `workflow_call` secrets and are never
 written to a derivation, checkout, image build argument, or committed file.
 Only non-secret build arguments are allowed. Do not pass secret values through
 Docker build arguments or build contexts.
@@ -77,16 +77,23 @@ jobs:
       registry_host: r640-0.<tailnet-DNS-suffix>.ts.net:8443
       verify_cache: false
     secrets:
+      registry_reader_username: ${{ secrets.PRIVATE_REGISTRY_READER_USERNAME }}
+      registry_reader_password: ${{ secrets.PRIVATE_REGISTRY_READER_PASSWORD }}
       registry_username: ${{ secrets.PRIVATE_REGISTRY_WRITER_USERNAME }}
       registry_password: ${{ secrets.PRIVATE_REGISTRY_WRITER_PASSWORD }}
 ```
 
-Configure those secrets only for the protected environment/branch after WS-I
+Configure those reader and writer secrets only for the protected environment/branch after WS-I
 has verified the private HTTPS endpoint, ACLs, and credentials. Never expose
 them to public-fork or pull-request workflows. The workflow itself accepts
 only `push` and `workflow_dispatch` on the configured protected branch.
 
 ## Names and evidence
+
+The writer credential authenticates to port 8443 for pushes and cache writes;
+the separate read-only credential authenticates to the HTTPS reader on port
+443 for digest resolution and pulls. The workflow verifies the reader and
+writer endpoints independently.
 
 An artifact is published beneath the frozen registry artifact namespace as
 `<writer>/ci/<owner>/<repository>/<full-40-character-source-SHA>/<image>:sha-<full-SHA>`.
@@ -104,11 +111,13 @@ provenance and an SBOM; the job summary and 90-day workflow artifact retain the
 machine-readable evidence. These records establish source and digest linkage;
 they are not a cryptographic signature.
 
-The private registry does not enforce tag immutability. The workflow refuses
-to push when a source-SHA tag already exists and serializes builds for the
-same source revision. The registry writer credential remains scoped to the
-trusted builder runtime. If a push or registry lookup fails, the workflow
-fails without updating any consumer-facing mutable tag.
+The private registry does not enforce tag immutability. Before a push, the
+workflow uses the authenticated registry API and refuses to continue on any
+status other than a confirmed 404. It refuses to retarget an existing
+source-SHA tag, verifies the post-push digest at the writer endpoint, and
+resolves the same digest with the reader credential. Builds for the same
+source revision are serialized. If a push or registry lookup fails, the
+workflow fails without updating any consumer-facing mutable tag.
 
 ## Prewarm and recovery
 
