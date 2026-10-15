@@ -32,10 +32,13 @@ or cache behavior.
 The integration review findings RF-01 (untrusted fork jobs could target the
 runner labels) and RF-02 (cache writers could race across source revisions)
 have producer-owned repairs and independent producer re-reviews at the heads
-above. WS-I integration re-review remains pending. GitHub reports for the two
-private consumer repos on 2026-10-15 showed fork pull-request workflows,
-write tokens, and secrets disabled. Recheck those settings before enablement;
-Nix does not continuously monitor policy drift.
+above. WS-I integration re-review returned `PASS_WITH_FOLLOWUPS` on code head
+`ca97d96779bfd8e3e1990bee35c03e3481422f99`; it confirmed these repairs while
+leaving RF-03 exact rollback blocked on operator verification. That reviewer
+did not independently verify the GitHub setting reads or run tests/builds.
+GitHub reports for the two private consumer repos on 2026-10-15 showed fork
+pull-request workflows, write tokens, and secrets disabled. Recheck those
+settings before enablement; Nix does not continuously monitor policy drift.
 
 ## Software verification
 
