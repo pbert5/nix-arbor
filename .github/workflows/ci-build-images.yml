@@ -1,0 +1,245 @@
+name: Build and publish trusted OCI images
+
+on:
+  workflow_call:
+    inputs:
+      repository:
+        description: Exact owner/repository for this image inventory
+        required: true
+        type: string
+      manifest:
+        description: Repository-relative JSON file describing buildable images
+        required: true
+        type: string
+      runner_label:
+        description: Repository-specific isolated runner label from WS-A
+        required: true
+        type: string
+      registry_host:
+        description: Authorized writer hostname, including port 8443
+        required: true
+        type: string
+      protected_branch:
+        description: Branch allowed to write artifacts and remote cache
+        required: false
+        default: main
+        type: string
+      verify_cache:
+        description: Run a second build on a fresh BuildKit daemon and measure remote cache hits
+        required: false
+        default: false
+        type: boolean
+    secrets:
+      registry_username:
+        required: true
+      registry_password:
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-image-build-${{ github.repository }}-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: >-
+      github.repository == inputs.repository &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      github.ref == format('refs/heads/{0}', inputs.protected_branch)
+    runs-on:
+      - self-hosted
+      - linux
+      - x64
+      - r640-0
+      - ${{ inputs.runner_label }}
+    timeout-minutes: 90
+    env:
+      REGISTRY_HOST: ${{ inputs.registry_host }}
+      REGISTRY_USERNAME: ${{ secrets.registry_username }}
+      REGISTRY_PASSWORD: ${{ secrets.registry_password }}
+      IMAGE_MANIFEST: ${{ inputs.manifest }}
+      EXPECTED_REPOSITORY: ${{ inputs.repository }}
+      SOURCE_SHA: ${{ github.sha }}
+      PROTECTED_BRANCH: ${{ inputs.protected_branch }}
+      VERIFY_CACHE: ${{ inputs.verify_cache }}
+    steps:
+      - name: Check out the exact source revision
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Prepare isolated Docker client configuration
+        shell: bash
+        run: |
+          docker_config="$RUNNER_TEMP/arbor-docker-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          install -d -m 0700 "$docker_config"
+          printf 'DOCKER_CONFIG=%s\n' "$docker_config" >> "$GITHUB_ENV"
+
+      - name: Set up bounded BuildKit builder
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+        with:
+          driver: docker-container
+          driver-opts: image=moby/buildkit:v0.20.2
+          cleanup: true
+
+      - name: Validate inventory and build immutable images
+        shell: bash
+        env:
+          REGISTRY_USERNAME: ${{ secrets.registry_username }}
+          REGISTRY_PASSWORD: ${{ secrets.registry_password }}
+        run: |
+          set -euo pipefail
+          # Do not enable shell tracing: credentials and build inputs are runtime-only.
+          [[ "$GITHUB_EVENT_NAME" == push || "$GITHUB_EVENT_NAME" == workflow_dispatch ]]
+          [[ "$GITHUB_REF" == "refs/heads/$PROTECTED_BRANCH" ]]
+          [[ "$GITHUB_REPOSITORY" == "$EXPECTED_REPOSITORY" ]]
+          [[ "$VERIFY_CACHE" != true || "$GITHUB_EVENT_NAME" == workflow_dispatch ]]
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$GITHUB_SHA" == "$SOURCE_SHA" ]]
+          [[ "$REGISTRY_HOST" =~ ^r640-0\.[a-z0-9.-]+\.ts\.net:8443$ ]]
+          [[ "$IMAGE_MANIFEST" != /* && "$IMAGE_MANIFEST" != .. && "$IMAGE_MANIFEST" != ../* && "$IMAGE_MANIFEST" != */../* && "$IMAGE_MANIFEST" != */.. ]]
+          [[ -r "$IMAGE_MANIFEST" ]]
+          [[ -n "$REGISTRY_USERNAME" && -n "$REGISTRY_PASSWORD" ]]
+          jq -e --arg repo "$EXPECTED_REPOSITORY" \
+            --from-file "$GITHUB_WORKSPACE/schemas/ci-image-manifest-validation.jq" \
+            "$IMAGE_MANIFEST" >/dev/null
+
+          image_count=$(jq '.images | length' "$IMAGE_MANIFEST")
+          [[ "$image_count" -le 32 ]]
+          manifest_digest=$(sha256sum "$IMAGE_MANIFEST" | cut -d ' ' -f 1)
+          source_tree=$(git rev-parse "$SOURCE_SHA^{tree}")
+          mkdir -p "$RUNNER_TEMP/ci-image-evidence"
+          printf 'source repository: %s\nsource commit: %s\nsource tree: %s\nmanifest: %s\nmanifest sha256: %s\n' \
+            "$EXPECTED_REPOSITORY" "$SOURCE_SHA" "$source_tree" "$IMAGE_MANIFEST" "$manifest_digest" \
+            > "$RUNNER_TEMP/ci-image-evidence/source.txt"
+          git submodule status --recursive >> "$RUNNER_TEMP/ci-image-evidence/source.txt"
+
+          metadata_dir=$(mktemp -d "$RUNNER_TEMP/build-metadata.XXXXXX")
+          verify_builder=
+          cleanup() {
+            if [[ -n "$verify_builder" ]]; then
+              docker buildx rm "$verify_builder" >/dev/null 2>&1 || true
+            fi
+            docker logout "$REGISTRY_HOST" >/dev/null 2>&1 || true
+            rm -rf "$metadata_dir"
+          }
+          trap cleanup EXIT
+          printf '%s' "$REGISTRY_PASSWORD" | docker login "$REGISTRY_HOST" \
+            --username "$REGISTRY_USERNAME" --password-stdin
+
+          while IFS= read -r image; do
+            name=$(jq -r '.name' <<<"$image")
+            context=$(jq -r '.context' <<<"$image")
+            dockerfile=$(jq -r '.dockerfile' <<<"$image")
+            platforms=$(jq -r '.platforms | join(",")' <<<"$image")
+            [[ "$context" != /* && "$context" != .. && "$context" != ../* && "$context" != */../* && "$context" != */.. ]]
+            [[ "$dockerfile" != /* && "$dockerfile" != .. && "$dockerfile" != ../* && "$dockerfile" != */../* && "$dockerfile" != */.. ]]
+            [[ -d "$context" && -f "$context/$dockerfile" ]]
+            [[ "$platforms" == linux/amd64 ]]
+            resolved_context=$(realpath "$context")
+            resolved_dockerfile=$(realpath "$context/$dockerfile")
+            [[ "$resolved_context" == "$GITHUB_WORKSPACE" || "$resolved_context" == "$GITHUB_WORKSPACE"/* ]]
+            [[ "$resolved_dockerfile" == "$GITHUB_WORKSPACE"/* ]]
+
+            repo_path="${EXPECTED_REPOSITORY,,}"
+            artifact_path="/ci/$repo_path/$SOURCE_SHA/$name"
+            image_ref="$REGISTRY_HOST$artifact_path:sha-$SOURCE_SHA"
+            pull_ref="${REGISTRY_HOST%:8443}$artifact_path"
+            cache_ref="$REGISTRY_HOST/buildkit/$repo_path/$name:trusted-main"
+            metadata_file="$metadata_dir/$name.json"
+            docker_args=()
+            while IFS= read -r encoded; do
+              [[ -n "$encoded" ]] || continue
+              entry=$(printf '%s' "$encoded" | base64 --decode)
+              key=$(jq -r '.key' <<<"$entry")
+              value=$(jq -r '.value | tostring' <<<"$entry")
+              docker_args+=(--build-arg "$key=$value")
+            done < <(jq -r '(.buildArgs // {}) | to_entries[] | @base64' <<<"$image")
+
+            # A replay may reuse the existing immutable artifact; normal runs
+            # refuse to retarget it. Registry reachability failures still fail
+            # the authenticated build/push below.
+            if docker buildx imagetools inspect "$image_ref" >/dev/null 2>&1; then
+              [[ "$VERIFY_CACHE" == true ]] || {
+                echo "immutable image tag already exists: $image_ref" >&2
+                exit 1
+              }
+              digest=$(docker buildx imagetools inspect "$image_ref" | sed -n 's/^Digest: //p' | head -n 1)
+              [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+            else
+              docker buildx build \
+                --file "$context/$dockerfile" \
+                --platform "$platforms" \
+                --tag "$image_ref" \
+                --cache-from "type=registry,ref=$cache_ref" \
+                --cache-to "type=registry,ref=$cache_ref,mode=max" \
+                --provenance=mode=max \
+                --sbom=true \
+                --metadata-file "$metadata_file" \
+                --push \
+                "${docker_args[@]}" \
+                "$context"
+              digest=$(jq -er '.["containerimage.digest"] | select(test("^sha256:[0-9a-f]{64}$"))' "$metadata_file")
+            fi
+
+            docker buildx imagetools inspect --raw "$pull_ref@$digest" >/dev/null
+            docker pull "$pull_ref@$digest" >/dev/null
+            dockerfile_digest=$(sha256sum "$context/$dockerfile" | cut -d ' ' -f 1)
+            jq -n \
+              --arg repository "$EXPECTED_REPOSITORY" \
+              --arg image "$name" \
+              --arg sourceSha "$SOURCE_SHA" \
+              --arg sourceTree "$source_tree" \
+              --arg manifestSha256 "$manifest_digest" \
+              --arg context "$context" \
+              --arg dockerfile "$dockerfile" \
+              --arg dockerfileSha256 "$dockerfile_digest" \
+              --arg platforms "$platforms" \
+              --arg cache "$cache_ref" \
+              --arg reference "$image_ref" \
+              --arg pullReference "$pull_ref" \
+              --arg digest "$digest" \
+              --from-file "$GITHUB_WORKSPACE/schemas/ci-image-evidence.jq" \
+              > "$RUNNER_TEMP/ci-image-evidence/$name.json"
+
+            if [[ "$VERIFY_CACHE" == true ]]; then
+              verify_builder="cachecheck-${GITHUB_RUN_ID}-${name}"
+              cache_log="$metadata_dir/$name-cache-replay.log"
+              cache_started=$(date +%s%N)
+              docker buildx create --name "$verify_builder" --driver docker-container \
+                --driver-opt image=moby/buildkit:v0.20.2 >/dev/null
+              docker buildx inspect --bootstrap "$verify_builder" >/dev/null
+              docker buildx build --builder "$verify_builder" \
+                --progress=plain --file "$context/$dockerfile" \
+                --platform "$platforms" --tag "local/$name:cache-check-$SOURCE_SHA" \
+                --cache-from "type=registry,ref=$cache_ref" --load \
+                "${docker_args[@]}" "$context" 2>&1 | tee "$cache_log"
+              docker buildx rm "$verify_builder" >/dev/null
+              verify_builder=
+              cache_finished=$(date +%s%N)
+              cache_hits=$(grep -c ' CACHED$' "$cache_log" || true)
+              [[ "$cache_hits" -gt 0 ]]
+              cache_elapsed_ms=$(((cache_finished - cache_started) / 1000000))
+              jq -n --arg cache "$cache_ref" --arg sourceSha "$SOURCE_SHA" \
+                --arg elapsedMs "$cache_elapsed_ms" --argjson cacheHits "$cache_hits" \
+                '{sourceSha:$sourceSha,cache:$cache,cacheHits:$cacheHits,elapsedMs:($elapsedMs|tonumber)}' \
+                > "$RUNNER_TEMP/ci-image-evidence/$name-cache-replay.json"
+              printf "\n- Fresh BuildKit cache replay: %s cached steps in %s ms\n" \
+                "$cache_hits" "$cache_elapsed_ms" >> "$GITHUB_STEP_SUMMARY"
+            fi
+            printf "\n### %s\n\n- Source: %s\n- Image: %s@%s\n- Platform: %s\n- Cache: %s\n" \
+              "$name" "$SOURCE_SHA" "$image_ref" "$digest" "$platforms" "$cache_ref" \
+              >> "$GITHUB_STEP_SUMMARY"
+          done < <(jq -c '.images[]' "$IMAGE_MANIFEST")
+
+      - name: Save image provenance evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ci-image-provenance-${{ github.sha }}
+          path: ${{ runner.temp }}/ci-image-evidence
+          if-no-files-found: error
+          retention-days: 90
