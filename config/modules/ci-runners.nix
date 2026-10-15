@@ -36,6 +36,8 @@ let
   inventory = lib.mapAttrs (name: runner: {
     inherit (runner)
       repository
+      repositoryVisibility
+      forkPRWorkflowsDisabled
       runnerName
       trustedEvents
       trustedRefs
@@ -217,6 +219,19 @@ in
                 default = name;
                 description = "Exact GitHub owner/repository identity.";
               };
+              repositoryVisibility = lib.mkOption {
+                type = lib.types.enum [
+                  "private"
+                  "public"
+                ];
+                default = "public";
+                description = "Verified GitHub visibility; public repositories cannot use this repo-scoped runner.";
+              };
+              forkPRWorkflowsDisabled = lib.mkOption {
+                type = lib.types.bool;
+                default = false;
+                description = "Set true only after GitHub reports run_workflows_from_fork_pull_requests=false.";
+              };
               runnerName = lib.mkOption {
                 type = lib.types.str;
                 default = "r640-0-${repoLabel name}";
@@ -325,6 +340,14 @@ in
             runner: lib.all (network: builtins.match ".*/0+" network == null) runner.allowedNetworks
           ) (lib.attrValues cfg.repositories);
           message = "CI runner allowedNetworks must not grant a default route";
+        }
+        {
+          assertion =
+            !cfg.enable
+            || lib.all (runner: runner.repositoryVisibility == "private" && runner.forkPRWorkflowsDisabled) (
+              lib.attrValues enabledRepositories
+            );
+          message = "CI runner enrollment requires a private repository with fork pull-request workflows disabled";
         }
         {
           assertion =

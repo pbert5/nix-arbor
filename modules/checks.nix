@@ -34,8 +34,39 @@ in
             enabledR640 = baseR640.extendModules {
               modules = [
                 (_: {
-                  arbor.ci.runners.enable = true;
-                  arbor.ci.runners.repositories.meta_bal.enable = true;
+                  arbor.ci.runners = {
+                    enable = true;
+                    repositories.meta_bal = {
+                      enable = true;
+                      forkPRWorkflowsDisabled = true;
+                    };
+                  };
+                })
+              ];
+            };
+            publicRunnerR640 = baseR640.extendModules {
+              modules = [
+                (_: {
+                  arbor.ci.runners = {
+                    enable = true;
+                    repositories.nix-arbor = {
+                      enable = true;
+                      forkPRWorkflowsDisabled = true;
+                    };
+                  };
+                })
+              ];
+            };
+            forkableRunnerR640 = baseR640.extendModules {
+              modules = [
+                (_: {
+                  arbor.ci.runners = {
+                    enable = true;
+                    repositories.meta_bal = {
+                      enable = true;
+                      forkPRWorkflowsDisabled = false;
+                    };
+                  };
                 })
               ];
             };
@@ -66,9 +97,15 @@ in
             runner = guest.services.github-runners.meta-bal;
           in
           assert !config.flake.nixosConfigurations."r640-0".config.arbor.ci.runners.enable;
+          assert
+            !config.flake.nixosConfigurations."r640-0".config.arbor.ci.runners.inventory.nix-arbor.forkPRWorkflowsDisabled;
+          assert
+            config.flake.nixosConfigurations."r640-0".config.arbor.ci.runners.inventory.nix-arbor.repositoryVisibility
+            == "public";
           assert !config.flake.nixosConfigurations."r640-0".config.microvm.host.enable;
           assert config.flake.nixosConfigurations."r640-0".config.virtualisation.docker.enable;
           assert host.microvm.host.enable;
+          assert host.arbor.ci.runners.inventory.meta_bal.forkPRWorkflowsDisabled;
           assert host.microvm.vms.arbor-ci-meta-bal.autostart;
           assert runner.ephemeral;
           assert runner.count == 1;
@@ -102,6 +139,12 @@ in
             .success;
           assert
             !(builtins.tryEval (builtins.deepSeq broadIPv6AllowR640.config.system.build.toplevel.drvPath true))
+            .success;
+          assert
+            !(builtins.tryEval (builtins.deepSeq publicRunnerR640.config.system.build.toplevel.drvPath true))
+            .success;
+          assert
+            !(builtins.tryEval (builtins.deepSeq forkableRunnerR640.config.system.build.toplevel.drvPath true))
             .success;
           assert
             host.arbor.ci.runners.inventory.meta_bal.labels == [
