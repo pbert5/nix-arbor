@@ -57,29 +57,42 @@ microvm@arbor-ci-meta-bal.service` on the host. A missing or unreadable token
 prevents guest start and registration; the token value is never copied into
 the Nix store.
 
-## Workflow trust policy
+## Fork workflow access gate
 
-The inventory publishes the allowed event and ref policy for each repository.
-GitHub does not let an on-prem runner VM enforce workflow event/ref selection
-after a workflow has already targeted its labels. Every consuming workflow
-must therefore gate the self-hosted job with a trusted-event and trusted-ref
-condition matching the inventory, and all fork pull request checks must remain
-on GitHub-hosted runners. Use GitHub-hosted runners for public forks and other
-untrusted inputs. Do not give these labels to workflows that execute
-unreviewed code.
+Workflow `if:` conditions and runner labels are not an authorization boundary:
+a public-fork pull request can edit its workflow and request these labels.
+Therefore this module refuses to evaluate with any enabled repository unless
+the repository is declared private and GitHub's `run_workflows_from_fork_pull_requests`
+setting is verified false. Keep the runner capability disabled until the
+operator verifies these settings through GitHub's authenticated API. A
+maintainer-approval policy is not an equivalent control because approval can
+run the fork's modified workflow.
 
-For example, the self-hosted job should include a job-level condition like:
+The inventory was refreshed from authenticated GitHub API reads on 2026-10-15:
+`pbert5/nix-arbor` is public; `pbert5/meta_bal` and
+`pbert5/simple-evolver` are private. Both private repositories currently report
+`run_workflows_from_fork_pull_requests=false`, with write tokens and secrets
+also disabled for fork PR workflows. The Nix inventory records that verified
+state for private repositories. Re-check live repository visibility and fork
+workflow policy before every enablement or deployment; update the Nix inventory
+only after the GitHub setting is changed and freshly read back. If a repo
+becomes public, or the API is unavailable, leave its runner disabled.
 
-```yaml
-if: >-
-  github.event_name == 'push' &&
-  github.ref == 'refs/heads/main'
-```
+`pbert5/nix-arbor` cannot be enrolled by this repository-scoped runner design
+while it is public. `pbert5` is a personal account, so organization runner
+groups and their selected-workflow allowlists are unavailable. If a public
+repository needs on-prem runner capacity later, move it to an organization and
+use an organization runner group restricted to selected repositories and
+default-branch-pinned workflows, then verify that policy independently before
+enrollment. Do not treat consumer workflow conditions or maintainer approval
+as a substitute.
 
-Keep pull request checks on an independent GitHub-hosted job with no fallback
-to these labels.
+Even with the GitHub fork-workflow gate in place, consuming workflows should
+retain trusted-event and trusted-ref conditions as defense in depth. Fork PR
+checks must continue on GitHub-hosted runners, with no fallback to these labels.
 
 The registered labels are `self-hosted`, `linux`, `x64`, `r640-0`, and the
 repository label (`nix-arbor`, `meta-bal`, or `simple-evolver`). Runner
-registration and live GitHub job acceptance remain disabled until authorized
-operator provisioning and WS-I host acceptance.
+registration and live GitHub job acceptance remain disabled until the fork
+workflow access policy, runtime credential provisioning, and WS-I host
+acceptance are verified.
