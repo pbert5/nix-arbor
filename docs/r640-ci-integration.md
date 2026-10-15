@@ -26,6 +26,14 @@ or use through the daemon. Those acceptance properties remain unverified; do
 not enable the service or claim a trusted client path until an authorized
 operator supplies the permitted client/trust setup and verifies it.
 
+The independent integration review returned `PASS_WITH_FOLLOWUPS` at exact
+head `689782fb6bb688a51d7226a6b1f9b7effc8f6360` (R640-INT-06); it found no
+blocking defect in the #27 integration delta. INT-07 records the live boundary
+above: no authorized client/trust path or host authority was available, so
+runtime acceptance remains unverified. INT-08 is a cosmetic line break in
+`docs/nix-binary-cache.md` that splits the `retention-period` setting across
+lines; it does not affect configuration or acceptance, and requires no repair.
+
 The integration preserves both `ci-runner-isolation` and
 `private-oci-registry` entries in `modules/checks.nix`. The runtime contract
 uses isolated guests with their own Docker daemons, private HTTPS registry
