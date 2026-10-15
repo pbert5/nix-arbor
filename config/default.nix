@@ -140,6 +140,8 @@ let
     vscodeRemoteModule
     serverTools
     (import ./machines/r640-0/storage.nix)
+    (import ./modules/private-oci-registry.nix)
+    { arbor.ci.privateRegistry.enable = true; }
     (import ./machines/r640-0/management.nix)
   ];
   machines = inputs.arbor-manager.lib.mkMachines {

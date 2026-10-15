@@ -114,6 +114,7 @@ in
           pkgs.runCommand "nix-arbor-ci-runner-isolation" { } ''
             touch $out
           '';
+        private-oci-registry = import ../tests/private-oci-registry.nix { inherit pkgs; };
 
         evolver-developer-tools =
           assert lib.all (name: lib.elem name packageNames) requiredPackageNames;
