@@ -123,8 +123,10 @@ The private registry does not enforce tag immutability. Before a push, the
 workflow uses the authenticated registry API and refuses to continue on any
 status other than a confirmed 404. It refuses to retarget an existing
 source-SHA tag, verifies the post-push digest at the writer endpoint, and
-resolves the same digest with the reader credential. Builds for the same
-source revision are serialized. If a push or registry lookup fails, the
+resolves the same digest with the reader credential. All builds for a caller
+repository share one concurrency group, so different source revisions cannot
+write its moving `trusted-main` cache tags concurrently. Artifact tags still
+include the full source SHA and remain separate. If a push or registry lookup fails, the
 workflow fails without updating any consumer-facing mutable tag.
 
 ## Prewarm and recovery
