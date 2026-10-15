@@ -28,6 +28,8 @@ in
     in
     {
       checks = {
+        private-oci-registry = import ../tests/private-oci-registry.nix { inherit pkgs; };
+
         evolver-developer-tools =
           assert lib.all (name: lib.elem name packageNames) requiredPackageNames;
           assert eVolver.virtualisation.docker.enable;
