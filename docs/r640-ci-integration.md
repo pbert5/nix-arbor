@@ -11,28 +11,43 @@ The integration branch consumes the reviewed provider/build heads:
 
 | Workstream | Reviewed head | Integrated PR |
 | --- | --- | --- |
-| #25 isolated runner VMs | `76fe25391574759d77c358cc7fa299229605afcb` | [#31](https://github.com/pbert5/nix-arbor/pull/31) |
+| #25 isolated runner VMs | `208700efed28af0155ec78f42823c2d53983de9c` | [#31](https://github.com/pbert5/nix-arbor/pull/31) |
 | #26 private OCI registry | `68991cf4c56df32588352ee6a240aacd15f97afa` | [#30](https://github.com/pbert5/nix-arbor/pull/30) |
-| #28 BuildKit image workflow | `677997bd057539d05e30d576fc9c8af98a352136` | [#32](https://github.com/pbert5/nix-arbor/pull/32) |
+| #28 BuildKit image workflow | `d052d7908454772167aa5b3fcb925d418663b405` | [#32](https://github.com/pbert5/nix-arbor/pull/32) |
 
 The integration preserves both `ci-runner-isolation` and
 `private-oci-registry` entries in `modules/checks.nix`. The runtime contract
 uses isolated guests with their own Docker daemons, private HTTPS registry
 reader/writer endpoints, immutable source-SHA image tags and separate
-`buildkit/<builder-or-repo>` cache references. Workflow tests cover the
-trusted-ref gate and pinned provider schemas; they do not establish live
-runner, registry, image, or cache behavior.
+`buildkit/<builder-or-repo>` cache references. Enabled runner inventory now
+fails evaluation unless each repository is declared private and its GitHub
+`run_workflows_from_fork_pull_requests` setting is verified false. The public
+`pbert5/nix-arbor` runner is not eligible; private `meta_bal` and
+`simple-evolver` are eligible only while fresh policy reads still match. The
+reusable image workflow serializes all source revisions for one caller repo so
+they cannot concurrently write its shared `trusted-main` cache tag. Workflow
+tests cover these controls; they do not establish live runner, registry, image,
+or cache behavior.
+
+The integration review findings RF-01 (untrusted fork jobs could target the
+runner labels) and RF-02 (cache writers could race across source revisions)
+have producer-owned repairs and independent producer re-reviews at the heads
+above. WS-I integration re-review remains pending. GitHub reports for the two
+private consumer repos on 2026-10-15 showed fork pull-request workflows,
+write tokens, and secrets disabled. Recheck those settings before enablement;
+Nix does not continuously monitor policy drift.
 
 ## Software verification
 
 On the integration branch, the following passed:
 
-- `nix fmt` (28 files traversed; no edits)
+- `nix fmt` after repairs (3 Nix files traversed; no edits)
 - `nix flake check --no-update-lock-file` on `x86_64-linux`
 - `nix build --no-link .#checks.x86_64-linux.ci-runner-isolation`
 - `nix build --no-link .#checks.x86_64-linux.private-oci-registry`
 - `nix build --no-link .#nixosConfigurations.r640-0.config.system.build.toplevel`
 - `bash tests/ci-image-workflow-contract.sh`
+- `bash tests/ci-image-cache-concurrency.sh`
 - `git diff --check origin/main...HEAD`
 
 The registry VM derivation completed its isolated guest test. It uses local
@@ -40,7 +55,10 @@ test credentials and a local test endpoint; it does not verify Tailscale Serve,
 a live certificate, real runtime credentials, host persistence, or a separate
 authorized pull client. The runner check validates Nix configuration and
 isolation assertions; it does not register a live GitHub runner or execute a
-job.
+job. The cache-concurrency harness models two different source SHAs sharing
+the repository lock and cache reference; it does not exercise GitHub's live
+scheduler. GitHub concurrency may replace an older pending run with a newer
+one, so an intermediate source SHA must be dispatched manually if required.
 
 ## Read-only host snapshot
 
