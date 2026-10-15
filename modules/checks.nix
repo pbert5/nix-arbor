@@ -68,6 +68,9 @@ in
         ci-runner-isolation =
           let
             baseR640 = config.flake.nixosConfigurations."r640-0";
+            explicitlyEnabledRegistryR640 = baseR640.extendModules {
+              modules = [ (_: { arbor.ci.privateRegistry.enable = true; }) ];
+            };
             enabledR640 = baseR640.extendModules {
               modules = [
                 (_: {
@@ -133,6 +136,20 @@ in
             dockerVolume = builtins.head guest.microvm.volumes;
             runner = guest.services.github-runners.meta-bal;
           in
+          assert !baseR640.config.services.dockerRegistry.enable;
+          assert !baseR640.config.arbor.ci.privateRegistry.enable;
+          assert !baseR640.config.arbor.ci.runners.enable;
+          assert !baseR640.config.microvm.host.enable;
+          assert builtins.attrNames baseR640.config.microvm.vms == [ ];
+          assert explicitlyEnabledRegistryR640.config.services.dockerRegistry.enable;
+          assert explicitlyEnabledRegistryR640.config.services.nginx.enable;
+          assert explicitlyEnabledRegistryR640.config.services.tailscale.enable;
+          assert lib.elem "${pkgs.util-linux}/bin/mountpoint -q /mypool"
+            explicitlyEnabledRegistryR640.config.systemd.services.nginx.serviceConfig.ExecStartPre;
+          assert lib.elem "${pkgs.coreutils}/bin/test -s /run/secrets/private-oci-registry/pull.htpasswd"
+            explicitlyEnabledRegistryR640.config.systemd.services.nginx.serviceConfig.ExecStartPre;
+          assert lib.elem "${pkgs.coreutils}/bin/test -s /run/secrets/private-oci-registry/push.htpasswd"
+            explicitlyEnabledRegistryR640.config.systemd.services.nginx.serviceConfig.ExecStartPre;
           assert !config.flake.nixosConfigurations."r640-0".config.arbor.ci.runners.enable;
           assert
             !config.flake.nixosConfigurations."r640-0".config.arbor.ci.runners.inventory.nix-arbor.forkPRWorkflowsDisabled;

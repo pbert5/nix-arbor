@@ -1,8 +1,10 @@
 # Private OCI registry
 
-The r640 profile enables `arbor.ci.privateRegistry`. This adds a local CNCF
-Distribution registry, two loopback-only Nginx gateways, and an opt-in Tailscale
-Serve endpoint. Tailscale Serve terminates HTTPS on ports 443 and 8443, proxies
+The r640 profile includes the registry module but leaves
+`arbor.ci.privateRegistry.enable` disabled. Registry activation is an explicit
+operator choice. Enabling it adds a local CNCF Distribution registry, two
+loopback-only Nginx gateways, and a Tailscale Serve endpoint. Tailscale Serve
+terminates HTTPS on ports 443 and 8443, proxies
 to the loopback gateways, and provisions/renews the host's MagicDNS
 certificate. Clients validate the normal
 Tailscale HTTPS certificate. Do not use an insecure registry setting or expose
@@ -98,11 +100,33 @@ or import a ZFS dataset automatically.
 ## Live acceptance boundary
 
 The software interface is implemented declaratively, but host integration
-requires WS-I/operator work: verify the current Tailscale Serve ports and
-hostname, set the narrow Tailscale access policy, provision the two runtime credentials, and
-exercise TLS and pull/push access from separate authorized clients. A denied
-unauthenticated request, a rejected reader push, a digest-equal pull, restart
-persistence, and a reviewed GC dry run must be recorded before claiming live
-acceptance. Roll back by disabling the Nix option and applying the previous
-system generation; remove only the HTTPS 443 and 8443 Tailscale Serve mappings
-owned by this module, preserving every other Serve port.
+requires operator work. Keep registry activation disabled until the operator
+has completed these steps:
+
+1. Confirm the intended rollback generation and inspect
+   `tailscale serve status`. Resolve any existing mappings on ports 443 or
+   8443 before proceeding; preserve every unrelated mapping.
+2. Confirm `/mypool` is mounted and healthy. Provision separate reader and
+   writer identities out of band with the approved secret provider, writing
+   nonempty files to `/run/secrets/private-oci-registry/pull.htpasswd` and
+   `/run/secrets/private-oci-registry/push.htpasswd`. Do not place credential
+   values in Nix, GitHub issues, or the Nix store. Give the pull identity only
+   to authorized consumers and the writer identity only to trusted builders.
+3. Configure the narrow Tailscale access policy for the trusted builder and
+   authorized consumer machines, then confirm the private MagicDNS hostname
+   and certificate are available.
+4. In the host configuration, explicitly set
+   `arbor.ci.privateRegistry.enable = true`. Review the resulting system
+   configuration and activation preview, including the registry, Nginx,
+   Tailscale Serve, ZFS mount guards, and the two runtime credential paths.
+5. During the operator-approved maintenance window, activate the reviewed
+   generation. Confirm `/v2/` rejects unauthenticated requests, the reader
+   credential can pull but cannot push, and the writer can push and pull over
+   HTTPS from their separately authorized clients. Record a digest-equal pull,
+   service restart persistence, and a reviewed GC dry run before claiming
+   live acceptance.
+
+If activation fails, return to the recorded rollback generation. Remove only
+the HTTPS 443 and 8443 Tailscale Serve mappings owned by this module, preserving
+every other Serve port. Do not claim live acceptance from Nix evaluation or a
+dry-activation preview alone.
