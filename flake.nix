@@ -33,6 +33,12 @@
       url = "github:microvm-nix/microvm.nix/f13928fe9900e91709d7ce581eefa47eaafa79e1";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    # Attic supplies the supported NixOS service module. Pin its source because
+    # this module is part of the cache's security and storage boundary.
+    attic = {
+      url = "github:zhaofengli/attic/7a19204df10d606c5070e6bb72615c3461900c05";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
@@ -48,6 +54,7 @@
         ./modules/checks.nix
         ./modules/apps.nix
         ./modules/components.nix
+        ./modules/nix-binary-cache.nix
         ./config
       ];
     };

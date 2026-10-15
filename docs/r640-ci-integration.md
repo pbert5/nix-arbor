@@ -13,7 +13,18 @@ The integration branch consumes the reviewed provider/build heads:
 | --- | --- | --- |
 | #25 isolated runner VMs | `208700efed28af0155ec78f42823c2d53983de9c` | [#31](https://github.com/pbert5/nix-arbor/pull/31) |
 | #26 private OCI registry | `68991cf4c56df32588352ee6a240aacd15f97afa` | [#30](https://github.com/pbert5/nix-arbor/pull/30) |
+| #27 optional signed Nix binary cache | `7da7955c281438816b98d2961c368e77afafd53e` | [#33](https://github.com/pbert5/nix-arbor/pull/33) |
 | #28 BuildKit image workflow | `d052d7908454772167aa5b3fcb925d418663b405` | [#32](https://github.com/pbert5/nix-arbor/pull/32) |
+
+The #27 cache remains optional and disabled by default. Its isolated review
+approved the published head after resolving its findings; integration includes
+its service module, guarded storage configuration, documentation, and dedicated
+configuration check. The daemon trusts only root on this host, and
+`sudo -n` reported that a password is required. No permitted Nix client was
+available to test cache substitution, signature verification, tamper rejection,
+or use through the daemon. Those acceptance properties remain unverified; do
+not enable the service or claim a trusted client path until an authorized
+operator supplies the permitted client/trust setup and verifies it.
 
 The integration preserves both `ci-runner-isolation` and
 `private-oci-registry` entries in `modules/checks.nix`. The runtime contract
@@ -48,12 +59,16 @@ On the integration branch, the following passed:
 - `nix flake check --no-update-lock-file` on `x86_64-linux`
 - `nix build --no-link .#checks.x86_64-linux.ci-runner-isolation`
 - `nix build --no-link .#checks.x86_64-linux.private-oci-registry`
+- `nix build --no-link --print-out-paths .#checks.x86_64-linux.nix-binary-cache-config`
 - `nix build --no-link .#nixosConfigurations.r640-0.config.system.build.toplevel`
 - `bash tests/ci-image-workflow-contract.sh`
 - `bash tests/ci-image-cache-concurrency.sh`
 - `git diff --check origin/main...HEAD`
 
-The registry VM derivation completed its isolated guest test. It uses local
+The binary-cache configuration derivation and the full x86_64 flake check
+passed after integrating #27; `nix fmt` made no edits. They verify module
+configuration only, not client trust, signatures, tamper rejection, service
+operation, or cache use. The registry VM derivation completed its isolated guest test. It uses local
 test credentials and a local test endpoint; it does not verify Tailscale Serve,
 a live certificate, real runtime credentials, host persistence, or a separate
 authorized pull client. The runner check validates Nix configuration and
