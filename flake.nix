@@ -29,6 +29,12 @@
     arbor-registry.url = "github:pbert5/arbor-registry";
     arbor-network-manager.url = "github:pbert5/arbor-network-manager";
     yggdrasil-private.url = "git+https://github.com/pbert5/yggdrasil-private.git?ref=main";
+    # Attic supplies the supported NixOS service module. Pin its source because
+    # this module is part of the cache's security and storage boundary.
+    attic = {
+      url = "github:zhaofengli/attic/7a19204df10d606c5070e6bb72615c3461900c05";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
@@ -44,6 +50,7 @@
         ./modules/checks.nix
         ./modules/apps.nix
         ./modules/components.nix
+        ./modules/nix-binary-cache.nix
         ./config
       ];
     };
