@@ -199,7 +199,7 @@ jobs:
               docker_args+=(--build-arg "$key=$value")
             done < <(jq -r '(.buildArgs // {}) | to_entries[] | @base64' <<<"$image")
 
-            manifest_path="$artifact_path/manifests/sha-$SOURCE_SHA"
+            manifest_path="/v2$artifact_path/manifests/sha-$SOURCE_SHA"
             writer_headers="$metadata_dir/$name-writer.headers"
             reader_headers="$metadata_dir/$name-reader.headers"
             if ! status=$(registry_head "$writer_auth" "$writer_host" "$manifest_path" "$writer_headers"); then
