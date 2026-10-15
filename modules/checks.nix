@@ -54,6 +54,8 @@ in
           assert cache.services.atticd.settings.storage.path == "/mypool/nix-binary-cache/storage";
           assert atticService.serviceConfig.User == "atticd";
           assert cache.services.atticd.environmentFile == "/run/secrets/attic-server.env";
+          assert lib.elem "/mypool/nix-binary-cache/storage" atticService.serviceConfig.ReadWritePaths;
+          assert lib.elem "/mypool/nix-binary-cache/database" atticService.serviceConfig.ReadWritePaths;
           assert
             builtins.match ".*mountpoint -q /mypool.*install -d -o root -g root -m 0711 /mypool/nix-binary-cache.*install -d -o atticd -g atticd -m 0700 /mypool/nix-binary-cache/database.*install -d -o atticd -g atticd -m 0700 /mypool/nix-binary-cache/storage.*" storageSetup
             != null;

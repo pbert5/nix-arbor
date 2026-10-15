@@ -8,6 +8,7 @@ let
   cfg = config.arbor.nixBinaryCache;
   poolRoot = "/mypool";
   cacheRoot = "${poolRoot}/nix-binary-cache";
+  databaseRoot = "${cacheRoot}/database";
   storageService = "arbor-nix-binary-cache-storage";
 in
 {
@@ -55,7 +56,7 @@ in
         # Require an explicit canonical host. The deployment owner must replace
         # this placeholder alongside endpoint and TLS ingress.
         "allowed-hosts" = cfg.allowedHosts;
-        database.url = "sqlite:///${cacheRoot}/database/server.db?mode=rwc";
+        database.url = "sqlite:///${databaseRoot}/server.db?mode=rwc";
         storage = {
           type = "local";
           path = "${cacheRoot}/storage";
@@ -112,6 +113,9 @@ in
         User = "atticd";
         Group = "atticd";
         ExecStartPre = "${pkgs.util-linux}/bin/mountpoint -q ${poolRoot}";
+        # The upstream unit only allows writes under storage.path. SQLite
+        # needs its separate database directory exposed through ProtectSystem.
+        ReadWritePaths = lib.mkAfter [ databaseRoot ];
       };
     };
 
