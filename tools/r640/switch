@@ -38,10 +38,13 @@ host=$(hostname -s)
 flake_ref="$repo_root#r640-0"
 configured_host=$(nix eval --raw "$repo_root#nixosConfigurations.r640-0.config.networking.hostName")
 [[ $configured_host == r640-0 ]] || fail "flake output r640-0 declares hostname '$configured_host'"
-expected_codex_version=$(nix eval --json "$repo_root#nixosConfigurations.r640-0.config.environment.systemPackages" \
-  --apply 'ps: builtins.filter (p: builtins.match "codex-[0-9].*" p.name != null) (builtins.map (p: { inherit (p) name; version = p.version or ""; }) ps)' \
-  | jq -er 'if length == 1 then .[0].version else error("expected one NixOS codex package") end')
+codex_packages=$(nix eval --json "$repo_root#nixosConfigurations.r640-0.config.environment.systemPackages" \
+  --apply 'ps: builtins.filter (p: builtins.match "codex-.*" p.name != null) (builtins.map (p: { inherit (p) name; path = p.outPath; version = p.version or ""; }) ps)')
+expected_codex_version=$(jq -er '[.[] | select(.name | test("^codex-[0-9]"))] | if length == 1 then .[0].version else error("expected one NixOS codex package") end' <<<"$codex_packages")
+expected_codex_switch_version=$(jq -er '[.[] | select(.name | test("^codex-switch-[0-9]"))] | if length == 1 then .[0].version else error("expected one NixOS codex-switch package") end' <<<"$codex_packages")
+expected_codex_switch_path=$(jq -er '[.[] | select(.name | test("^codex-switch-[0-9]"))] | if length == 1 then .[0].path else error("expected one NixOS codex-switch package") end' <<<"$codex_packages")
 [[ -n $expected_codex_version ]] || fail 'unable to determine the NixOS Codex package version'
+[[ -n $expected_codex_switch_version && -n $expected_codex_switch_path ]] || fail 'unable to determine the NixOS codex-switch package'
 command -v mountpoint >/dev/null || fail 'mountpoint is unavailable'
 mountpoint -q /mypool || fail '/mypool is not mounted; refusing a host switch'
 command -v zpool >/dev/null || fail 'zpool is unavailable'
@@ -52,6 +55,7 @@ printf 'Preflight PASS: host=%s branch=%s head=%s\n' \
   "$host" "$branch" "$(git -C "$repo_root" rev-parse --short HEAD)"
 printf 'Flake target: %s\n' "$flake_ref"
 printf 'NixOS Codex package: %s\n' "$expected_codex_version"
+printf 'NixOS codex-switch package: %s\n' "$expected_codex_switch_version"
 printf 'Storage PASS: /mypool and ZFS pool mypool are ready\n'
 if [[ $mode == check ]]; then
   printf 'Check complete; sudo and activation were not used.\n'
@@ -65,9 +69,16 @@ if [[ $mode == dry-run ]]; then
   exit 0
 fi
 
-before_codex='codex not found'
-if command -v codex >/dev/null 2>&1; then
-  before_codex=$(codex --version | head -n 1)
+system_codex=/run/current-system/sw/bin/codex
+before_codex='not installed'
+if [[ -x $system_codex ]]; then
+  before_codex=$("$system_codex" --version | head -n 1)
+fi
+system_codex_switch=/run/current-system/sw/bin/codex-switch
+before_codex_switch='not installed'
+if [[ -x $system_codex_switch ]]; then
+  before_codex_switch=$(readlink -f "$system_codex_switch")
+  "$system_codex_switch" --help >/dev/null || fail 'current codex-switch --help failed'
 fi
 current_system=$(readlink -f /run/current-system 2>/dev/null || printf 'unavailable')
 profile_system=$(readlink -f /nix/var/nix/profiles/system 2>/dev/null || printf 'unavailable')
@@ -80,6 +91,7 @@ rollback_file="/var/lib/nix-arbor-r640-switch/$timestamp.txt"
 printf 'Current system: %s\nBooted system:  %s\nSystem profile: %s\n' \
   "$current_system" "$booted_system" "$profile_system"
 printf 'Codex before:   %s\n' "$before_codex"
+printf 'codex-switch before: %s\n' "$before_codex_switch"
 printf 'Rollback note:  %s\nRollback command: %s\n' "$rollback_file" "$recovery_command"
 printf 'System generations before switch:\n%s\n' "$generations"
 printf 'Sudo may prompt for your password before activation.\n'
@@ -90,18 +102,24 @@ sudo install -d -m 0700 /var/lib/nix-arbor-r640-switch
   printf 'checkout=%s\nbranch=%s\nhead=%s\n' "$repo_root" "$branch" "$(git -C "$repo_root" rev-parse HEAD)"
   printf 'current_system=%s\nbooted_system=%s\nsystem_profile=%s\n' "$current_system" "$booted_system" "$profile_system"
   printf 'codex_before=%s\n' "$before_codex"
+  printf 'codex_switch_before=%s\n' "$before_codex_switch"
   printf 'rollback_command=%s\n' "$recovery_command"
   printf '\nSystem generations before switch:\n%s\n' "$generations"
 } | sudo tee "$rollback_file" >/dev/null
 
 sudo nixos-rebuild switch --flake "$flake_ref"
 
-system_codex=/run/current-system/sw/bin/codex
 [[ -x $system_codex ]] || fail "activation completed, but $system_codex is missing"
 after_codex=$("$system_codex" --version | head -n 1) || fail 'activation completed, but system codex --version failed'
 [[ -n $after_codex ]] || fail 'activation completed, but codex --version returned no version'
 printf 'Codex after:    %s\n' "$after_codex"
 actual_codex_version=${after_codex##* }
 [[ $actual_codex_version == "$expected_codex_version" ]] || fail "activated Codex is $actual_codex_version, expected $expected_codex_version"
+[[ -x $system_codex_switch ]] || fail "activation completed, but $system_codex_switch is missing"
+"$system_codex_switch" --help >/dev/null || fail 'activated codex-switch --help failed'
+after_codex_switch=$(readlink -f "$system_codex_switch")
+[[ $after_codex_switch == "$expected_codex_switch_path/bin/codex-switch" ]] || \
+  fail "activated codex-switch resolves to $after_codex_switch, expected $expected_codex_switch_path/bin/codex-switch"
+printf 'codex-switch after: %s (%s)\n' "$after_codex_switch" "$expected_codex_switch_version"
 printf 'Rollback details: %s\n' "$rollback_file"
 printf 'Switch completed. Recovery command: %s\n' "$recovery_command"

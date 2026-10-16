@@ -32,6 +32,10 @@ use the exact command printed by the script, normally:
 sudo nixos-rebuild switch --rollback --flake /home/ash/documents/nix-arbor#r640-0
 ```
 
+The script also checks the `codex-switch` executable with its supported
+read-only `--help` command and verifies it resolves to the pinned NixOS package
+path/version. `codex-switch` does not provide a `--version` option.
+
 The flake pins a separate Nixpkgs revision for Codex only, so this refresh does
 not update unrelated host package inputs. Do not run `nix flake update` as part
 of this operator step.

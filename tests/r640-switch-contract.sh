@@ -24,7 +24,7 @@ cat > "$tmp/bin/nix" <<'MOCK'
 case "$1" in
   eval)
     if [[ "$*" == *systemPackages* ]]; then
-      printf '[{"name":"codex-0.162.1","version":"0.162.1"}]\n'
+      printf '[{"name":"codex-0.162.1","version":"0.162.1","path":"/nix/store/codex-0.162.1"},{"name":"codex-switch-0.1.0","version":"0.1.0","path":"/nix/store/codex-switch-0.1.0"}]\n'
     else
       printf 'r640-0\n'
     fi

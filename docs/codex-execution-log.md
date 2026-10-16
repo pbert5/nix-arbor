@@ -22,7 +22,8 @@
 - `./tools/r640/switch` is the operator entrypoint. It requires a clean primary
   `main` checkout, correct host/flake output, and ready ZFS storage; supports
   check/build-only modes; captures rollback state; activates the exact checkout
-  only on normal explicit invocation; and verifies Codex afterward.
+  only on normal explicit invocation; then verifies the Codex version and
+  `codex-switch` package/binary afterward.
 
 Final commit, Codex version evidence, validation, and independent review are
 recorded in issue #36 when implementation completes.
