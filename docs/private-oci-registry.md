@@ -131,7 +131,7 @@ Passwords are never printed and temporary Docker/curl login material is removed
 at exit. To distribute reader/writer passwords, use an approved password manager
 rather than terminal output, shell history or GitHub.
 
-The script expects `r640-0.tenrec-bearded.ts.net` and refuses to take over an
+The script discovers the host's private MagicDNS name at runtime and refuses to take over an
 existing Tailscale Serve configuration. **Tailscale ACLs are not modified by
 this tool**. Restrict tailnet ports 443/8443 to approved devices as a separate
 operator action. A successful local push/pull is not proof of independent-client
