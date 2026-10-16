@@ -97,6 +97,55 @@ Nginx, and Tailscale Serve in that order. Confirm `/v2/` with the reader
 credential and pull a known image by recorded digest. Recovery must not create
 or import a ZFS dataset automatically.
 
+## R640 one-command operator bootstrap
+
+For the dedicated live-acceptance branch, the flake exports a second host output
+`nixosConfigurations.r640-0-oci`. It extends `r640-0` with the registry option
+and a root-only boot-time credential staging unit. The default `r640-0`
+configuration remains disabled and unchanged.
+
+From the existing checkout on R640-0:
+
+```sh
+cd ~/documents/nix-arbor
+git fetch origin agent/ci/r640-oci-bootstrap
+git switch --track -c agent/ci/r640-oci-bootstrap origin/agent/ci/r640-oci-bootstrap
+bash tools/r640-oci-bootstrap.sh
+```
+
+If that local branch already exists, use `git switch agent/ci/r640-oci-bootstrap`
+after fetching and verify it matches the remote. The tool requires the dedicated
+branch and its reviewed integration ancestry. Run it as the operator user with
+interactive `sudo` access, never as root. It preserves the original running and
+booted store closures as GC roots, generates distinct 256-bit local credentials,
+builds and previews the NixOS output, activates it with `nixos-rebuild test`,
+checks HTTPS/basic-auth and performs a real local Docker image push and
+digest-based pull. Only after these checks pass does it run
+`nixos-rebuild switch`, promoting the accepted generation to boot default.
+
+The tool intentionally does not enable runners or Attic. Credentials are
+persisted outside Git/Nix under `/var/lib/arbor-secrets/private-oci-registry`
+with root-only permissions, and boot-time service `arbor-oci-auth` copies only
+the htpasswd hashes into an nginx-readable private directory under `/run`.
+Passwords are never printed and temporary Docker/curl login material is removed
+at exit. To distribute reader/writer passwords, use an approved password manager
+rather than terminal output, shell history or GitHub.
+
+The script expects `r640-0.tenrec-bearded.ts.net` and refuses to take over an
+existing Tailscale Serve configuration. **Tailscale ACLs are not modified by
+this tool**. Restrict tailnet ports 443/8443 to approved devices as a separate
+operator action. A successful local push/pull is not proof of independent-client
+access or full #29 acceptance. The script also does not exercise a registry
+restart, scheduled GC, runner registration, or BuildKit cache performance.
+Keep `R640_CI_READY` unset until those separate checks are complete.
+
+The tool is allowed to change the physical R640 system configuration and
+its selected boot generation. If it fails after activation, inspect running
+services and use the printed prior-system closure for a targeted recovery
+(`switch-to-configuration test`), but do not assume an automatic rollback
+has happened. Avoid running it over your only remote management connection
+without a recovery path.
+
 ## Live acceptance boundary
 
 The software interface is implemented declaratively, but host integration
