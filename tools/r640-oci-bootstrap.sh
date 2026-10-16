@@ -7,7 +7,7 @@ umask 077
 
 BASE=9a64d54c72eb3d97c72f00663f3ab017a71ef64d
 BRANCH=agent/ci/r640-oci-bootstrap
-HOST=r640-0.tenrec-bearded.ts.net
+HOST='' # Obtained at runtime from Tailscale; do not publish tailnet DNS.
 STORE=/var/lib/arbor-secrets/private-oci-registry
 ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 PREVIOUS="$(readlink -f /run/current-system)"
@@ -43,7 +43,8 @@ docker info >/dev/null || fail "Current user cannot access Docker."
 BOOTED="$(readlink -f /run/booted-system)"
 [[ -x "$BOOTED/bin/switch-to-configuration" ]] || fail "Cannot find booted-system recovery tool."
 DNS="$(tailscale status --json | jq -r '.Self.DNSName | rtrimstr(".")')"
-[[ "$DNS" == "$HOST" ]] || fail "Expected tailnet DNS $HOST, found $DNS."
+[[ "$DNS" == r640-0.*.ts.net ]] || fail "Unexpected R640 Tailscale DNS identity: $DNS."
+HOST="$DNS"
 SERVE="$(tailscale serve status)"
 if [[ "$SERVE" != *"No serve config"* ]]; then
   fail "Existing Tailscale Serve config: inspect ports 443/8443 manually before proceeding."
