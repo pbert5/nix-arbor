@@ -168,5 +168,14 @@ let
   };
 in
 {
-  flake.nixosConfigurations = machines.configurations;
+  flake.nixosConfigurations = machines.configurations // {
+    # Explicit opt-in host composition for the operator's private OCI rollout.
+    # Default r640-0 remains disabled and retains its original checks.
+    "r640-0-oci" = machines.configurations."r640-0".extendModules {
+      modules = [
+        ./machines/r640-0/registry-auth-local.nix
+        { arbor.ci.privateRegistry.enable = true; }
+      ];
+    };
+  };
 }
