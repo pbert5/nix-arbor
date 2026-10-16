@@ -49,11 +49,21 @@ contract; fresh evidence that invalidates it is reported for resolution rather
 than silently re-planned.
 
 The first-order owner owns its issue, worktree, branch, implementation,
-verification, review/repair, durable checkpoints, and terminal packet. It may
-use bounded specialists when the task contract and live runtime allow it. The
-primary executor owns cross-workstream dependencies, lifecycle, concurrency,
-and durable orchestration state; it does not implement or review stream-local
-changes.
+debugging, local verification, independent review/repair, durable checkpoints,
+and terminal packet. It may use bounded depth-2 specialists when the task
+contract and live runtime allow it. Prefer GPT-6 Luna for owners and routine
+nested specialists when exposed by the runtime. Use a higher-cost model only
+when fresh evidence or the contract needs it. Configuration describes desired
+capabilities, not guarantees; probe the active runtime. Do not reserve nested
+capacity or root-owned stream-local reviewer/checker slots.
+
+The primary executor is bookkeeping-only. It tracks the approved DAG,
+dependencies, owner lifecycle, worktree/branch provenance, and compact terminal
+packets. It does not implement, debug, review diffs, interpret findings, repair,
+or validate product claims. Owners close/reclaim their specialists and finish
+required review/repair before returning. Supervise passive-first and intervene
+only for a concrete unblock, changed constraint, safety issue, requested
+clarification, or scope/resource conflict; routine status pings are forbidden.
 
 Codex Cloud environments can select `scripts/codex-setup` as their supported
 setup script. It initializes direct submodules and evaluates the dev shell
@@ -78,10 +88,17 @@ limits to infer from repository configuration. Keep mutable work isolated to
 one branch and worktree. Use a non-mutating mode or isolated worktree for
 checks that can change caches, submodules, generated files, or lock files.
 
-A handoff records the branch/worktree, base and final commit, summary,
-validation, review outcome, blockers, follow-ups, and exact next action. An
-independent reviewer inspects the assigned diff and evidence; the owner repairs
-blocking findings and requests re-review before returning a terminal packet.
+A handoff records issue/PR, branch/worktree, base and final commit, summary,
+exact validation, review outcome and stable finding IDs, blockers, follow-ups,
+trust audit, and exact next action. Independent review is required by the
+contract: report `PASS`, `PASS_WITH_FOLLOWUPS`, or `CHANGES_REQUIRED` against an
+exact head SHA. The owner records findings durably, repairs blocking findings,
+and obtains re-review before returning a terminal packet. Use authenticated
+REST if `gh` GraphQL fails; distinguish token readiness from DNS/network
+failure, never expose token values, and read back GitHub mutations. Record
+pending CI once without polling; the authorized merge owner performs any
+required one-shot gate. Multi-issue work includes a read-only native GitHub
+relationship audit.
 
 ### Component ownership and pins
 
@@ -132,14 +149,18 @@ effort, comparing intended issue/PR relationships with native GitHub state.
 
 For a normal task, a validated agent branch may merge into its identified
 development/integration base only when the issue contract grants that
-authority and required checks/reviews pass:
+authority and required checks/reviews pass. A single-owner, explicitly
+authorized operator task may work directly in the clean primary `main`
+checkout; this is a narrow exception, not a concurrent-workflow default. Check
+that no other writer owns the touched files and preserve unrelated worktrees,
+branches, user data, and any pre-existing changes:
 
 ```text
 isolated worktree -> implement -> validate -> commit -> review/check
     -> merge into intended base -> verify the merged base -> clean up
 ```
 
-After the merge, verify `git status`, inspect a recent graph with
+After integration, verify `git status`, inspect a recent graph with
 `git log --graph --decorate --oneline`, and rerun the relevant checks against
 the merged base. For Nix Arbor this normally includes `nix flake check` and
 the focused component checks. A successful `git merge` exit code alone is not

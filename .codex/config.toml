@@ -3,9 +3,15 @@
 # AGENTS.md is the policy source; `nix develop` is the canonical environment.
 
 [agents]
-# Do not turn this project file into a fixed execution topology. Follow the
-# active task contract and observed runtime capabilities for delegation.
 enabled = true
+max_concurrent_threads_per_session = 16
+# Allows owner -> bounded specialist. This is a ceiling; the live runtime may
+# expose less and no capacity is centrally reserved.
+max_depth = 2
+
+[features]
+multi_agent = true
+hooks = true
 
 [agents.nix-specialist]
 description = "Read-only Nix flake and module semantics specialist."

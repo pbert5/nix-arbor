@@ -27,7 +27,7 @@
       devShells.default = pkgs.mkShell {
         name = "nix-arbor";
         packages = (inputs.ashes-tools.lib.sets.nix-workstation pkgs) ++ [
-          pkgs.codex
+          inputs.codex-nixpkgs.legacyPackages.${system}.codex
           pkgs.rtk
           pkgs.nodejs
           pkgs.playwright-mcp

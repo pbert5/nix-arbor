@@ -32,7 +32,7 @@ let
         nh
         tailscale
         zfs
-        pkgs.codex
+        inputs.codex-nixpkgs.legacyPackages.${pkgs.system}.codex
         inputs.codex-switch.packages.${pkgs.system}.codex-switch
         rtk
       ];

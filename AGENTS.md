@@ -18,33 +18,59 @@ belong in independent flakes and repositories.
 
 ## Execution contract
 
-Substantial work is run by a thin primary executor over first-order
-workstream owners. The executor is deterministic: it owns the approved task
-graph, owner lifecycle, dependency transitions, concurrency and nested-capacity
-reserve, shared-resource locks, terminal-packet collection, predefined
-checker/reviewer/adviser routing, and durable status bookkeeping. It does not
-design, decompose ambiguity, implement, debug, review diffs, interpret
-failures, resolve semantic conflicts, or validate product claims. Those
-judgments belong to the named owner, specialist, reviewer, or human.
+Substantial work starts from a `PROMPT_READY` issue/workstream contract. It
+names the objective and approved approach, parent, base SHA, dependencies,
+ownership boundaries, shared resources and interfaces, acceptance/test/review
+contracts, integration target, and human stops. Do not re-plan an approved
+contract unless fresh evidence invalidates it.
 
-An owner starts only from a `PROMPT_READY` issue/worktree/branch contract. The
-contract names the objective, approved approach, parent, base SHA, dependencies,
-ownership boundaries, shared resources, interfaces, acceptance and test
-contracts, review contract, integration target, and human-stop boundaries.
-Owners may implement, publish durable checkpoints, and use bounded depth-2
-specialists while reserving capacity for those specialists. They return one
-compact terminal packet and trust audit; raw transcripts are not executor
-state. Do not re-plan approved PROMPT_READY work unless new evidence invalidates
-the contract.
+The normal rule is one task/branch/worktree. A single-owner operator task may
+use the primary clean `main` checkout only when its issue explicitly authorizes
+that exception; verify no other writer owns the touched paths and preserve all
+unrelated worktrees, branches, and user state.
 
-The executor supervises passive-first: observe lifecycle/status, read existing
-output, inspect GitHub/PR/CI/artifact evidence, and wait. It sends input only
-for a concrete unblock, changed constraint, safety issue, requested
-clarification, or scope/resource conflict; routine status pings are forbidden.
-Merge, release, deployment, destructive migration, credential/account
-changes, and physical actuation remain human stops unless the issue contract
-explicitly grants the narrower authority. An open PR or pending human review
-is not itself a failure.
+The first-order workstream owner owns implementation, debugging, local
+verification, independent review and repair, durable checkpoints, and the
+terminal handoff. The owner may use bounded depth-2 specialists when the live
+runtime and contract support them. Use GPT-6 Luna for owners and routine nested
+specialists when available; reserve higher-cost models for evidence-backed
+reasoning needs. Probe runtime model/tool availability instead of assuming
+configuration guarantees it. Do not reserve root-owned review capacity or
+centralize stream-local checker/reviewer routing.
+
+The primary executor is bookkeeping-only: it tracks approved DAG readiness,
+dependencies, owner lifecycle, worktree/branch provenance, and compact terminal
+packets. It does not implement, debug, review diffs, interpret findings, repair,
+or validate product claims. Owners return one compact terminal packet and
+trust audit; raw transcripts are not executor state. The runtime thread
+ceiling is a ceiling, not a task quota or reason to reserve nested capacity
+centrally.
+
+Supervision is passive-first: observe lifecycle/status, read existing output,
+inspect GitHub/PR/CI/artifacts, and wait. Do not send routine status pings.
+Intervene only for a concrete unblock, changed constraint, safety issue,
+requested clarification, or scope/resource conflict. Owners close/reclaim
+short-lived specialists after consuming their result and complete any required
+review/repair loop before returning.
+
+GitHub handoffs are durable and evidence-based. Record issue/PR, branch and
+worktree, base/head SHAs, completed scope, exact validation, independent review
+disposition and stable finding IDs, blockers/follow-ups, exact next action, and
+a trust audit. Use authenticated REST when `gh` GraphQL compatibility fails;
+diagnose token readiness separately from DNS/network capability and never
+print/store token values. After GitHub mutations, perform authenticated
+readback. Record pending CI once; do not poll or hold owners open for it. A
+designated merge owner performs any required fresh one-shot CI gate. Bounded
+multi-issue efforts include a read-only audit of native GitHub issue, PR, and
+dependency relationships.
+
+Use `/goal` for a persistent verified end state when the task warrants it.
+Complete it only after acceptance evidence and required review/integration
+conditions are satisfied; otherwise record the exact blocker and next action.
+Merge, release, deployment, destructive migration, credential/account changes,
+and physical actuation remain human stops unless the issue contract explicitly
+grants the narrower authority. An open PR or pending human review is not itself
+a failure.
 
 ## Change and handoff expectations
 
@@ -73,7 +99,8 @@ is not itself a failure.
 
 - Follow the live task contract for delegation, concurrency, model, and depth;
   repository files do not promise runtime capabilities or impose a fixed task
-  graph.
+  graph. GPT-6 Luna is the low-cost owner/specialist preference when exposed;
+  interactive leader model selection remains personal.
 - Keep stable, reusable Codex roles in the user's personal Codex configuration.
   Project `.codex/agents` contains only Nix Arbor-specific roles: Nix semantics
   and repository integration validation.

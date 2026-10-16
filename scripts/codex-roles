@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() { printf 'Usage: scripts/codex-roles --check|--install\n'; }
+case "${1:-}" in
+  --check|--install) mode=$1 ;;
+  -h|--help) usage; exit 0 ;;
+  *) usage >&2; exit 2 ;;
+esac
+[[ $# -eq 1 ]] || { usage >&2; exit 2; }
+root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
+codex_home=${CODEX_HOME:-${HOME:?HOME or CODEX_HOME must be set}/.codex}
+dest="$codex_home/agents"
+status=0
+for source in "$root"/codex/roles/*.toml; do
+  name=${source##*/}
+  target="$dest/$name"
+  if [[ -e $target ]] && ! cmp -s "$source" "$target"; then
+    printf 'conflict: %s exists and differs; merge it manually\n' "$target" >&2
+    status=1
+  elif [[ $mode == --check && ! -e $target ]]; then
+    printf 'missing: %s\n' "$target"
+    status=1
+  fi
+done
+((status == 0)) || exit "$status"
+
+for source in "$root"/codex/roles/*.toml; do
+  name=${source##*/}
+  target="$dest/$name"
+  if [[ -e $target ]]; then
+    if cmp -s "$source" "$target"; then
+      printf 'unchanged: %s\n' "$target"
+    fi
+  elif [[ $mode == --check ]]; then
+    :
+  else
+    mkdir -p "$dest"
+    install -m 0644 "$source" "$target"
+    printf 'installed: %s\n' "$target"
+  fi
+done
+if [[ $mode == --check && $status -eq 0 ]]; then
+  printf 'check complete; no personal configuration was changed\n'
+fi
+exit "$status"
