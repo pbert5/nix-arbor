@@ -49,13 +49,14 @@ fi
 docker exec "$container" test -s /runner/.runner
 docker exec "$container" test -f /runner/.credentials
 [[ $(docker exec "$container" id -u) == 1001 ]]
+docker exec "$container" sh -c "printf 'persisted-runner-id\\n' > /runner/.runner; printf 'persisted-credential-marker\\n' > /runner/.credentials"
 compose up -d --force-recreate runner
 container=$(compose ps -q runner)
 [[ -n $container && $container != "$first_container" ]]
-[[ $(docker exec "$container" cat /runner/.runner) == disposable-runner-id ]]
-docker exec "$container" test -f /runner/.credentials
+[[ $(docker exec "$container" cat /runner/.runner) == persisted-runner-id ]]
+[[ $(docker exec "$container" cat /runner/.credentials) == persisted-credential-marker ]]
 compose restart runner
 container=$(compose ps -q runner)
-[[ $(docker exec "$container" cat /runner/.runner) == disposable-runner-id ]]
-docker exec "$container" test -f /runner/.credentials
+[[ $(docker exec "$container" cat /runner/.runner) == persisted-runner-id ]]
+[[ $(docker exec "$container" cat /runner/.credentials) == persisted-credential-marker ]]
 printf 'Disposable Compose restart and named-volume persistence passed (%s).\n' "$project"
