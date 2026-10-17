@@ -2,15 +2,18 @@
 set -euo pipefail
 
 root=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd -P)
-project="nix-arbor-runner-smoke-$$"
 tmp=$(mktemp -d)
+project="nix-arbor-runner-smoke-$(basename "$tmp" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9')"
+created=0
 compose_file="$root/tools/github/runner-compose/compose.yaml"
 env_file="$tmp/runner.env"
 override="$tmp/override.yaml"
 
 cleanup() {
-  docker compose --project-name "$project" --env-file "$env_file" \
-    -f "$compose_file" -f "$override" down -v >/dev/null 2>&1 || true
+  if ((created)); then
+    docker compose --project-name "$project" --env-file "$env_file" \
+      -f "$compose_file" -f "$override" down -v >/dev/null 2>&1 || true
+  fi
   rm -rf -- "$tmp"
 }
 trap cleanup EXIT
@@ -34,7 +37,14 @@ compose() {
     -f "$compose_file" -f "$override" "$@"
 }
 
+if [[ -n $(docker ps -aq --filter "label=com.docker.compose.project=$project") || \
+      -n $(docker volume ls -q --filter "label=com.docker.compose.project=$project") || \
+      -n $(docker network ls -q --filter "label=com.docker.compose.project=$project") ]]; then
+  echo "refusing to reuse existing Docker project name: $project" >&2
+  exit 1
+fi
 compose config --quiet
+created=1
 compose up -d runner
 container=$(compose ps -q runner)
 [[ -n $container ]]
