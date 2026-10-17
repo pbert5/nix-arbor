@@ -38,6 +38,7 @@ compose config --quiet
 compose up -d runner
 container=$(compose ps -q runner)
 [[ -n $container ]]
+first_container=$container
 sleep 2
 if [[ $(docker inspect --format '{{.State.Status}}' "$container") != running ]]; then
   docker inspect --format 'state={{.State.Status}} exit={{.State.ExitCode}} error={{.State.Error}} args={{json .Config.Cmd}} entrypoint={{json .Config.Entrypoint}}' "$container" >&2
@@ -48,6 +49,11 @@ fi
 docker exec "$container" test -s /runner/.runner
 docker exec "$container" test -f /runner/.credentials
 [[ $(docker exec "$container" id -u) == 1001 ]]
+compose up -d --force-recreate runner
+container=$(compose ps -q runner)
+[[ -n $container && $container != "$first_container" ]]
+[[ $(docker exec "$container" cat /runner/.runner) == disposable-runner-id ]]
+docker exec "$container" test -f /runner/.credentials
 compose restart runner
 container=$(compose ps -q runner)
 [[ $(docker exec "$container" cat /runner/.runner) == disposable-runner-id ]]
