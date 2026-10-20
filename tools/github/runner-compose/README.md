@@ -67,6 +67,66 @@ separately reviewed Docker-in-Docker or guest isolation contract exists.
 Expect no R640 CI work while `R640_RUNNER_READY` is absent or false: GitHub
 will report those gated jobs as **skipped**, rather than queueing forever.
 
+## Avoid redundant GitHub-hosted push failures when hosted minutes are exhausted
+
+GitHub reports the status of **every** workflow that starts, even if a separate
+R640 job on the same commit succeeded. There is no setting that makes a
+self-hosted success override an unrelated failed hosted job. To avoid those
+no-minute failures on approved *trusted branch pushes*, existing hosted jobs
+now support a **separate explicit opt-out**. They continue to run for PRs and
+when manually dispatched (`workflow_dispatch`), and they do not suppress
+genuine self-hosted test failures.
+
+Opt-out requires **both** of these per-repository Actions variables:
+`R640_RUNNER_READY=true` AND `R640_SKIP_HOSTED_PUSH=true`. Absent/unset
+values keep existing hosted push checks enabled, not silently disabled.
+
+Only after the repository's R640 runner is verified online, and the relevant
+self-hosted tests actually PASS, may an operator do:
+
+```sh
+gh variable set R640_RUNNER_READY -R pbert5/simple-evolver --body true
+gh variable set R640_SKIP_HOSTED_PUSH -R pbert5/simple-evolver --body true
+```
+
+For Meta WebUI (`master`) and Meta BAL (`master`), substitute their
+repository name. The ordinary opt-out affects only the hosted
+`operator-webui.yml` jobs in Simple Evolver, `enforcement.yml` in Meta
+WebUI, and `api-workbench.yml` in Meta BAL. It does **not** skip non-master
+Meta WebUI/Meta BAL push jobs, e.g. Meta BAL `api-tui`, nor pull requests.
+
+**Coverage is not equivalent yet**: Simple Evolver's current R640 workflow
+does not run Playwright E2E; Meta WebUI's frontend-only workflow does not cover
+all LinkML/Python/Playwright checks; Meta BAL's R640 job is only a repository
+smoke and does **not** run Server Dev Container/Postgres acceptance. Leave
+`R640_SKIP_HOSTED_PUSH` unset or false in a repo until you explicitly accept
+that temporary coverage reduction or port the missing tests to a safe
+self-hosted environment. Never claim that skipped tests passed.
+
+Meta WebUI production `evolver-release.yml` and Meta BAL
+`evolver-code-artifact.yml` are separately guarded by
+`R640_SKIP_RELEASE_PUSH` and `R640_SKIP_ARTIFACT_PUSH`, respectively.
+**Do not set these** until corresponding release/artifact verification runs
+successfully elsewhere. Merely having the R640 frontend/smoke job pass is
+not equivalent.
+
+To re-enable hosted push checks in a repository without code edits:
+
+```sh
+gh variable set R640_SKIP_HOSTED_PUSH -R pbert5/simple-evolver --body false
+```
+
+These changes cannot retroactively turn earlier failed GitHub runs green.
+Changing the repo variables requires GitHub permission to manage Actions
+variables and the local authenticated `gh` CLI; the connected GitHub code
+tool cannot set them. Hosted pull-request jobs may still fail because of
+minute quota, and public/untrusted PR code must not be sent to the present
+container-only runner to hide that failure. To resolve that case, fund
+GitHub-hosted minutes or provide a separately isolated and policy-gated
+self-hosted PR runner. Also review any *required status checks* in GitHub
+branch protection: do not require hosted jobs that cannot execute, but do not
+drop required tests without a genuinely equivalent protected check.
+
 ## Public Arbor repositories
 
 `nix-arbor`, `arbor-manager`, and `arbor-registry` are public. The
