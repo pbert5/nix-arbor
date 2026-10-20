@@ -86,6 +86,24 @@ fi
 
 compose() { docker compose --project-name "$project" --env-file "$repo_file_path" -f "$compose_file" "$@"; }
 gh_api() { GH_TOKEN="$(gh auth token 2>/dev/null)" gh api "$@"; }
+runner_state_present() {
+  compose run --rm -T --no-deps --user 1001:1001 --entrypoint /bin/sh runner \
+    -c 'test -r /runner/.runner && test -r /runner/.credentials' >/dev/null 2>&1
+}
+ensure_runner_image() {
+  if ! docker image inspect "nix-arbor-github-runner:${RUNNER_VERSION}" >/dev/null 2>&1; then
+    compose --progress plain build runner || die 'runner image build failed'
+  fi
+}
+ensure_runner_volume_writable() {
+  ensure_runner_image
+  if ! compose run --rm -T --no-deps --user 1001:1001 --entrypoint /bin/sh runner \
+    -c 'test -w /runner' >/dev/null 2>&1; then
+    compose run --rm -T --no-deps --user 0:0 --entrypoint /bin/sh runner \
+      -c 'chown -R 1001:1001 /runner && touch /runner/.nix-arbor-volume-initialized && chown 1001:1001 /runner/.nix-arbor-volume-initialized && chmod 600 /runner/.nix-arbor-volume-initialized' \
+      >/dev/null || die 'could not repair runner volume ownership'
+  fi
+}
 repo_info() {
   command -v gh >/dev/null || die 'gh is required for repository verification'
   local data
@@ -111,9 +129,12 @@ save_config() {
 case "$command_name" in
   enroll)
     repo_info
-    if [[ -f $repo_file_path ]]; then
+    if [[ -f $repo_file_path ]] && runner_state_present; then
       echo "Already configured: $repo_arg ($project). Use up to restart; no credentials were changed."
       exit 0
+    fi
+    if [[ -f $repo_file_path ]]; then
+      echo 'Saved metadata exists but runner registration state is missing or unreadable; renewing enrollment.'
     fi
     command -v gh >/dev/null || die 'gh is required; log in with gh auth login first'
     gh auth status >/dev/null 2>&1 || die 'gh is not authenticated; use gh auth login'
@@ -143,6 +164,7 @@ case "$command_name" in
       rm -f "$repo_file_path"
       die 'runner image build failed; configuration was not retained'
     fi
+    ensure_runner_volume_writable
     # Short-lived registration token is streamed to the one-shot process stdin.
     printf '%s\n' "$registration_token" | compose run --rm -T --no-deps runner enroll >/dev/null || {
       unset registration_token
@@ -150,18 +172,23 @@ case "$command_name" in
       die 'registration failed; check token validity, permissions, and runner logs'
     }
     unset registration_token
+    runner_state_present || die 'registration command succeeded but readable runner state was not saved'
     compose up -d runner
     printf 'Enrolled %s as %s in Compose project %s.\n' "$repo_arg" "$runner_name" "$project"
     ;;
   up|rebuild)
     repo_info
     compose config --quiet
+    ensure_runner_volume_writable
+    runner_state_present || die 'runner registration state is missing; run enroll to register it'
     compose up -d runner
     ;;
   up-up)
     repo_info
     compose config --quiet
     compose --progress plain build --pull --no-cache runner
+    ensure_runner_volume_writable
+    runner_state_present || die 'runner registration state is missing; run enroll to register it'
     compose up -d --force-recreate runner
     ;;
   down) compose stop runner ;;
@@ -176,6 +203,11 @@ case "$command_name" in
     if [[ $command_name == doctor ]]; then
       compose config --quiet && echo 'Compose config: valid'
       docker volume inspect "${project}_runner-state" >/dev/null 2>&1 && echo 'Registration volume: present' || echo 'Registration volume: absent (enroll required)'
+      if runner_state_present; then
+        echo 'Runner registration files: readable by UID 1001'
+      else
+        echo 'Runner registration files: missing or unreadable (run enroll to repair)'
+      fi
       echo 'Default runner has no host Docker socket and no privileged mode.'
       echo 'Fork/untrusted-workflow safety requires trusted event/ref/actor gates in consumer workflows.'
     fi

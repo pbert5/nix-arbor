@@ -12,6 +12,8 @@ services:
       RUNNER_REPOSITORY: "${RUNNER_REPOSITORY:?select a repository with runners enroll}"
       RUNNER_NAME: "${RUNNER_NAME:?runner name missing}"
       RUNNER_LABELS: "${RUNNER_LABELS:?runner labels missing}"
+      RUNNER_VERSION: "${RUNNER_VERSION:-2.338.0}"
+      RUNNER_SHA256: "${RUNNER_SHA256:-af4b794c1bc41d73d40535e3fe092a39f9679cd8d965954c2aca25a05ca41d32}"
     volumes:
       - runner-state:/runner
     stop_grace_period: 2m

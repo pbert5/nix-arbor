@@ -32,6 +32,11 @@ It does not put a PAT or registration token in container environment, Compose
 configuration, logs, or the host repo. GitHub's runner-specific lifecycle
 credentials and identity files persist in the mode-restricted named volume;
 they are the credentials needed for that registered runner to reconnect.
+The runner process uses UID 1001. Before enrollment or startup, the tool checks
+that UID can write its named volume; if not, a one-shot helper repairs ownership
+inside that volume and seeds it to prevent Docker from reseeding an empty mount.
+The runner itself does not run as root. `doctor` checks whether registration
+files exist and are readable by the runner UID.
 The host-side per-repository config under
 `${XDG_CONFIG_HOME:-~/.config}/nix-arbor/runners/` contains repository, labels,
 runner name and pinned version only.

@@ -30,6 +30,12 @@ services:
   runner:
     entrypoint: ["/bin/sh", "-c"]
     command: ["test -f /runner/.runner || printf 'disposable-runner-id\\n' > /runner/.runner; test -f /runner/.credentials || touch /runner/.credentials; exec sleep 3600"]
+    volumes:
+      - type: volume
+        source: runner-state
+        target: /runner
+        volume:
+          nocopy: true
 YAML
 
 compose() {
@@ -45,6 +51,21 @@ if [[ -n $(docker ps -aq --filter "label=com.docker.compose.project=$project") |
 fi
 compose config --quiet
 created=1
+compose --progress plain build runner
+compose run --rm -T --no-deps --user 0:0 --entrypoint /bin/sh runner \
+  -c 'chown 0:0 /runner; touch /runner/root-owned-sentinel'
+if compose run --rm -T --no-deps --user 1001:1001 --entrypoint /bin/sh runner \
+  -c 'test -w /runner' >/dev/null 2>&1; then
+  echo 'root-owned volume unexpectedly writable by runner UID' >&2
+  exit 1
+fi
+compose run --rm -T --no-deps --user 0:0 --entrypoint /bin/sh runner \
+  -c 'chown -R 1001:1001 /runner && touch /runner/.nix-arbor-volume-initialized && chown 1001:1001 /runner/.nix-arbor-volume-initialized && chmod 600 /runner/.nix-arbor-volume-initialized' >/dev/null
+compose run --rm -T --no-deps --user 1001:1001 --entrypoint /bin/sh runner \
+  -c 'test -w /runner && test -w /runner/root-owned-sentinel && test -r /runner/.nix-arbor-volume-initialized'
+compose run --rm -T --no-deps --entrypoint /usr/local/bin/runner-entrypoint runner prepare
+compose run --rm -T --no-deps --user 1001:1001 --entrypoint /bin/sh runner \
+  -c 'test -x /runner/config.sh && test -x /runner/run.sh && test -x /runner/bin/Runner.Listener && test -r /runner/.nix-arbor-runner-install'
 compose up -d runner
 container=$(compose ps -q runner)
 [[ -n $container ]]
@@ -60,11 +81,19 @@ docker exec "$container" test -s /runner/.runner
 docker exec "$container" test -f /runner/.credentials
 [[ $(docker exec "$container" id -u) == 1001 ]]
 docker exec "$container" sh -c "printf 'persisted-runner-id\\n' > /runner/.runner; printf 'persisted-credential-marker\\n' > /runner/.credentials"
+docker exec "$container" touch /runner/stale-runner-distribution-file
+compose run --rm -T --no-deps -e RUNNER_SHA256=smoke-refresh \
+  --entrypoint /usr/local/bin/runner-entrypoint runner prepare
+[[ $(docker exec "$container" cat /runner/.runner) == persisted-runner-id ]]
+[[ $(docker exec "$container" cat /runner/.credentials) == persisted-credential-marker ]]
+docker exec "$container" test -x /runner/bin/Runner.Listener
+docker exec "$container" test ! -e /runner/stale-runner-distribution-file
 compose up -d --force-recreate runner
 container=$(compose ps -q runner)
 [[ -n $container && $container != "$first_container" ]]
 [[ $(docker exec "$container" cat /runner/.runner) == persisted-runner-id ]]
 [[ $(docker exec "$container" cat /runner/.credentials) == persisted-credential-marker ]]
+docker exec "$container" test -x /runner/bin/Runner.Listener
 compose restart runner
 container=$(compose ps -q runner)
 [[ $(docker exec "$container" cat /runner/.runner) == persisted-runner-id ]]

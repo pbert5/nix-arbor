@@ -4,7 +4,7 @@ ARG RUNNER_VERSION=2.338.0
 ARG RUNNER_SHA256
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates curl git jq libicu74 libssl3 libkrb5-3 zlib1g \
+ && apt-get install -y --no-install-recommends ca-certificates curl git jq libicu74 libssl3 libkrb5-3 rsync zlib1g \
  && rm -rf /var/lib/apt/lists/* \
  && useradd --create-home --uid 1001 runner \
  && mkdir -p /opt/actions-runner /runner \
