@@ -59,6 +59,7 @@ grep -qx 'RUNNER_REPOSITORY=pbert5/meta_bal' "$conf"
 grep -qx "RUNNER_LABELS=r640-0,$slug,docker-compose" "$conf"
 grep -qx 'RUNNER_VERSION=2.338.0' "$conf"
 grep -qx 'mock-short-token' "$MOCK_STDIN"
+grep -q -- '--progress plain build runner' "$MOCK_LOG"
 if grep -q 'mock-short-token\|mock-long-lived-token' "$conf" "$tmp/enroll.out" "$MOCK_LOG"; then
   echo 'credential leaked to config, output, or Docker arguments' >&2; exit 1
 fi

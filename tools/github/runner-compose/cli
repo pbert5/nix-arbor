@@ -138,7 +138,7 @@ case "$command_name" in
     [[ -n $registration_token ]] || die 'registration token is required'
     RUNNER_REPOSITORY=$repo_arg RUNNER_NAME=$runner_name RUNNER_LABELS=$labels RUNNER_VERSION=2.338.0 RUNNER_SHA256=af4b794c1bc41d73d40535e3fe092a39f9679cd8d965954c2aca25a05ca41d32
     save_config
-    if ! compose build runner >/dev/null; then
+    if ! compose --progress plain build runner; then
       unset registration_token
       rm -f "$repo_file_path"
       die 'runner image build failed; configuration was not retained'
@@ -161,7 +161,7 @@ case "$command_name" in
   up-up)
     repo_info
     compose config --quiet
-    compose build --pull --no-cache runner
+    compose --progress plain build --pull --no-cache runner
     compose up -d --force-recreate runner
     ;;
   down) compose stop runner ;;
