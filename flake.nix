@@ -32,6 +32,10 @@
     arbor-registry.url = "github:pbert5/arbor-registry";
     arbor-network-manager.url = "github:pbert5/arbor-network-manager";
     yggdrasil-private.url = "git+https://github.com/pbert5/yggdrasil-private.git?ref=main";
+    microvm = {
+      url = "github:microvm-nix/microvm.nix/f13928fe9900e91709d7ce581eefa47eaafa79e1";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =

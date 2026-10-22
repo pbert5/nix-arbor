@@ -119,7 +119,25 @@ let
   ];
   r640 = [
     (import ./access/module.nix)
+    inputs.microvm.nixosModules.host
+    (import ./modules/ci-runners.nix)
     {
+      arbor.ci.runners.repositories = {
+        nix-arbor = {
+          repository = "pbert5/nix-arbor";
+          repositoryVisibility = "public";
+        };
+        meta_bal = {
+          repository = "pbert5/meta_bal";
+          repositoryVisibility = "private";
+          forkPRWorkflowsDisabled = true;
+        };
+        simple-evolver = {
+          repository = "pbert5/simple-evolver";
+          repositoryVisibility = "private";
+          forkPRWorkflowsDisabled = true;
+        };
+      };
       arbor.access.authorizedKeySets = [
         "operator"
         "deployment"
