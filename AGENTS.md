@@ -6,8 +6,9 @@ belong in independent flakes and repositories.
 
 ## Workspace rules
 
-- One agent task = one branch = one worktree. Do not edit another agent's
-  checkout or use the primary checkout for task changes.
+- Default to one task, branch, and worktree. An explicit user or issue
+  authorization may select an existing checkout and task branch; first check
+  ownership and preserve committed, uncommitted, and unpublished work.
 - Use `agent/<agent-or-role>/<task-slug>` for agent branches. Prefer the
   `scripts/agent-worktree` helper, with worktrees under `./worktrees/`.
 - Read the closest `AGENTS.md` before changing a subtree. `packages/` contains
@@ -24,10 +25,13 @@ ownership boundaries, shared resources and interfaces, acceptance/test/review
 contracts, integration target, and human stops. Do not re-plan an approved
 contract unless fresh evidence invalidates it.
 
-The normal rule is one task/branch/worktree. A single-owner operator task may
-use the primary clean `main` checkout only when its issue explicitly authorizes
-that exception; verify no other writer owns the touched paths and preserve all
-unrelated worktrees, branches, and user state.
+The default is one task, branch, and worktree. When the user or issue explicitly
+authorizes an existing checkout, inspect its actual branch, state, and ownership
+first. Use one mutation owner at a time and preserve unrelated worktrees,
+branches, commits, and user changes; do not assume a clean `main` branch.
+Use separate durable Codex sessions for distinct substantial workstreams when
+practical to protect context. Serialize shared-checkout ownership and hand off
+exact SHAs between sessions; separate sessions do not permit concurrent writers.
 
 The first-order workstream owner owns implementation, debugging, local
 verification, independent review and repair, durable checkpoints, and the
@@ -106,7 +110,8 @@ a failure.
   and repository integration validation.
 - Use delegation only when the active agent runtime supports it and the task
   contract permits it. Every concurrent mutable task gets its own
-  `agent/<agent-or-role>/<task-slug>` branch and worktree. Read-only reviewers
+  `agent/<agent-or-role>/<task-slug>` branch and worktree unless an explicit
+  authorization provides another safe boundary. Read-only reviewers
   may inspect the assigned branch without editing it.
 - Preserve the assigned worktree boundary for any check that can change
   checkout state, caches, submodules, or generated files.

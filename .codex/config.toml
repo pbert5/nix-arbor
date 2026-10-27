@@ -5,9 +5,6 @@
 [agents]
 enabled = true
 max_concurrent_threads_per_session = 16
-# Allows owner -> bounded specialist. This is a ceiling; the live runtime may
-# expose less and no capacity is centrally reserved.
-max_depth = 2
 
 [features]
 multi_agent = true
