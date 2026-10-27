@@ -15,6 +15,7 @@ _: {
         runtimeInputs = [
           pkgs.coreutils
           pkgs.git
+          pkgs.jq
           pkgs.nix
         ];
         text = ''
@@ -77,6 +78,10 @@ _: {
                       overrides)
                         print_overrides
                         ;;
+                      locked-metadata)
+                        printf '%s\n' "Locked public component revisions:"
+                        jq -r '.nodes | to_entries[] | select(.key|IN("arbor-manager","arbor-registry","arbor-network-manager","yggdrasil-private")) | "  \(.key)=\(.value.locked.rev)"' flake.lock
+                        ;;
                       develop|check|show|metadata|build|eval)
                         collect_overrides
                         case "$operation" in
@@ -97,6 +102,7 @@ _: {
             check      Run flake checks with available local component overrides
             show       Show flake outputs with available local component overrides
             metadata   Show flake metadata with available local component overrides
+            locked-metadata  Print the committed public component revisions (no overrides)
             build      Build an installable with available local component overrides
             eval       Evaluate an installable with available local component overrides
             overrides  Show which local component overrides are active

@@ -6,15 +6,16 @@
         "nixpkgs": "nixpkgs_2"
       },
       "locked": {
-        "lastModified": 1787689851,
-        "narHash": "sha256-BifxVr7lxQ8/0u3djm2FMt7kBC7EW7xwH7/k4rkkJNg=",
+        "lastModified": 1788290495,
+        "narHash": "sha256-3hyoOMjpLJz8dCJeX/0zrHWIawvqAJpM9CcmjQ7oQiQ=",
         "owner": "pbert5",
         "repo": "arbor-manager",
-        "rev": "a7a365dded1350e3c6ee55b7dcf70ac00f0c0a8d",
+        "rev": "390ccc7bf56418b0badab22cd4227794726a5bd9",
         "type": "github"
       },
       "original": {
         "owner": "pbert5",
+        "ref": "arbor-infra-dev",
         "repo": "arbor-manager",
         "type": "github"
       }
@@ -79,15 +80,16 @@
         "systemd-vaultd": "systemd-vaultd"
       },
       "locked": {
-        "lastModified": 1787680662,
-        "narHash": "sha256-FYWeQhUP+2MGA8nJBqWiXOU02nNVdEdCdxuDMpZ5Gyc=",
+        "lastModified": 1788239240,
+        "narHash": "sha256-wIcMuUHfFnm8dgmSL1r0VXHNQrJK2oaQRVNRxIktPp0=",
         "owner": "pbert5",
         "repo": "arbor-registry",
-        "rev": "16029ceb17b464cc725a1151527e495470259ff0",
+        "rev": "7a07be55ea31898aceb77da229bb119a1ca26c29",
         "type": "github"
       },
       "original": {
         "owner": "pbert5",
+        "ref": "arbor-infra-dev",
         "repo": "arbor-registry",
         "type": "github"
       }
@@ -208,16 +210,15 @@
       "locked": {
         "lastModified": 1785004585,
         "narHash": "sha256-XyfWpEjLPiQUWQ1/WDpVVqiAdDXrsZORNCqXFIfxlH8=",
-        "ref": "main",
+        "ref": "refs/heads/main",
         "rev": "e5bd666966dc5e41999e2dbefc1502a339c3f6d9",
         "revCount": 2,
         "type": "git",
         "url": "https://github.com/pbert5/codex-switch.git"
       },
       "original": {
-        "owner": "pbert5",
-        "repo": "codex-switch",
-        "type": "github"
+        "type": "git",
+        "url": "https://github.com/pbert5/codex-switch.git"
       }
     },
     "flake-parts": {
@@ -291,11 +292,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1785627969,
-        "narHash": "sha256-4dtXQk/NMePegK/nWp5NSeuZKLATItOq61lpEvmXqGw=",
+        "lastModified": 1788450739,
+        "narHash": "sha256-glZLQlzIn1fXH6PazR2iUmTo7kzzyYSshrWhLS9TqCU=",
         "owner": "hercules-ci",
         "repo": "flake-parts",
-        "rev": "427bf4bd9435fdf21321c8cc628c24efc14c0f7a",
+        "rev": "31729ca8cbdb4fa927b34e5f4353e6a83f39e993",
         "type": "github"
       },
       "original": {
@@ -311,11 +312,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1787540599,
-        "narHash": "sha256-MHwk52ty3NsLhq9a1IbIfBJZlCUJIdiUYFo52JLK9hY=",
+        "lastModified": 1789235087,
+        "narHash": "sha256-6hZ6Gy8isRQsWdI4l81Egag/PUIh68nSmFr2maInUNg=",
         "owner": "nix-community",
         "repo": "home-manager",
-        "rev": "03f4cd46bc1dd4f3a96da778d2ce9f7ce39dd450",
+        "rev": "fe48612c5321a2cc09b0f563757a9c9733d641f8",
         "type": "github"
       },
       "original": {
@@ -406,11 +407,11 @@
     },
     "nixpkgs_5": {
       "locked": {
-        "lastModified": 1787360063,
-        "narHash": "sha256-dt4WdcvsA8/RCe+VZZwqU0X+XMM3wBbGCWA0/sFWzGo=",
+        "lastModified": 1789149629,
+        "narHash": "sha256-H6GwaZzZf+4npqv0tph94w9tZddSjFjmQrVsW0z78uk=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "2c423e03bbafcff28bfadc6781a4a8257f205cb5",
+        "rev": "eaad089433ca2bb662274377d33df3d0e51ef28b",
         "type": "github"
       },
       "original": {
@@ -476,11 +477,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1786629091,
-        "narHash": "sha256-gkig4nPi1CWc4Z50GBsjE4ygSE7hMpl/TwID2an2Cck=",
+        "lastModified": 1788914643,
+        "narHash": "sha256-4GuMPW90JSxXWDPUB9M+1m7fYbe3H0apOd86/zBQ2Kw=",
         "owner": "Mic92",
         "repo": "sops-nix",
-        "rev": "a8627b21b9107c5711c96b84f32a9a4b3d45295f",
+        "rev": "13616fff713a9f94055c66f15687ebdc17a335df",
         "type": "github"
       },
       "original": {

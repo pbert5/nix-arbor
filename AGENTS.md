@@ -16,6 +16,36 @@ belong in independent flakes and repositories.
 - Keep changes scoped to the request. Do not silently change architecture or
   port whole subsystems from a reference repository.
 
+## Execution contract
+
+Substantial work is run by a thin primary executor over first-order
+workstream owners. The executor is deterministic: it owns the approved task
+graph, owner lifecycle, dependency transitions, concurrency and nested-capacity
+reserve, shared-resource locks, terminal-packet collection, predefined
+checker/reviewer/adviser routing, and durable status bookkeeping. It does not
+design, decompose ambiguity, implement, debug, review diffs, interpret
+failures, resolve semantic conflicts, or validate product claims. Those
+judgments belong to the named owner, specialist, reviewer, or human.
+
+An owner starts only from a `PROMPT_READY` issue/worktree/branch contract. The
+contract names the objective, approved approach, parent, base SHA, dependencies,
+ownership boundaries, shared resources, interfaces, acceptance and test
+contracts, review contract, integration target, and human-stop boundaries.
+Owners may implement, publish durable checkpoints, and use bounded depth-2
+specialists while reserving capacity for those specialists. They return one
+compact terminal packet and trust audit; raw transcripts are not executor
+state. Do not re-plan approved PROMPT_READY work unless new evidence invalidates
+the contract.
+
+The executor supervises passive-first: observe lifecycle/status, read existing
+output, inspect GitHub/PR/CI/artifact evidence, and wait. It sends input only
+for a concrete unblock, changed constraint, safety issue, requested
+clarification, or scope/resource conflict; routine status pings are forbidden.
+Merge, release, deployment, destructive migration, credential/account
+changes, and physical actuation remain human stops unless the issue contract
+explicitly grants the narrower authority. An open PR or pending human review
+is not itself a failure.
+
 ## Change and handoff expectations
 
 - Prefer native Nix and Git commands. Run the narrowest useful checks, then
@@ -39,6 +69,21 @@ belong in independent flakes and repositories.
   files, validation, known issues, and review readiness. See
   `docs/agent-workflows.md`.
 
+### Published component and lock discipline
+
+- `packages/` checkouts may be newer than remote flake inputs; they are valid
+  for development, focused tests, and local override experiments.
+- When independently versioned component work is ready for root integration or
+  deployment, commit and validate it, publish it to the canonical repository,
+  then update the root input and `flake.lock` to that exact published revision.
+- Validate the root and deployment candidate without local component overrides,
+  and report the exact locked component revisions in the handoff. Update only
+  intended inputs; do not advance every lock opportunistically.
+- Local component success is not physical integration success. A remote flake
+  input is deployment-ready only when its canonical repository contains the
+  validated commit and the root `flake.lock` resolves to that published
+  revision.
+
 ## Subagent execution
 
 - For substantial tasks, the owning agent constructs a dependency graph, fans
@@ -57,6 +102,10 @@ belong in independent flakes and repositories.
 
 Nix teaching material belongs in `cheats/` and `docs/`, not in this durable
 repository policy.
+
+Arbor is not a single-root PKI: every node begins as a self-rooted local
+authority domain; accepted graph relationships and bounded capabilities add
+external authority, and parent loss must not invalidate local identity.
 
 ## Output-aware shell commands
 

@@ -2,7 +2,7 @@
 
 The repository contract is **one task = one branch = one worktree**. The
 primary checkout is for integration and review; agents work in sibling
-directories under `./worktrees/`.
+directories under `../nix-arbor-worktrees/`.
 
 ## Starting work
 
@@ -11,15 +11,15 @@ submodules:
 
 ```sh
 ./scripts/agent-worktree new workspace-infra luna
-cd worktrees/agent-luna-workspace-infra
+cd ../nix-arbor-worktrees/agent-luna-workspace-infra
 nix develop
 ```
 
 Native Git equivalent:
 
 ```sh
-git worktree add -b agent/luna/my-task worktrees/agent-luna-my-task HEAD
-git -C worktrees/agent-luna-my-task submodule update --init
+git worktree add -b agent/luna/my-task ../nix-arbor-worktrees/agent-luna-my-task HEAD
+git -C ../nix-arbor-worktrees/agent-luna-my-task submodule update --init
 ```
 
 Start Codex or Claude only after entering that worktree:
@@ -28,6 +28,35 @@ Start Codex or Claude only after entering that worktree:
 codex
 claude
 ```
+
+## PROMPT_READY launch contract
+
+Before implementation, a design/approach is approved and recorded in the
+tracking issue or workstream issue. Mark it `PROMPT_READY` only when the issue
+contains all of the following:
+
+- objective and design/approach;
+- parent/tracking issue, base branch and SHA, dependencies, and integration
+  target;
+- ownership: may modify, may read, and must not modify;
+- shared resources and interfaces;
+- acceptance, test, and review contracts; and
+- human-stop boundaries.
+
+The prompt-loader retrieves this minimum current capsule from GitHub and the
+relevant repository instructions. It may perform broad history/GitHub
+retrieval, but passes the executor and owner compact current facts rather than
+raw histories or logs. A PROMPT_READY owner executes the approved contract;
+fresh evidence that invalidates it is reported as a blocker for an explicit
+decision, not silently re-planned.
+
+The first-order owner owns one issue, worktree, branch, and (normally) early
+draft PR. It may implement directly and may reserve bounded depth-2 capacity
+for scouts, advisers, implementers, verifiers, reviewers, or repair workers.
+It owns local verification and review/repair, durable checkpoints, and the
+terminal packet. The thin primary executor routes only predefined nodes and
+records state; it does not become the architect, implementer, debugger, or
+reviewer.
 
 Codex Cloud environments can select `scripts/codex-setup` as their supported
 setup script. It initializes direct submodules and evaluates the dev shell
@@ -40,33 +69,33 @@ If a child repository has its own valid
 
 ## Dependency-aware delegation
 
-For any substantial task, the owning Codex agent should use a lightweight,
+For any substantial task, the approved design should include a lightweight,
 ephemeral task graph instead of doing the whole task serially. Claude agents
 should apply the same model when their current agent system supports
-delegation. The lead keeps the graph in session state; no persistent task
-database is needed.
+delegation. The thin executor keeps the approved graph in session state; no
+persistent task database is needed.
 
 Classify each task as one of:
 
 - `READY`: all prerequisites are complete and a worker can start now.
 - `BLOCKED`: waiting on named prerequisite tasks; keep it in a queue.
-- `INTEGRATION`: lead-owned composition or boundary work after implementation.
+- `INTEGRATION`: authorized owner or human-owned composition/boundary work after implementation.
 - `REVIEW`: independent adversarial inspection near the end.
 - `VALIDATION`: focused or final checks against the integrated result.
 
-At the start, inspect the request and repository, decompose the work, identify
-all ready tasks, and dispatch independent work concurrently. When a worker
-finishes, consume its result, update the graph, and immediately dispatch newly
-unblocked tasks. Keep doing useful lead work—architecture, decisions,
-integration preparation, and synthesis—while workers run. Do not create
-busy-work merely to fill a slot: useful bounded work takes priority over
-maximizing concurrency. Do not wait for an entire wave when one completed
-prerequisite already unblocks useful work.
+After a graph is approved, the executor identifies READY tasks and dispatches
+independent work concurrently. When an owner finishes, it consumes the
+terminal packet, updates the graph, and immediately dispatches newly
+unblocked tasks. Architecture, decomposition, semantic decisions, integration
+preparation, and synthesis belong to the named owner or human authority, not
+the executor. Do not create busy-work merely to fill a slot: useful bounded
+work takes priority over maximizing concurrency. Do not wait for an entire
+wave when one completed prerequisite already unblocks useful work.
 
 For each graph entry, track at least its task ID, state, prerequisites, owner,
 write set/worktree (if mutable), and deliverable or validation evidence. A
-failed prerequisite blocks its dependents until the lead repairs, replaces, or
-cancels it; record that decision in the handoff.
+failed prerequisite blocks its dependents until the authorized owner or human
+repairs, replaces, or cancels it; record that decision in the handoff.
 
 There are two independent forms of concurrency:
 
@@ -84,9 +113,9 @@ submodule state, caches, or locks are mutable for isolation purposes even when
 they do not commit source changes; run them in a dedicated worktree or use a
 strictly non-mutating mode.
 
-The lead remains responsible for the objective, decomposition, dependency
-ordering, architecture, conflict resolution, integration, final validation,
-and merge. Subagents own bounded deliverables and report evidence. Use the
+The workstream owner remains responsible for its bounded objective, local
+implementation, review/repair, and evidence. The executor only performs the
+mechanical lifecycle and routing defined by the approved graph. Use the
 specialized roles deliberately: architect/researcher for discovery,
 implementer for isolated changes, nix-specialist for Nix semantics,
 integration-test for workflow checks, and reviewer for independent challenge.
@@ -134,7 +163,7 @@ N  merge                        <- M
 
 Tasks E, F, and G enter the waiting queue initially and are dispatched as
 their prerequisites complete. If only A and D finish, F becomes `READY` even
-while E remains `BLOCKED`; the lead should dispatch F immediately.
+while E remains `BLOCKED`; the executor should dispatch F immediately.
 
 ### Delegation and handoff
 
@@ -146,29 +175,83 @@ changed, validation, known issues, and whether it is ready for review. A
 reviewer should inspect `git diff <base>...<branch>` and the branch's checks
 before cherry-picking or merging.
 
-Codex project configuration enables six concurrent spawned-agent threads. This
-is the supported `agents.max_concurrent_threads_per_session` setting and does
-not include the primary lead thread. It is a bounded worker pool, not a task
-queue: dependency tracking and ready/waiting dispatch remain lead behavior.
+Concurrency is an observed runtime capability, not a promised topology. The
+executor must retain an explicit nested-capacity reserve before dispatching
+first-order owners; an owner may consume only its bounded depth-2 allowance.
 Do not invent project configuration keys for DAGs or scheduling.
 
 Claude should follow the same dependency-aware delegation and safe worktree
 principles described above where its current agent system supports them,
 without copying Codex-specific configuration or mechanisms.
 
-### Component ownership and pins
+### Component publication and deployment locks
 
-`packages/arbor-manager` and `packages/arbor-registry` are Git submodules
-backed by their standalone repositories. Change implementation only in a
-child-repository branch/worktree, then update the parent gitlink. Root `main`
-pins component `main`; root `arbor-infra-dev` pins component `arbor-infra-dev`.
-Remote flake inputs remain authoritative for normal builds; initialized
-submodules are selected locally only with `--override-input`.
+Child flakes are independently versioned. During development, a checkout under
+`packages/` and `nix-arbor-local` path overrides are appropriate for focused
+testing and integration experiments. They do not identify what a physical host
+will consume.
+
+When component work is ready to be consumed by the root integration branch or
+deployment candidate, the owning/integrating agent must commit and validate the
+component, publish the validated commit to its canonical repository when
+authorized, and update the root input and `flake.lock` to that exact immutable
+revision. Then run root checks and the deployment build without local override
+helpers, and prove the resolved revisions with `nix flake metadata` or the
+`nix-arbor-locked-metadata` app. Do not update unrelated inputs.
+
+Local component success is not physical integration success. A deployment
+handoff must report the exact component SHAs in the lock; a nested checkout,
+passing local override test, or successful evaluation with an implicit path
+override is not deployment readiness.
+
+## State machine and supervision
+
+Use these machine-actionable states:
+
+`READY` -> `RUNNING` -> `VERIFYING` -> `READY_FOR_REVIEW` -> `REVIEWING` ->
+`READY_FOR_INTEGRATION` -> `INTEGRATING` -> `VALIDATING` -> `DONE`.
+
+An authorized transition may instead enter `BLOCKED_DEPENDENCY`,
+`BLOCKED_SHARED_RESOURCE`, `BLOCKED_ENVIRONMENT`, `BLOCKED_AUTHORIZATION`,
+`BLOCKED_AMBIGUOUS`, `BLOCKED_EXTERNAL`, or `BLOCKED_DESTRUCTIVE`. The owner
+provides evidence and the executor records the deterministic transition;
+semantic decisions are delegated to the responsible owner/reviewer or human.
+
+Supervision is passive-first: observe lifecycle and status, read already
+available output, inspect GitHub/PR/CI/artifacts, and wait. Do not send routine
+status pings or steer an active owner. Intervene only to unblock concretely,
+apply a changed constraint, address safety, answer a requested clarification,
+or resolve a scope/resource conflict.
+
+## Review and terminal handoff
+
+Independent review reports `PASS`, `PASS_WITH_FOLLOWUPS`, or
+`CHANGES_REQUIRED`. Every substantive finding has a stable ID (for example
+`RF-001`) and records blocking rationale, evidence, scope, affected SHA,
+disposition, and verification. Review history is durable; do not silently
+rewrite or erase findings.
+
+The owner’s terminal packet is compact and always includes:
+
+- branch/worktree and base/head SHAs;
+- draft PR (or explicit absence), completed scope, and validation evidence;
+- open finding IDs/follow-ups and blockers;
+- exact next state; and
+- a trust audit: confidence band, least-trusted claims, untested paths,
+  possible misunderstandings, and the next evidence that would reduce
+  uncertainty most.
+
+Publish a meaningful issue checkpoint during substantial work and an
+end-of-session handoff to the issue/PR. The executor consumes packets, not
+local transcripts. A designated integration session must run a bounded,
+read-only relationship audit before completing a substantial multi-issue
+effort, comparing intended issue/PR relationships with native GitHub state.
 
 ## Completion and merge
 
-For a normal task, a validated agent branch merges itself into its identified
-base branch before reporting completion:
+For a normal task, a validated agent branch may merge into its identified
+development/integration base only when the issue contract grants that
+authority and required checks/reviews pass:
 
 ```text
 isolated worktree -> implement -> validate -> commit -> review/check
@@ -181,7 +264,10 @@ the merged base. For Nix Arbor this normally includes `nix flake check` and
 the focused component checks. A successful `git merge` exit code alone is not
 completion.
 
-Do not merge when validation fails, the task is incomplete, conflicts remain,
+Protected/default branches, releases, deployments, destructive migrations,
+publishing, and physical actuation remain human boundaries unless explicitly
+authorized. An early draft PR is the normal durable handoff. Do not merge when
+validation fails, the task is incomplete, conflicts remain,
 another agent is changing the same integration area, review was explicitly
 requested first, production/deployment approval is required, the base is
 unclear, or the merge could discard newer work. In those cases commit a
@@ -213,7 +299,10 @@ that are dirty, unmerged, or still needed by another active effort in place.
 `--force` is available only on an explicitly named `remove` command. Bulk
 cleanup never accepts force.
 
-Native commands remain useful when the helper is unavailable:
+The launch directory is not sacred: owners deliberately enter their assigned
+worktree before mutation. Preserve unrelated worktrees, branches, user
+changes, and uncommitted state. One concurrently mutating workstream owns one
+worktree/branch. Native commands remain useful when the helper is unavailable:
 
 ```sh
 git worktree add -b agent/name/task ./worktrees/agent-name-task origin/main

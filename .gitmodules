@@ -17,8 +17,8 @@
 [submodule "packages/arbor-manager"]
 	path = packages/arbor-manager
 	url = https://github.com/pbert5/arbor-manager.git
-	branch = main
+	branch = arbor-infra-dev
 [submodule "packages/arbor-registry"]
 	path = packages/arbor-registry
 	url = https://github.com/pbert5/arbor-registry.git
-	branch = main
+	branch = arbor-infra-dev

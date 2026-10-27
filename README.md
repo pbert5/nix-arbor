@@ -260,3 +260,7 @@ credential gating, and resumable deployment receipts are now runtime
 boundaries. A real NixOS VM now validates upstream systemd-vaultd socket delivery;
 real SSH/Colmena host execution remains an external integration. See [the architecture](docs/arbor-registry-architecture.md) and
 [the migration matrix](docs/arbor-registry-migration-matrix.md).
+
+## Arbor operator and current state
+
+The [operator guide](docs/operator.md) covers Arbor Manager operations, external targets, access, and deployment boundaries. The [current-state report](docs/arbor-infra-current-state.md) records verified branch/component provenance, the live-acceptance roadmap, and the workstream ledger. See [tracking issue #9](https://github.com/pbert5/nix-arbor/issues/9) for the durable dependency graph.
