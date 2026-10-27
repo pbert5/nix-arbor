@@ -32,19 +32,24 @@ nix build --no-link --no-update-lock-file .#nixosConfigurations.<host>.config.sy
 
 ```sh
 nix --version
+nix store ping
 pid=$(systemctl show nix-daemon.service --property=MainPID --value)
 test "$pid" -gt 1
-readlink -f "/proc/$pid/exe"
+sudo readlink -f "/proc/$pid/exe"
 readlink -f /etc/ssl/certs/ca-certificates.crt
 ```
 
 The client should report Nix 2.34.9, and the daemon executable path should resolve to the selected Nix 2.34.9 store package. The CA path should resolve to the activated system bundle. With OpenSSL available, run the repository guard against the installed bundle from a temporary directory:
 
 ```sh
-checkout=$PWD
-tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT
-(cd "$tmp" && bash "$checkout/modules/check-ca-bundle.sh" /etc/ssl/certs/ca-certificates.crt)
+(
+  set -eu
+  checkout=$(git rev-parse --show-toplevel)
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf -- "$tmpdir"' EXIT
+  cd "$tmpdir"
+  bash "$checkout/modules/check-ca-bundle.sh" /etc/ssl/certs/ca-certificates.crt
+)
 ```
 
 If any check fails or the expected paths are absent, stop and investigate before treating the host as updated. Embedded or independently managed application stores remain separate coverage.

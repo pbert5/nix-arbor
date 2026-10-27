@@ -1,0 +1,6 @@
+No Trusted Uses.
+No Rejected Uses.
+Alias:
+Trusted Uses:
+Rejected Uses:
+  TLS Web Server Authentication, TLS Web Client Authentication, Code Signing, E-mail Protection, Time Stamping, IPSec End System, IPSec Tunnel, IPSec User
