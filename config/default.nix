@@ -34,7 +34,10 @@ let
         zfs
         inputs.codex-nixpkgs.legacyPackages.${pkgs.system}.codex
         inputs.codex-switch.packages.${pkgs.system}.codex-switch
-        rtk
+        (import ../modules/rtk.nix {
+          inherit inputs;
+          system = pkgs.stdenv.hostPlatform.system;
+        })
       ];
     };
   desktop = [

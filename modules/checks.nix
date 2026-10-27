@@ -1,5 +1,6 @@
 {
   config,
+  inputs,
   lib,
   ...
 }:
@@ -22,12 +23,20 @@ let
 in
 {
   perSystem =
-    { pkgs, ... }:
+    { pkgs, system, ... }:
     let
       src = ../.;
     in
     {
       checks = {
+        free-rtk = import ./rtk-check.nix {
+          inherit
+            config
+            inputs
+            pkgs
+            system
+            ;
+        };
         host-security = import ./security-check.nix { inherit config lib pkgs; };
         evolver-developer-tools =
           assert lib.all (name: lib.elem name packageNames) requiredPackageNames;
