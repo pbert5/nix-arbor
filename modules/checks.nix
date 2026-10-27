@@ -28,6 +28,7 @@ in
     in
     {
       checks = {
+        host-security = import ./security-check.nix { inherit config lib pkgs; };
         evolver-developer-tools =
           assert lib.all (name: lib.elem name packageNames) requiredPackageNames;
           assert eVolver.virtualisation.docker.enable;

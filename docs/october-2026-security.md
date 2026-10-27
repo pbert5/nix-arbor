@@ -1,0 +1,7 @@
+# October 2026 host dependency security update
+
+The root host nixpkgs input is updated to `3ec636362e1816bc2f0888fa0fa2c69f1bc9e504` (NAR hash `sha256-rZLrzrC6i+jnTAlvPZHogKDulY7WWDEv9hJeHieO7Zw=`). It supplies Nix 2.34.9, which includes the evaluator and daemon fixes described in the [Nix advisory](https://discourse.nixos.org/t/security-advisory-for-nix-and-lix-october-2026/80547), and the [system CA mitigation](https://github.com/NixOS/nixpkgs/issues/576485) for CVE-2026-111943.
+
+`nix build --no-link .#checks.x86_64-linux.host-security` checks every exported machine's selected Nix version and CA bundle. It checks the affected certificate by SHA-256 fingerprint, accepting its absence or an explicit distrust record for all uses. It rejects an old trusted certificate fixture and unpatched Nix versions. The version gate deliberately fails on other Nix release lines until their security status is reviewed.
+
+This is repository evidence, not evidence that an installed host has been updated. After reviewing and merging the change, an operator must pull it, rebuild and activate the appropriate host configuration, then verify the running Nix client and daemon versions and the installed CA bundle. Applications with embedded or independently managed root stores require separate investigation; updating the system bundle does not establish their coverage. OpenBao/Registry is tracked separately in [issue #41](https://github.com/pbert5/nix-arbor/issues/41).
