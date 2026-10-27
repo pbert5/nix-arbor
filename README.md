@@ -260,3 +260,10 @@ credential gating, and resumable deployment receipts are now runtime
 boundaries. A real NixOS VM now validates upstream systemd-vaultd socket delivery;
 real SSH/Colmena host execution remains an external integration. See [the architecture](docs/arbor-registry-architecture.md) and
 [the migration matrix](docs/arbor-registry-migration-matrix.md).
+
+## GitHub Actions runners on R640
+
+The operator-managed, repository-scoped Docker Compose runner tools are
+documented in [the runner guide](docs/github-runners.md). They do not modify
+NixOS services or grant jobs the host Docker socket. Enroll only private
+repositories, and route only trusted workflow events to the runner labels.

@@ -3,8 +3,9 @@
 Claude Code notes:
 
 - Start from a dedicated worktree and confirm `git status` before editing.
-- Use `.claude/agents/` for focused role delegation; keep the primary session
-  responsible for architecture and integration.
+- Use the Nix specialist and integration-test roles in `.claude/agents/` when
+  the current Claude runtime supports them. Keep architecture and integration
+  decisions in the assigned task owner; do not assume Codex-specific settings.
 - Review another agent's branch by inspecting its diff and validation before
   merging or cherry-picking it.
 - When the task is complete and validation passes, merge into the identified

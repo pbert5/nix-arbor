@@ -1,0 +1,221 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root=$(CDPATH='' cd -- "$(dirname -- "$0")/../../.." && pwd -P)
+compose_file="$root/tools/github/runner-compose/compose.yaml"
+config_root=${XDG_CONFIG_HOME:-${HOME:?HOME is unset}/.config}/nix-arbor/runners
+repo_arg=
+usage() {
+  cat <<'USAGE'
+Usage: ./tools/github/runners COMMAND [--repo OWNER/REPO]
+
+Commands: up, rebuild, up-up, enroll, status, logs, doctor, down
+  up/rebuild   Start the selected repository runner idempotently.
+  up-up        Rebuild the pinned runner image and recreate its container.
+  enroll       Interactively register a private repository runner.
+  down         Stop only this repository's service; keep registration volume.
+
+With no --repo, commands prompt when more than one repository is enrolled.
+USAGE
+}
+die() { printf 'r640 runners: %s\n' "$*" >&2; exit 1; }
+command -v docker >/dev/null || die 'docker is required'
+
+[[ $# -ge 1 ]] || { usage >&2; exit 2; }
+command_name=$1; shift
+case "$command_name" in up|rebuild|up-up|enroll|status|logs|doctor|down) ;; -h|--help) usage; exit 0 ;; *) usage >&2; exit 2 ;; esac
+while (($#)); do
+  case "$1" in
+    --repo) (($# >= 2)) || die '--repo requires OWNER/REPO'; repo_arg=$2; shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    *) die "unknown option: $1" ;;
+  esac
+done
+
+mkdir -p "$config_root"
+chmod 700 "$config_root"
+valid_repo() { [[ $1 =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; }
+repo_slug() {
+  local name digest
+  name=$(printf '%s' "${1,,}" | tr '/._' '---' | tr -cd 'a-z0-9-' | sed 's/--*/-/g; s/^-//; s/-$//')
+  digest=$(printf '%s' "${1,,}" | sha256sum | cut -c1-8)
+  printf '%s-%s' "${name:0:32}" "$digest"
+}
+repo_file() { printf '%s/%s.conf' "$config_root" "$(repo_slug "$1")"; }
+
+if [[ $command_name == enroll && -z $repo_arg ]]; then
+  [[ -t 0 ]] || die 'enroll needs a terminal; use --repo OWNER/REPO'
+  printf 'Private repository (owner/name): '
+  IFS= read -r repo_arg
+fi
+if [[ -z $repo_arg ]]; then
+  shopt -s nullglob
+  files=("$config_root"/*.conf)
+  ((${#files[@]})) || die 'no enrolled repository; run enroll --repo OWNER/REPO'
+  if ((${#files[@]} == 1)); then
+    # shellcheck disable=SC1090
+    source "${files[0]}"
+    repo_arg=$RUNNER_REPOSITORY
+  else
+    [[ -t 0 ]] || die 'multiple repositories enrolled; specify --repo OWNER/REPO'
+    printf 'Enrolled repositories:\n'
+    for i in "${!files[@]}"; do printf '  %d) %s\n' "$((i+1))" "$(basename "${files[$i]}" .conf)"; done
+    printf 'Select repository: '
+    IFS= read -r choice
+    [[ $choice =~ ^[0-9]+$ ]] || die 'invalid selection'
+    ((choice >= 1 && choice <= ${#files[@]})) || die 'invalid selection'
+    # shellcheck disable=SC1090
+    source "${files[$((choice-1))]}"
+    repo_arg=$RUNNER_REPOSITORY
+  fi
+fi
+valid_repo "$repo_arg" || die 'repository must be OWNER/REPO'
+repo_file_path=$(repo_file "$repo_arg")
+project="nix-arbor-runner-$(repo_slug "$repo_arg")"
+runner_name="r640-0-$(repo_slug "$repo_arg")"
+repo_label="$(repo_slug "$repo_arg")"
+labels="r640-0,${repo_label},docker-compose"
+if [[ -f $repo_file_path ]]; then
+  # shellcheck disable=SC1090
+  source "$repo_file_path"
+else
+  [[ $command_name == enroll ]] || die "$repo_arg is not enrolled; run enroll --repo $repo_arg"
+  RUNNER_REPOSITORY=$repo_arg RUNNER_NAME=$runner_name RUNNER_LABELS=$labels RUNNER_VERSION=2.338.0 RUNNER_SHA256=af4b794c1bc41d73d40535e3fe092a39f9679cd8d965954c2aca25a05ca41d32
+fi
+[[ ${RUNNER_REPOSITORY,,} == "${repo_arg,,}" ]] || die 'selected repository does not match its saved configuration'
+
+compose() { docker compose --project-name "$project" --env-file "$repo_file_path" -f "$compose_file" "$@"; }
+gh_api() { GH_TOKEN="$(gh auth token 2>/dev/null)" gh api "$@"; }
+runner_state_present() {
+  compose run --rm -T --no-deps --user 1001:1001 --entrypoint /bin/sh runner \
+    -c 'test -r /runner/.runner && test -r /runner/.credentials' >/dev/null 2>&1
+}
+ensure_runner_image() {
+  if ! docker image inspect "nix-arbor-github-runner:${RUNNER_VERSION}" >/dev/null 2>&1; then
+    compose --progress plain build runner || die 'runner image build failed'
+  fi
+}
+ensure_runner_volume_writable() {
+  ensure_runner_image
+  if ! compose run --rm -T --no-deps --user 1001:1001 --entrypoint /bin/sh runner \
+    -c 'test -w /runner' >/dev/null 2>&1; then
+    compose run --rm -T --no-deps --user 0:0 --entrypoint /bin/sh runner \
+      -c 'chown -R 1001:1001 /runner && touch /runner/.nix-arbor-volume-initialized && chown 1001:1001 /runner/.nix-arbor-volume-initialized && chmod 600 /runner/.nix-arbor-volume-initialized' \
+      >/dev/null || die 'could not repair runner volume ownership'
+  fi
+}
+repo_info() {
+  command -v gh >/dev/null || die 'gh is required for repository verification'
+  local data
+  data=$(gh_api "repos/$repo_arg" --jq '[.full_name,.private,.visibility] | @tsv') || die 'GitHub repository lookup failed; check gh auth and network access'
+  IFS=$'\t' read -r full_name private visibility <<<"$data"
+  [[ ${full_name,,} == "${repo_arg,,}" ]] || die 'GitHub returned a different repository'
+  [[ $private == true && $visibility == private ]] || die 'only private repositories may enroll runners'
+}
+save_config() {
+  local tmp
+  tmp=$(mktemp "$config_root/.config.XXXXXX")
+  chmod 600 "$tmp"
+  {
+    printf 'RUNNER_REPOSITORY=%s\n' "$RUNNER_REPOSITORY"
+    printf 'RUNNER_NAME=%s\n' "$RUNNER_NAME"
+    printf 'RUNNER_LABELS=%s\n' "$RUNNER_LABELS"
+    printf 'RUNNER_VERSION=%s\n' "$RUNNER_VERSION"
+    printf 'RUNNER_SHA256=%s\n' "$RUNNER_SHA256"
+  } >"$tmp"
+  mv "$tmp" "$repo_file_path"
+}
+
+case "$command_name" in
+  enroll)
+    repo_info
+    if [[ -f $repo_file_path ]] && runner_state_present; then
+      echo "Already configured: $repo_arg ($project). Use up to restart; no credentials were changed."
+      exit 0
+    fi
+    if [[ -f $repo_file_path ]]; then
+      echo 'Saved metadata exists but runner registration state is missing or unreadable; renewing enrollment.'
+    fi
+    command -v gh >/dev/null || die 'gh is required; log in with gh auth login first'
+    gh auth status >/dev/null 2>&1 || die 'gh is not authenticated; use gh auth login'
+    [[ -t 0 ]] || die 'enrollment requires a terminal for confirmation and hidden token input'
+    printf 'Enroll one runner for private %s with labels: self-hosted,linux,x64,%s? [y/N] ' "$repo_arg" "$labels"
+    IFS= read -r answer
+    [[ ${answer,,} == y || ${answer,,} == yes ]] || die 'enrollment cancelled'
+    echo 'Public fork code is not safe on this runner. Only trusted workflows on approved refs may target its labels.'
+    printf 'Request a one-hour repository token through gh? [Y/n] '
+    IFS= read -r token_choice
+    if [[ -z $token_choice || ${token_choice,,} == y || ${token_choice,,} == yes ]]; then
+      registration_token=$(gh_api -X POST "repos/$repo_arg/actions/runners/registration-token" --jq .token) || die 'GitHub token request failed'
+      [[ -n $registration_token && $registration_token != null ]] || die 'GitHub did not return a registration token'
+    else
+      registration_token=
+    fi
+    if [[ -z $registration_token ]]; then
+      printf 'Enter one-time registration token (hidden): '
+      IFS= read -r -s registration_token
+    fi
+    printf '\n'
+    [[ -n $registration_token ]] || die 'registration token is required'
+    RUNNER_REPOSITORY=$repo_arg RUNNER_NAME=$runner_name RUNNER_LABELS=$labels RUNNER_VERSION=2.338.0 RUNNER_SHA256=af4b794c1bc41d73d40535e3fe092a39f9679cd8d965954c2aca25a05ca41d32
+    save_config
+    if ! compose --progress plain build runner; then
+      unset registration_token
+      rm -f "$repo_file_path"
+      die 'runner image build failed; configuration was not retained'
+    fi
+    ensure_runner_volume_writable
+    # Short-lived registration token is streamed to the one-shot process stdin.
+    printf '%s\n' "$registration_token" | compose run --rm -T --no-deps runner enroll >/dev/null || {
+      unset registration_token
+      rm -f "$repo_file_path"
+      die 'registration failed; check token validity, permissions, and runner logs'
+    }
+    unset registration_token
+    runner_state_present || die 'registration command succeeded but readable runner state was not saved'
+    compose up -d runner
+    printf 'Enrolled %s as %s in Compose project %s.\n' "$repo_arg" "$runner_name" "$project"
+    ;;
+  up|rebuild)
+    repo_info
+    compose config --quiet
+    ensure_runner_volume_writable
+    runner_state_present || die 'runner registration state is missing; run enroll to register it'
+    compose up -d runner
+    ;;
+  up-up)
+    repo_info
+    compose config --quiet
+    compose --progress plain build --pull --no-cache runner
+    ensure_runner_volume_writable
+    runner_state_present || die 'runner registration state is missing; run enroll to register it'
+    compose up -d --force-recreate runner
+    ;;
+  down) compose stop runner ;;
+  logs) compose logs --tail 100 --follow runner ;;
+  status|doctor)
+    compose ps
+    if repo_info >/dev/null 2>&1; then
+      echo 'GitHub repository policy: private'
+    else
+      echo 'WARNING: GitHub repository could not be verified as private.'
+    fi
+    if [[ $command_name == doctor ]]; then
+      compose config --quiet && echo 'Compose config: valid'
+      docker volume inspect "${project}_runner-state" >/dev/null 2>&1 && echo 'Registration volume: present' || echo 'Registration volume: absent (enroll required)'
+      if runner_state_present; then
+        echo 'Runner registration files: readable by UID 1001'
+      else
+        echo 'Runner registration files: missing or unreadable (run enroll to repair)'
+      fi
+      echo 'Default runner has no host Docker socket and no privileged mode.'
+      echo 'Fork/untrusted-workflow safety requires trusted event/ref/actor gates in consumer workflows.'
+    fi
+    if command -v gh >/dev/null && gh auth status >/dev/null 2>&1; then
+      runner_list=$(gh_api "repos/$repo_arg/actions/runners" --jq ".runners[] | select(.name == \"$RUNNER_NAME\") | [.name,.status,(.busy|tostring),([.labels[].name] | join(\",\"))] | @tsv" 2>/dev/null || true)
+      if [[ -n $runner_list ]]; then printf 'GitHub runner (name/status/busy/labels):\n%s\n' "$runner_list"; else echo 'GitHub runner not reported online/registered.'; fi
+    else
+      echo 'GitHub API status unavailable (gh auth or network); local Compose status shown.'
+    fi
+    ;;
+esac

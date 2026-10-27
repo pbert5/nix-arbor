@@ -1,31 +1,45 @@
-# Project-local Codex settings. Authentication and personal preferences belong
-# in the user's CODEX_HOME, not in this repository.
+# Project-local Codex settings. Authentication, approval, sandbox, model, and
+# personal preferences belong in the user's CODEX_HOME, not in this repository.
 # AGENTS.md is the policy source; `nix develop` is the canonical environment.
-approval_policy = "on-request"
-sandbox_mode = "workspace-write"
 
 [agents]
+enabled = true
 max_concurrent_threads_per_session = 6
+# Allows owner -> bounded specialist. This is a ceiling; the live runtime may
+# expose less and no capacity is centrally reserved.
+max_depth = 2
+
+[features]
+multi_agent = true
+hooks = true
+
+[agents.nix-specialist]
+description = "Read-only Nix flake and module semantics specialist."
+config_file = "./agents/nix-specialist.toml"
+
+[agents.integration-test]
+description = "Read-only workflow and validation agent covering success and safety paths."
+config_file = "./agents/integration-test.toml"
 
 # Opt-in only: select these variants when the current session explicitly requests high-burn.
 [agents.architect-researcher-terra-high]
-description = "High-burn opt-in architect-researcher; preserve the normal role's task boundaries."
+description = "High-burn opt-in architect-researcher; self-contained role for explicit sessions."
 config_file = "./agents/architect-researcher-terra-high.toml"
 
 [agents.implementer-terra-high]
-description = "High-burn opt-in implementer; preserve the normal role's task boundaries."
+description = "High-burn opt-in implementer; self-contained role for explicit sessions."
 config_file = "./agents/implementer-terra-high.toml"
 
 [agents.reviewer-terra-high]
-description = "High-burn opt-in reviewer; preserve the normal role's task boundaries."
+description = "High-burn opt-in reviewer; self-contained role for explicit sessions."
 config_file = "./agents/reviewer-terra-high.toml"
 
 [agents.integration-test-terra-high]
-description = "High-burn opt-in integration-test; preserve the normal role's task boundaries."
+description = "High-burn opt-in integration-test; self-contained role for explicit sessions."
 config_file = "./agents/integration-test-terra-high.toml"
 
 [agents.nix-specialist-terra-high]
-description = "High-burn opt-in nix-specialist; preserve the normal role's task boundaries."
+description = "High-burn opt-in nix-specialist; self-contained role for explicit sessions."
 config_file = "./agents/nix-specialist-terra-high.toml"
 
 # Repository-local MCP defaults. Keep credentials in the user's environment or
