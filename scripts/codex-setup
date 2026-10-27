@@ -2,5 +2,8 @@
 set -euo pipefail
 
 # Codex Cloud setup script: keep bootstrap deterministic and non-interactive.
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+"$script_dir/codex-preflight" --json
+
 git submodule update --init
 nix develop --command true

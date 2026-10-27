@@ -40,3 +40,28 @@ as an explicit security decision and remove or migrate the stored credential
 before using the host for sensitive work.  A future keyring deployment would
 need to be designed together with user-session startup, keyring unlocking, and
 SSH/non-interactive behavior; installing only a package is insufficient.
+
+## Codex execution recovery
+
+The repository preflight checks `gh auth status` without reading or printing a
+token. If ordinary authenticated `gh` access fails during a Codex session:
+
+1. Try `gh auth token` interactively and keep its output out of logs, files,
+   prompts, and comments. Never print or store the token as part of setup.
+2. Ensure the Codex session has the required network capability, then pass the
+   token only to the intended command, for example:
+
+   ```sh
+   GH_TOKEN="$(gh auth token)" gh issue view 1 --repo pbert5/nix-arbor
+   ```
+
+   The command substitution is intentionally per-command and must not be
+   exported or persisted.
+3. Verify the intended read or mutation immediately afterward. For an
+   unexpected authenticated 404, first try a parent/list/search query before
+   concluding that the issue or repository is absent.
+
+`scripts/codex-preflight --require-github` turns missing or failed GitHub CLI
+authentication into `NOT_READY`; without that flag it is reported as a
+recommendation for local, read-only work. The preflight does not attempt login,
+change credential helpers, enable network access, or repair authentication.

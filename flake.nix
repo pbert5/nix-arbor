@@ -12,7 +12,9 @@
     ashzsh.url = "github:pbert5/AshZsh/b693b17";
     ashzsh.inputs.nixpkgs.follows = "nixpkgs";
     ashzsh.inputs.home-manager.follows = "home-manager";
-    codex-switch.url = "github:pbert5/codex-switch";
+    # Direct Git transport avoids GitHub API access, which is unavailable for
+    # this repository while retaining the same upstream and revision pin.
+    codex-switch.url = "git+https://github.com/pbert5/codex-switch.git";
     codex-switch.inputs.nixpkgs.follows = "nixpkgs";
     ashes-tools.url = "github:pbert5/AshesTools";
     ashes-tools.inputs.nixpkgs.follows = "nixpkgs";
@@ -27,6 +29,16 @@
     arbor-registry.url = "github:pbert5/arbor-registry";
     arbor-network-manager.url = "github:pbert5/arbor-network-manager";
     yggdrasil-private.url = "git+https://github.com/pbert5/yggdrasil-private.git?ref=main";
+    microvm = {
+      url = "github:microvm-nix/microvm.nix/f13928fe9900e91709d7ce581eefa47eaafa79e1";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    # Attic supplies the supported NixOS service module. Pin its source because
+    # this module is part of the cache's security and storage boundary.
+    attic = {
+      url = "github:zhaofengli/attic/7a19204df10d606c5070e6bb72615c3461900c05";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
@@ -42,6 +54,7 @@
         ./modules/checks.nix
         ./modules/apps.nix
         ./modules/components.nix
+        ./modules/nix-binary-cache.nix
         ./config
       ];
     };

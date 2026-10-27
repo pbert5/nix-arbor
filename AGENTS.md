@@ -16,6 +16,36 @@ belong in independent flakes and repositories.
 - Keep changes scoped to the request. Do not silently change architecture or
   port whole subsystems from a reference repository.
 
+## Execution contract
+
+Substantial work is run by a thin primary executor over first-order
+workstream owners. The executor is deterministic: it owns the approved task
+graph, owner lifecycle, dependency transitions, concurrency and nested-capacity
+reserve, shared-resource locks, terminal-packet collection, predefined
+checker/reviewer/adviser routing, and durable status bookkeeping. It does not
+design, decompose ambiguity, implement, debug, review diffs, interpret
+failures, resolve semantic conflicts, or validate product claims. Those
+judgments belong to the named owner, specialist, reviewer, or human.
+
+An owner starts only from a `PROMPT_READY` issue/worktree/branch contract. The
+contract names the objective, approved approach, parent, base SHA, dependencies,
+ownership boundaries, shared resources, interfaces, acceptance and test
+contracts, review contract, integration target, and human-stop boundaries.
+Owners may implement, publish durable checkpoints, and use bounded depth-2
+specialists while reserving capacity for those specialists. They return one
+compact terminal packet and trust audit; raw transcripts are not executor
+state. Do not re-plan approved PROMPT_READY work unless new evidence invalidates
+the contract.
+
+The executor supervises passive-first: observe lifecycle/status, read existing
+output, inspect GitHub/PR/CI/artifact evidence, and wait. It sends input only
+for a concrete unblock, changed constraint, safety issue, requested
+clarification, or scope/resource conflict; routine status pings are forbidden.
+Merge, release, deployment, destructive migration, credential/account
+changes, and physical actuation remain human stops unless the issue contract
+explicitly grants the narrower authority. An open PR or pending human review
+is not itself a failure.
+
 ## Change and handoff expectations
 
 - Prefer native Nix and Git commands. Run the narrowest useful checks, then
@@ -39,21 +69,20 @@ belong in independent flakes and repositories.
   files, validation, known issues, and review readiness. See
   `docs/agent-workflows.md`.
 
-## Subagent execution
+## Delegation and project roles
 
-- For substantial tasks, the owning agent constructs a dependency graph, fans
-  out independent ready work to focused subagents, retains dependent work in a
-  waiting queue, and dispatches it as prerequisites complete.
-- Keep useful bounded work flowing when ready; continuously synthesize findings
-  and retain architecture, integration, and final decisions in the owning
-  session. Use the repository roles deliberately rather than spawning generic
-  clones.
-- Read-only research, testing, and review agents may share repository
-  visibility only when their commands are non-mutating. Give tests or tools
-  that may change checkout state, caches, submodules, or generated files an
-  isolated worktree. Every concurrent mutable implementation task gets its own
-  `agent/<agent-or-role>/<task-slug>` branch and worktree; never let mutable
-  agents edit the same checkout concurrently.
+- Follow the live task contract for delegation, concurrency, model, and depth;
+  repository files do not promise runtime capabilities or impose a fixed task
+  graph.
+- Keep stable, reusable Codex roles in the user's personal Codex configuration.
+  Project `.codex/agents` contains only Nix Arbor-specific roles: Nix semantics
+  and repository integration validation.
+- Use delegation only when the active agent runtime supports it and the task
+  contract permits it. Every concurrent mutable task gets its own
+  `agent/<agent-or-role>/<task-slug>` branch and worktree. Read-only reviewers
+  may inspect the assigned branch without editing it.
+- Preserve the assigned worktree boundary for any check that can change
+  checkout state, caches, submodules, or generated files.
 
 Nix teaching material belongs in `cheats/` and `docs/`, not in this durable
 repository policy.
