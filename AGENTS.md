@@ -25,7 +25,12 @@ and explicit model/effort on every owner, worker, loader, reviewer, verifier and
 nested spawn. Do not infer opt-in from quota, urgency, task size or prior sessions.
 Normal mode and personal settings are unchanged. Keep the existing topology,
 issue-first groundwork, thin launchers, ownership and independent review.
-No model benchmark or pilot is required; product correctness checks still apply.
+In high-burn, maximize independent READY workstreams within the actual supported
+session capacity, retaining owner/reviewer/helper tiers and reserving slots for
+nested work. Use only supported per-session concurrency overrides; ordinary
+ceilings and global settings stay unchanged. Report unknown capacity rather than
+inventing a maximum. No model benchmark or pilot is required; product correctness
+checks still apply.
 See `docs/agent-workflows.md#high-burn-session-option` for selection details.
 
 ## Change and handoff expectations

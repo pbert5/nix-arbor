@@ -188,13 +188,50 @@ codex -c 'agents.default_subagent_model="gpt-6.1-terra"' \
 These are defaults, not enforcement; use explicit high-burn role/model selection
 as above. Keep the interactive leader's model separate. A prompt-only opt-in uses
 the same explicit spawn mapping without the CLI defaults. Ending the session
-ends this opt-in. Do not change global config, security settings, thread limits
-or the ordinary Luna mode. Project-local `[profiles]` are not used because the
+ends this opt-in. Do not change global config, security settings, persistent thread
+limits or the ordinary Luna mode. Project-local `[profiles]` are not used because the
 current Codex documentation says they are ignored at project scope.
 
 Reference: [Codex configuration](https://learn.chatgpt.com/docs/config-file/config-reference).
 Model availability is runtime-dependent. This configuration option was prepared
 without launching agents or running a model trial.
+
+#### High-burn parallelism and nesting
+
+Retain the established multi-tier owner -> reviewer/worker -> focused helper
+topology; do not flatten it into one large agent or force everything through a
+single serial workstream. Dispatch as many independent READY workstreams as the
+actual harness supports, while leaving capacity for their review and helper
+children. Nested agents consume capacity too: coordinate the whole active tree,
+close finished agents after collecting their handoffs, and immediately dispatch
+newly READY useful work. Do not invent work to occupy slots, violate dependencies
+or permit concurrent writers to overlap.
+
+The repository's ordinary ceiling remains six spawned-agent threads, excluding
+the primary thread. High-burn defaults to maximum useful parallelism: raise that ceiling for this session only,
+using a positive integer established from the selected harness's reported
+capacity and supported configuration. No universal maximum or unlimited sentinel
+is assumed. For a compatible CLI, set `HIGH_BURN_THREADS` to that verified integer
+before using this session-only override alongside the model defaults:
+
+```sh
+codex -c "agents.max_concurrent_threads_per_session=${HIGH_BURN_THREADS:?set to the verified supported spawned-thread cap}" \
+  -c 'agents.default_subagent_model="gpt-6.1-terra"' \
+  -c 'agents.default_subagent_reasoning_effort="high"'
+```
+
+A prompt-only request does not itself raise the harness ceiling. If the selected
+host cannot expose or change it, use its available slots and report that bound;
+do not claim maximum capacity was verified. On V1 only, preserve enough nesting
+depth for the established tiers with a supported session-only `agents.max_depth`
+override after checking the installed version. The current schema says that key
+is ignored by V2; do not use it to promise nesting there or switch backends.
+No depth override is persisted in this repository. Neither documented settings
+nor a higher requested number prove actual runtime capacity.
+
+This change documents dispatch/setup behavior only: no agents, capacity probes,
+model trials or engineering runs were launched. Ordinary correctness checks and
+independent review still apply when substantive work is later requested.
 
 ### Component ownership and pins
 
