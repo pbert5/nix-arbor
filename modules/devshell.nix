@@ -28,7 +28,7 @@
         name = "nix-arbor";
         packages = (inputs.ashes-tools.lib.sets.nix-workstation pkgs) ++ [
           inputs.codex-nixpkgs.legacyPackages.${system}.codex
-          pkgs.rtk
+          (import ./rtk.nix { inherit inputs system; })
           pkgs.nodejs
           pkgs.playwright-mcp
           inputs.codex-switch.packages.${system}.codex-switch

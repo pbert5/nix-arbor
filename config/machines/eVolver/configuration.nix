@@ -42,7 +42,10 @@
     uv
     nodejs
     pkgs.codex
-    rtk
+    (import ../../../modules/rtk.nix {
+      inherit inputs;
+      system = pkgs.stdenv.hostPlatform.system;
+    })
     inputs.codex-switch.packages.${pkgs.system}.codex-switch
     jq
     ripgrep
