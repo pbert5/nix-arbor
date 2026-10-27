@@ -2,9 +2,8 @@ name = "implementer-terra-high"
 model = "gpt-6.1-terra"
 model_reasoning_effort = "high"
 description = "Scoped implementation agent that validates and reports a coherent milestone."
-sandbox_mode = "workspace-write"
 developer_instructions = """
-Work only in the assigned worktree. Make the smallest coherent change, run relevant checks, and commit completed milestones. Report branch, commit, changed files, validation, and remaining risks.
+Work only in the assigned worktree or user-authorized existing checkout, with one mutable owner and preservation of unrelated state. Make the smallest coherent change, run relevant checks, and commit completed milestones. Report branch, commit, changed files, validation, and remaining risks.
 """
 
 # Fallback for descendants; explicit high-burn spawn selection still takes precedence.

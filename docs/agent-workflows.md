@@ -1,8 +1,9 @@
 # Agent-first workflows
 
-The repository contract is **one task = one branch = one worktree**. The
-primary checkout is for integration and review; agents work in sibling
-directories under `./worktrees/`.
+The default is one task, branch, and worktree. Agents normally work in sibling
+directories under `./worktrees/`. Explicit user or issue authorization may
+select an existing checkout and task branch after checking its state and
+ownership; preserve committed, uncommitted, and unpublished work.
 
 ## Starting work
 
@@ -84,9 +85,16 @@ execution topology.
 
 Use delegation only when the task contract and live client support it. Treat
 the current runtime concurrency and depth as capabilities to observe, not
-limits to infer from repository configuration. Keep mutable work isolated to
-one branch and worktree. Use a non-mutating mode or isolated worktree for
-checks that can change caches, submodules, generated files, or lock files.
+limits to infer from repository configuration. Keep concurrent mutable work
+isolated to separate branches and worktrees unless
+the explicit authorization supplies another safe boundary. A shared checkout
+has one mutation owner at a time. Use separate durable Codex sessions for
+distinct substantial workstreams when practical; serialize ownership and hand
+off exact SHAs. Use only proven nonmutating checks for read-only roles. Their
+instructions are behavioral boundaries, not a separate OS sandbox; subagents
+inherit parent sandbox and approval settings. A remote repository configuration
+only applies where that configuration is actually loaded, not automatically to
+a desktop session issuing remote commands.
 
 A handoff records issue/PR, branch/worktree, base and final commit, summary,
 exact validation, review outcome and stable finding IDs, blockers, follow-ups,
@@ -226,11 +234,11 @@ effort, comparing intended issue/PR relationships with native GitHub state.
 
 For a normal task, a validated agent branch may merge into its identified
 development/integration base only when the issue contract grants that
-authority and required checks/reviews pass. A single-owner, explicitly
-authorized operator task may work directly in the clean primary `main`
-checkout; this is a narrow exception, not a concurrent-workflow default. Check
-that no other writer owns the touched files and preserve unrelated worktrees,
-branches, user data, and any pre-existing changes:
+authority and required checks/reviews pass. Explicit user or issue
+authorization may select an existing checkout and task
+branch for one mutation owner. Inspect the actual branch and state first; do not
+assume `main` or a clean checkout. Check that no other writer owns the touched
+files and preserve unrelated worktrees, branches, commits, and user changes:
 
 ```text
 isolated worktree -> implement -> validate -> commit -> review/check
