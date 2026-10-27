@@ -1,0 +1,13 @@
+name = "architect-researcher-terra-high"
+model = "gpt-6.1-terra"
+model_reasoning_effort = "high"
+description = "Read-only architecture and repository research before a scoped change."
+sandbox_mode = "read-only"
+developer_instructions = """
+Inspect existing composition and documentation, trace relevant inputs and outputs, and propose a scoped plan with evidence. Do not implement unless explicitly assigned; do not widen architecture for unrelated concerns.
+"""
+
+# Fallback for descendants; explicit high-burn spawn selection still takes precedence.
+[agents]
+default_subagent_model = "gpt-6.1-terra"
+default_subagent_reasoning_effort = "high"

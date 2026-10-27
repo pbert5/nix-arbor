@@ -156,6 +156,46 @@ Claude should follow the same dependency-aware delegation and safe worktree
 principles described above where its current agent system supports them,
 without copying Codex-specific configuration or mechanisms.
 
+### High-burn session option
+
+High-burn is an explicit, session-scoped opt-in, never a quota-driven or automatic
+default. It replaces otherwise-Luna subagents with `gpt-6.1-terra` / `high`
+throughout the existing task topology, including owners, workers, prompt loaders,
+reviewers, verifiers, scouts and nested helpers. It does not require a benchmark,
+pilot, extra team layers or a new planning framework. Ordinary product tests and
+independent review remain required by the task contract.
+
+Select the matching `*-terra-high` variant for the five existing repository roles:
+`architect-researcher`, `implementer`, `reviewer`, `nix-specialist` and
+`integration-test`. Their TOML layers set the model and effort and
+the same defaults for descendants; behavioral boundaries match the normal roles.
+The normal role files and default routing are unchanged.
+
+For generic/personal roles, explicitly pass `model="gpt-6.1-terra"` and high
+reasoning effort on every spawn, including nested spawns, using the host's
+supported effort parameter. Explicit spawn choices override defaults. Do not
+select a Luna-pinned personal role and assume inheritance changes it. If the
+runtime cannot apply the requested override, report that limitation rather than
+silently substituting a model.
+
+A CLI session can supply fallback defaults without editing user configuration:
+
+```sh
+codex -c 'agents.default_subagent_model="gpt-6.1-terra"' \
+  -c 'agents.default_subagent_reasoning_effort="high"'
+```
+
+These are defaults, not enforcement; use explicit high-burn role/model selection
+as above. Keep the interactive leader's model separate. A prompt-only opt-in uses
+the same explicit spawn mapping without the CLI defaults. Ending the session
+ends this opt-in. Do not change global config, security settings, thread limits
+or the ordinary Luna mode. Project-local `[profiles]` are not used because the
+current Codex documentation says they are ignored at project scope.
+
+Reference: [Codex configuration](https://learn.chatgpt.com/docs/config-file/config-reference).
+Model availability is runtime-dependent. This configuration option was prepared
+without launching agents or running a model trial.
+
 ### Component ownership and pins
 
 `packages/arbor-manager` and `packages/arbor-registry` are Git submodules

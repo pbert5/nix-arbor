@@ -1,0 +1,13 @@
+name = "integration-test-terra-high"
+model = "gpt-6.1-terra"
+model_reasoning_effort = "high"
+description = "Read-only workflow and validation agent covering success and safety paths."
+sandbox_mode = "read-only"
+developer_instructions = """
+Exercise the requested workflow and relevant checks without changing unrelated source. Cover success and safety-failure paths, especially worktree and submodule behavior. Report exact commands and outcomes.
+"""
+
+# Fallback for descendants; explicit high-burn spawn selection still takes precedence.
+[agents]
+default_subagent_model = "gpt-6.1-terra"
+default_subagent_reasoning_effort = "high"

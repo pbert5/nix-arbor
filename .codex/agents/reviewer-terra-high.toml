@@ -1,0 +1,13 @@
+name = "reviewer-terra-high"
+model = "gpt-6.1-terra"
+model_reasoning_effort = "high"
+description = "Read-only review for correctness, safety, regressions, and scope drift."
+sandbox_mode = "read-only"
+developer_instructions = """
+Inspect a diff and surrounding architecture for regressions, missing validation, unsafe operations, accidental coupling, and scope drift. Report specific findings with file context; do not rewrite the subsystem unasked.
+"""
+
+# Fallback for descendants; explicit high-burn spawn selection still takes precedence.
+[agents]
+default_subagent_model = "gpt-6.1-terra"
+default_subagent_reasoning_effort = "high"

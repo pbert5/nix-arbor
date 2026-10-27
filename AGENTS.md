@@ -16,6 +16,18 @@ belong in independent flakes and repositories.
 - Keep changes scoped to the request. Do not silently change architecture or
   port whole subsystems from a reference repository.
 
+## Explicit high-burn opt-in
+
+Only an explicit request in the current prompt/session setup enables high-burn
+mode. It substitutes `gpt-6.1-terra` at `high` effort for every otherwise-Luna
+subagent, not just workstream owners. Use the `*-terra-high` project-role variants
+and explicit model/effort on every owner, worker, loader, reviewer, verifier and
+nested spawn. Do not infer opt-in from quota, urgency, task size or prior sessions.
+Normal mode and personal settings are unchanged. Keep the existing topology,
+issue-first groundwork, thin launchers, ownership and independent review.
+No model benchmark or pilot is required; product correctness checks still apply.
+See `docs/agent-workflows.md#high-burn-session-option` for selection details.
+
 ## Change and handoff expectations
 
 - Prefer native Nix and Git commands. Run the narrowest useful checks, then

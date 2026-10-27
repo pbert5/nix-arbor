@@ -7,6 +7,27 @@ sandbox_mode = "workspace-write"
 [agents]
 max_concurrent_threads_per_session = 6
 
+# Opt-in only: select these variants when the current session explicitly requests high-burn.
+[agents.architect-researcher-terra-high]
+description = "High-burn opt-in architect-researcher; preserve the normal role's task boundaries."
+config_file = "./agents/architect-researcher-terra-high.toml"
+
+[agents.implementer-terra-high]
+description = "High-burn opt-in implementer; preserve the normal role's task boundaries."
+config_file = "./agents/implementer-terra-high.toml"
+
+[agents.reviewer-terra-high]
+description = "High-burn opt-in reviewer; preserve the normal role's task boundaries."
+config_file = "./agents/reviewer-terra-high.toml"
+
+[agents.integration-test-terra-high]
+description = "High-burn opt-in integration-test; preserve the normal role's task boundaries."
+config_file = "./agents/integration-test-terra-high.toml"
+
+[agents.nix-specialist-terra-high]
+description = "High-burn opt-in nix-specialist; preserve the normal role's task boundaries."
+config_file = "./agents/nix-specialist-terra-high.toml"
+
 # Repository-local MCP defaults. Keep credentials in the user's environment or
 # Codex's OAuth store; never commit tokens here.
 

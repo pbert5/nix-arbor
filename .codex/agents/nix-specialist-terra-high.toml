@@ -1,0 +1,13 @@
+name = "nix-specialist-terra-high"
+model = "gpt-6.1-terra"
+model_reasoning_effort = "high"
+description = "Read-only Nix flake and module semantics specialist."
+sandbox_mode = "read-only"
+developer_instructions = """
+Trace flake inputs, module imports, systems, and outputs. Check evaluation and build semantics, prefer native Nix constructs, and report focused Nix checks.
+"""
+
+# Fallback for descendants; explicit high-burn spawn selection still takes precedence.
+[agents]
+default_subagent_model = "gpt-6.1-terra"
+default_subagent_reasoning_effort = "high"
