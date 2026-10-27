@@ -14,8 +14,22 @@ for cert in certs/*; do
       echo "$trust" | grep -q '^Rejected Uses:$' || exit 1
       trusted=$(echo "$trust" | sed -n '/^Trusted Uses:/,/^Rejected Uses:/p' | sed '1d;$d' | tr -d '[:space:]')
       test -z "$trusted" || exit 1
+      rejected=$(printf '%s\n' "$trust" | awk '
+        /^Rejected Uses:$/ { in_rejected = 1; next }
+        in_rejected && /^[^[:space:]]/ { exit }
+        in_rejected && NF {
+          line = $0
+          sub(/^[[:space:]]+/, "", line)
+          sub(/[[:space:]]+$/, "", line)
+          count = split(line, uses, /,[[:space:]]*/)
+          for (i = 1; i <= count; i++) {
+            sub(/^[[:space:]]+/, "", uses[i])
+            sub(/[[:space:]]+$/, "", uses[i])
+            print uses[i]
+          }
+        }')
       for usage in 'TLS Web Server Authentication' 'TLS Web Client Authentication' 'Code Signing' 'E-mail Protection' 'Time Stamping' 'IPSec End System' 'IPSec Tunnel' 'IPSec User'; do
-        echo "$trust" | sed -n '/^Rejected Uses:/,$p' | grep -Fq "$usage" || exit 1
+        printf '%s\n' "$rejected" | grep -Fqx "$usage" || exit 1
       done
       ;;
   esac
