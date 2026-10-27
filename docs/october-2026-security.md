@@ -6,6 +6,8 @@ The root host nixpkgs input is updated to `3ec636362e1816bc2f0888fa0fa2c69f1bc9e
 
 This is repository evidence, not evidence that an installed host has been updated. Applications with embedded or independently managed root stores require separate investigation; updating the system bundle does not establish their coverage. OpenBao/Registry is tracked separately in [issue #41](https://github.com/pbert5/nix-arbor/issues/41).
 
+The Registry input pins component commit `e070aadb479b6a8ab9b38a49bc05df1f9b6fcd49`, whose own nixpkgs graph selects OpenBao 2.7.2 for Registry checks. The separate root host nixpkgs still selects OpenBao 2.7.1. No enabled root OpenBao consumer was established in this review; any future root consumer must select a patched package before enablement. Installed and embedded service exposure remains unverified.
+
 ## Operator procedure after review and merge
 
 Run these steps only after the PR is reviewed and merged, from the intended host's normal Nix Arbor checkout. They are future operator instructions; this workstream did not activate or inspect any installed host.
