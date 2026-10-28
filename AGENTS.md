@@ -143,3 +143,18 @@ prefer `rtk` wrappers for high-output read-only commands such as Git, search,
 tests, and Nix checks when the compact output remains sufficient. Use the
 native command, or `rtk proxy`, whenever complete diagnostic evidence matters;
 RTK never changes the repository's workflow or safety policy.
+
+## Explicit mega mode
+
+Mega mode is a distinct per-session opt-in. Start a new CLI session with
+`codex -m gpt-6.1-sol -c 'model_reasoning_effort="high"'` and request mega
+mode in its prompt. Select workstream-owner-mega (Astra/high) for owners.
+Select the matching *-mega role for routine workers, loaders, verifiers and
+independent reviewers (Sol 6.1/high); select *-mega-difficult for a difficult
+independent review (Astra/high), and the matching Astra/high adviser or
+architect role for difficult advice. Explicitly select matching roles for nested
+work; role model pins override parent defaults. Check effective model and effort
+where exposed; report unavailable roles or unverified selection. Ordinary
+sessions and existing Terra/high mode remain unchanged. Preserve the approved
+task contract, one writer per worktree, independent review, and actual runtime
+concurrency and depth limits. Ending the session ends the opt-in.
