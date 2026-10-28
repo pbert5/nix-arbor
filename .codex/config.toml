@@ -52,3 +52,31 @@ startup_timeout_sec = 20
 url = "https://mcp.context7.com/mcp"
 enabled = true
 startup_timeout_sec = 20
+
+[agents.integration-test-mega]
+description = "Explicit opt-in mega integration-test."
+config_file = "./agents/integration-test-mega.toml"
+
+[agents.nix-specialist-mega]
+description = "Explicit opt-in mega nix-specialist."
+config_file = "./agents/nix-specialist-mega.toml"
+
+[agents.architect-researcher-mega]
+description = "Explicit opt-in mega architect-researcher."
+config_file = "./agents/architect-researcher-mega.toml"
+
+[agents.implementer-mega]
+description = "Explicit opt-in mega implementer."
+config_file = "./agents/implementer-mega.toml"
+
+[agents.reviewer-mega]
+description = "Explicit opt-in mega reviewer."
+config_file = "./agents/reviewer-mega.toml"
+
+[agents.reviewer-mega-difficult]
+description = "Explicit opt-in mega reviewer."
+config_file = "./agents/reviewer-mega-difficult.toml"
+
+[agents.workstream-owner-mega]
+description = "Explicit opt-in mega workstream owner."
+config_file = "./agents/workstream-owner-mega.toml"
