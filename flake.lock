@@ -202,17 +202,17 @@
     },
     "codex-nixpkgs": {
       "locked": {
-        "lastModified": 1791956154,
-        "narHash": "sha256-jBYGPi4udQ9uo4KQp9m2J0546nJVQitG15gvZSaVVAs=",
+        "lastModified": 1793144846,
+        "narHash": "sha256-jPcJp45r05yMJ/rs910CayfbVEJMt9V9AStdaPXi3mE=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "55bfb4d7437bd4e09ab7cba58a43bd68eb310044",
+        "rev": "1a0314d79053f08f889d7a2545eae9d22fa47937",
         "type": "github"
       },
       "original": {
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "55bfb4d7437bd4e09ab7cba58a43bd68eb310044",
+        "rev": "1a0314d79053f08f889d7a2545eae9d22fa47937",
         "type": "github"
       }
     },
@@ -481,9 +481,26 @@
         "flake-parts": "flake-parts_4",
         "home-manager": "home-manager",
         "nixpkgs": "nixpkgs_5",
+        "rtk-nixpkgs": "rtk-nixpkgs",
         "sops-nix": "sops-nix",
         "tilingDesktop": "tilingDesktop",
         "yggdrasil-private": "yggdrasil-private"
+      }
+    },
+    "rtk-nixpkgs": {
+      "locked": {
+        "lastModified": 1791956154,
+        "narHash": "sha256-jBYGPi4udQ9uo4KQp9m2J0546nJVQitG15gvZSaVVAs=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "55bfb4d7437bd4e09ab7cba58a43bd68eb310044",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "55bfb4d7437bd4e09ab7cba58a43bd68eb310044",
+        "type": "github"
       }
     },
     "sops-nix": {
