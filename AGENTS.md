@@ -1,5 +1,15 @@
 # Nix Arbor agent guide
 
+## Normal-burn model selection
+
+Use `gpt-6.1-terra` for substantive executors and implementation owners: `low`
+effort for straightforward bounded work, `medium` for more involved
+implementation and debugging. Within execution work, reserve Luna for primitive
+actions, not substantive implementation. Explicitly select model and effort
+when personal role defaults differ. Leave other burn tiers, interactive leader
+selection, and active user-owned runs unchanged. Independent planning, review, and verification
+role defaults are unchanged.
+
 Nix Arbor is a small composition flake for independently versioned Nix
 components. Keep the root flake focused on composition; large components
 belong in independent flakes and repositories.
