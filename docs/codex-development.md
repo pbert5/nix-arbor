@@ -1,5 +1,15 @@
 # Codex development
 
+## Normal-burn model selection
+
+Use `gpt-6.1-terra` for substantive executors and implementation owners: `low`
+effort for straightforward bounded work, `medium` for more involved
+implementation and debugging. Within execution work, reserve Luna for primitive
+actions, not substantive implementation. Explicitly select model and effort
+when personal role defaults differ. Leave other burn tiers, interactive leader
+selection, and active user-owned runs unchanged. Independent planning, review, and verification
+role defaults are unchanged.
+
 This repository keeps its shared MCP defaults in [.codex/config.toml](../.codex/config.toml).
 The file is project-local and is loaded only for trusted projects. It contains
 no credentials:
