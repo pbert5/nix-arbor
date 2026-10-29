@@ -109,11 +109,52 @@ if grep -Eq 'down.*-v|volume prune|system prune' "$MOCK_LOG"; then
 fi
 grep -q -- "--project-name nix-arbor-runner-$slug" "$MOCK_LOG"
 
-{ printf 'y\n'; sleep 0.2; printf 'n\n'; sleep 0.2; printf 'manual-token\n'; } |
-  run_tty "$cli enroll --repo pbert5/simple-evolver" >"$tmp/manual.out"
-grep -qx 'manual-token' "$MOCK_STDIN"
-if grep -q 'manual-token' "$tmp/manual.out" "$MOCK_LOG"; then
-  echo 'manual token leaked to output or Docker arguments' >&2; exit 1
+: >"$MOCK_LOG"
+for command_name in up rebuild up-up enroll down doctor; do
+  guard_config="$tmp/guard-$command_name"
+  if XDG_CONFIG_HOME="$guard_config" "$cli" "$command_name" --repo pbert5/simple-evolver >"$tmp/guard-$command_name.out" 2>&1; then
+    echo "$command_name unexpectedly managed the transferred Simple Evolver runner" >&2; exit 1
+  fi
+  grep -q 'ownership has transferred to Simple Evolver' "$tmp/guard-$command_name.out" || {
+    cat "$tmp/guard-$command_name.out" >&2
+    echo "$command_name did not report the Simple Evolver ownership transfer" >&2
+    exit 1
+  }
+  [[ ! -e $guard_config ]] || { echo "$command_name created Nix Arbor config for the transferred repo" >&2; exit 1; }
+done
+[[ ! -s $MOCK_LOG ]] || { echo 'a rejected command invoked Docker' >&2; cat "$MOCK_LOG" >&2; exit 1; }
+upper_guard_config="$tmp/guard-uppercase"
+if XDG_CONFIG_HOME="$upper_guard_config" "$cli" up --repo PBERT5/SIMPLE-EVOLVER >"$tmp/guard-uppercase.out" 2>&1; then
+  echo 'case-variant repository name bypassed the ownership guard' >&2; exit 1
+fi
+grep -q 'ownership has transferred to Simple Evolver' "$tmp/guard-uppercase.out"
+[[ ! -e $upper_guard_config ]]
+[[ ! -s $MOCK_LOG ]]
+
+default_config="$tmp/default-guard/nix-arbor/runners"
+mkdir -p "$default_config"
+simple_evolver_slug=$(printf 'pbert5/simple-evolver' | sha256sum | cut -c1-8)
+simple_evolver_slug="pbert5-simple-evolver-$simple_evolver_slug"
+printf 'RUNNER_REPOSITORY=pbert5/simple-evolver\n' >"$default_config/$simple_evolver_slug.conf"
+if XDG_CONFIG_HOME="$tmp/default-guard" "$cli" up >"$tmp/default-guard.out" 2>&1; then
+  echo 'implicit selection unexpectedly managed the transferred Simple Evolver runner' >&2; exit 1
+fi
+grep -q 'ownership has transferred to Simple Evolver' "$tmp/default-guard.out" || {
+  cat "$tmp/default-guard.out" >&2
+  echo 'implicit repository selection did not report the Simple Evolver ownership transfer' >&2
+  exit 1
+}
+[[ ! -s $MOCK_LOG ]] || { echo 'implicit guard invocation ran Docker' >&2; cat "$MOCK_LOG" >&2; exit 1; }
+
+simple_evolver_name="r640-0-$simple_evolver_slug"
+printf 'RUNNER_REPOSITORY=pbert5/simple-evolver\nRUNNER_NAME=%s\nRUNNER_LABELS=r640-0,%s,docker-compose\nRUNNER_VERSION=2.338.0\nRUNNER_SHA256=fixture\n' \
+  "$simple_evolver_name" "$simple_evolver_slug" >"$default_config/$simple_evolver_slug.conf"
+: >"$MOCK_LOG"
+XDG_CONFIG_HOME="$tmp/default-guard" "$cli" status --repo pbert5/simple-evolver >"$tmp/transferred-status.out"
+grep -q 'GitHub repository policy: private' "$tmp/transferred-status.out"
+grep -q 'compose .* ps$' "$MOCK_LOG"
+if grep -Eq ' up -d| stop runner| build runner| run --rm' "$MOCK_LOG"; then
+  echo 'transferred-repo status performed a mutating or ephemeral Compose operation' >&2; exit 1
 fi
 
 export MOCK_DOCKER_FAIL_ENROLL=1

@@ -32,9 +32,15 @@ while (($#)); do
   esac
 done
 
-mkdir -p "$config_root"
-chmod 700 "$config_root"
 valid_repo() { [[ $1 =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; }
+refuse_transferred_management() {
+  [[ ${1,,} == pbert5/simple-evolver ]] || return 0
+  case $command_name in
+    up|rebuild|up-up|enroll|down|doctor)
+      die 'ownership has transferred to Simple Evolver; use its tools/github/runners CLI'
+      ;;
+  esac
+}
 repo_slug() {
   local name digest
   name=$(printf '%s' "${1,,}" | tr '/._' '---' | tr -cd 'a-z0-9-' | sed 's/--*/-/g; s/^-//; s/-$//')
@@ -70,11 +76,16 @@ if [[ -z $repo_arg ]]; then
   fi
 fi
 valid_repo "$repo_arg" || die 'repository must be OWNER/REPO'
+refuse_transferred_management "$repo_arg"
 repo_file_path=$(repo_file "$repo_arg")
 project="nix-arbor-runner-$(repo_slug "$repo_arg")"
 runner_name="r640-0-$(repo_slug "$repo_arg")"
 repo_label="$(repo_slug "$repo_arg")"
 labels="r640-0,${repo_label},docker-compose"
+if [[ $command_name == enroll ]]; then
+  mkdir -p "$config_root"
+  chmod 700 "$config_root"
+fi
 if [[ -f $repo_file_path ]]; then
   # shellcheck disable=SC1090
   source "$repo_file_path"

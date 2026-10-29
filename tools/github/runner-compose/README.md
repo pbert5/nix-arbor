@@ -24,6 +24,15 @@ from checkout. Existing hosted PR/test/release workflows are unchanged.
 `R640_RUNNER_READY` is **per repository**, distinct from the earlier
 `R640_CI_READY` OCI/VM integration marker.
 
+## Simple Evolver ownership boundary
+
+After the #1143 transfer is complete, this CLI refuses `enroll`, `up`,
+`rebuild`, `up-up`, `down`, and `doctor` for `pbert5/simple-evolver`. Manage that
+runner through Simple Evolver's `tools/github/runners` command instead.
+`status` and `logs` remain available for observation; other repository runners
+are unaffected. `doctor` is refused because its Compose probes can create
+containers or volumes.
+
 ## Enroll and turn on the private repositories
 
 From the running `r640-0` host's Nix Arbor checkout, with an authenticated
