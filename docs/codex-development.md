@@ -41,9 +41,12 @@ transcripts into context.
 The current policy reference is Simple Evolver `main`; inspect its live
 `.codex/config.toml` and generic roles before adapting policy. Nix Arbor keeps
 project roles Nix-specific and does not import domain roles or optional MCP
-servers. Prefer GPT-6 Luna for first-order owners and routine nested specialists
-when the runtime exposes it. Reserve higher-cost models for evidence-backed
-reasoning needs. Probe the active model/tool runtime because project settings
+servers. In normal burn, use `gpt-6.1-terra` for first-order owners and
+nested implementation specialists: `low` effort for straightforward bounded work,
+`medium` for more involved implementation and debugging.
+Within execution work, reserve Luna for primitive execution actions. Pass model and effort explicitly when
+personal defaults differ; leave other burn tiers and active user-owned runs
+unchanged. Probe the active model/tool runtime because project settings
 do not guarantee capabilities. The interactive leader's model remains a
 personal choice.
 
