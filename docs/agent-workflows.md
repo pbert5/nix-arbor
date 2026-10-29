@@ -1,5 +1,15 @@
 # Agent-first workflows
 
+## Normal-burn model selection
+
+Use `gpt-6.1-terra` for substantive executors and implementation owners: `low`
+effort for straightforward bounded work, `medium` for more involved
+implementation and debugging. Within execution work, reserve Luna for primitive
+actions, not substantive implementation. Explicitly select model and effort
+when personal role defaults differ. Leave other burn tiers, interactive leader
+selection, and active user-owned runs unchanged. Independent planning, review, and verification
+role defaults are unchanged.
+
 The repository contract is **one task = one branch = one worktree**. The
 primary checkout is for integration and review; agents work in sibling
 directories under `../nix-arbor-worktrees/`.
