@@ -5,7 +5,7 @@
   system,
 }:
 let
-  rtkFor = system: inputs.codex-nixpkgs.legacyPackages.${system}.rtk;
+  rtkFor = system: inputs.rtk-nixpkgs.legacyPackages.${system}.rtk;
   expected = rtkFor system;
   selected = packages: builtins.filter (p: (p.pname or "") == "rtk") packages;
   usesExpected =
