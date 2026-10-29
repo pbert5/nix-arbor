@@ -52,9 +52,11 @@ than silently re-planned.
 The first-order owner owns its issue, worktree, branch, implementation,
 debugging, local verification, independent review/repair, durable checkpoints,
 and terminal packet. It may use bounded depth-2 specialists when the task
-contract and live runtime allow it. Prefer GPT-6 Luna for owners and routine
-nested specialists when exposed by the runtime. Use a higher-cost model only
-when fresh evidence or the contract needs it. Configuration describes desired
+contract and live runtime allow it. In normal burn, use `gpt-6.1-terra` for
+owners and nested implementation specialists: `low` effort for straightforward
+bounded work, or `medium` for more involved implementation and debugging. Within execution work, reserve Luna for primitive execution actions. Pass model and
+effort explicitly when personal role defaults differ; do not interrupt active
+user-owned runs or change other burn tiers. Configuration describes desired
 capabilities, not guarantees; probe the active runtime. Do not reserve nested
 capacity or root-owned stream-local reviewer/checker slots.
 
@@ -141,7 +143,7 @@ These are defaults, not enforcement; use explicit high-burn role/model selection
 as above. Keep the interactive leader's model separate. A prompt-only opt-in uses
 the same explicit spawn mapping without the CLI defaults. Ending the session
 ends this opt-in. Do not change global config, security settings, persistent thread
-limits or the ordinary Luna mode. Project-local `[profiles]` are not used because the
+limits or the normal-burn Terra low/medium policy. Project-local `[profiles]` are not used because the
 current Codex documentation says they are ignored at project scope.
 
 Reference: [Codex configuration](https://learn.chatgpt.com/docs/config-file/config-reference).
