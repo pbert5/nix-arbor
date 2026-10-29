@@ -17,6 +17,16 @@ belong in independent flakes and repositories.
 - Keep changes scoped to the request. Do not silently change architecture or
   port whole subsystems from a reference repository.
 
+## Normal-burn model selection
+
+Use `gpt-6.1-terra` for substantive executors and implementation workstream owners: `low` effort for straightforward bounded work and `medium` for
+more involved implementation and debugging. Within execution work, reserve Luna
+for primitive actions, not substantive implementation. Pass the model and
+effort explicitly when personal role defaults differ. Apply this to future
+executor selection; do not interrupt active user-owned runs. Other burn tiers
+and the interactive leader's model are unchanged. Independent planning, review,
+and verification role defaults are unchanged.
+
 ## Explicit high-burn opt-in
 
 Only an explicit request in the current prompt/session setup enables high-burn
@@ -53,9 +63,8 @@ exact SHAs between sessions; separate sessions do not permit concurrent writers.
 The first-order workstream owner owns implementation, debugging, local
 verification, independent review and repair, durable checkpoints, and the
 terminal handoff. The owner may use bounded depth-2 specialists when the live
-runtime and contract support them. Use GPT-6 Luna for owners and routine nested
-specialists when available; reserve higher-cost models for evidence-backed
-reasoning needs. Probe runtime model/tool availability instead of assuming
+runtime and contract support them. Use the normal-burn Terra low/medium selection above for owners and
+nested implementation specialists; reserve Luna for primitive execution actions. Probe runtime model/tool availability instead of assuming
 configuration guarantees it. Do not reserve root-owned review capacity or
 centralize stream-local checker/reviewer routing.
 
@@ -120,8 +129,9 @@ a failure.
 
 - Follow the live task contract for delegation, concurrency, model, and depth;
   repository files do not promise runtime capabilities or impose a fixed task
-  graph. GPT-6 Luna is the low-cost owner/specialist preference when exposed;
-  interactive leader model selection remains personal.
+  graph. Normal-burn owners and implementation specialists use Terra low/medium;
+  Luna is reserved for primitive execution actions. Interactive leader model selection
+  remains personal.
 - Keep stable, reusable Codex roles in the user's personal Codex configuration.
   Project `.codex/agents` contains two normal Nix Arbor-specific roles and
   five self-contained, opt-in Terra/high compatibility variants.
