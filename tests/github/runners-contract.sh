@@ -123,6 +123,13 @@ for command_name in up rebuild up-up enroll down doctor; do
   [[ ! -e $guard_config ]] || { echo "$command_name created Nix Arbor config for the transferred repo" >&2; exit 1; }
 done
 [[ ! -s $MOCK_LOG ]] || { echo 'a rejected command invoked Docker' >&2; cat "$MOCK_LOG" >&2; exit 1; }
+upper_guard_config="$tmp/guard-uppercase"
+if XDG_CONFIG_HOME="$upper_guard_config" "$cli" up --repo PBERT5/SIMPLE-EVOLVER >"$tmp/guard-uppercase.out" 2>&1; then
+  echo 'case-variant repository name bypassed the ownership guard' >&2; exit 1
+fi
+grep -q 'ownership has transferred to Simple Evolver' "$tmp/guard-uppercase.out"
+[[ ! -e $upper_guard_config ]]
+[[ ! -s $MOCK_LOG ]]
 
 default_config="$tmp/default-guard/nix-arbor/runners"
 mkdir -p "$default_config"
