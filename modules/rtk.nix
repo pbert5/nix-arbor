@@ -1,1 +1,1 @@
-{ inputs, system }: inputs.codex-nixpkgs.legacyPackages.${system}.rtk
+{ inputs, system }: inputs.rtk-nixpkgs.legacyPackages.${system}.rtk
