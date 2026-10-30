@@ -3,11 +3,14 @@
 # List every checkout and its branch
 git worktree list
 
-# Create one isolated agent branch and checkout
-./scripts/agent-worktree new <task-slug> <agent-name>
+# Identify the actual main checkout first; do not use a linked worktree as the root
+git worktree list --porcelain
 
-# Native equivalent; worktrees live outside the repository
-git worktree add -b agent/<agent>/<task> ../nix-arbor-worktrees/agent-<agent>-<task> HEAD
+# Create below that main checkout only after verifying .worktrees is ignored
+git -C "$MAIN_CHECKOUT" check-ignore -q .worktrees/probe &&
+  git -C "$MAIN_CHECKOUT" worktree add -b agent/<agent>/<task> "$MAIN_CHECKOUT/.worktrees/agent-<agent>-<task>" HEAD
+
+# Existing legacy helper worktrees stay in place; do not relocate active/dirty work
 
 # Inspect agent checkout status
 ./scripts/agent-worktree status

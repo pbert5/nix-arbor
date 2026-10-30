@@ -11,25 +11,41 @@ selection, and active user-owned runs unchanged. Independent planning, review, a
 role defaults are unchanged.
 
 The repository contract is **one task = one branch = one worktree**. The
-primary checkout is for integration and review; agents work in sibling
-directories under `../nix-arbor-worktrees/`.
+primary checkout is for integration and review; new agent worktrees live in
+its Git-ignored `.worktrees/` directory.
 
 ## Starting work
 
-The helper creates `agent/<agent-or-role>/<task-slug>` and initializes
-submodules:
+## Worktree location
+
+Create new worktrees under `<actual-main-checkout>/.worktrees/<task-slug>`.
+Identify the actual main checkout with `git worktree list --porcelain`; do not
+treat an existing linked worktree's `git rev-parse --show-toplevel` as the main
+checkout or nest another `.worktrees/` inside it. Before creation, verify
+`git -C "$MAIN_CHECKOUT" check-ignore -q .worktrees/probe` succeeds. Add
+`/.worktrees/` to that main checkout's `.gitignore` if missing, then verify
+again. One mutation owner per task, branch, and worktree.
+
+This is the standard for new worktrees, not permission to relocate or delete
+existing worktrees. Preserve active, dirty, and unpublished work in place;
+migration or cleanup requires separate coordination.
+
+The legacy `scripts/agent-worktree new` still creates worktrees in its older
+location. Use native Git for new worktrees; the existing helper remains useful
+for inspecting its legacy worktrees. Do not move them automatically.
+
+Run this from the identified main checkout, after inspecting ownership and
+branch names:
 
 ```sh
-./scripts/agent-worktree new workspace-infra luna
-cd ../nix-arbor-worktrees/agent-luna-workspace-infra
+MAIN_CHECKOUT="$PWD" # Must be the actual main checkout, not a linked worktree.
+git -C "$MAIN_CHECKOUT" check-ignore -q .worktrees/probe &&
+  git -C "$MAIN_CHECKOUT" worktree add -b agent/terra/my-task \
+    "$MAIN_CHECKOUT/.worktrees/agent-terra-my-task" HEAD
+# Continue only after successful creation.
+cd "$MAIN_CHECKOUT/.worktrees/agent-terra-my-task"
+git submodule update --init
 nix develop
-```
-
-Native Git equivalent:
-
-```sh
-git worktree add -b agent/luna/my-task ../nix-arbor-worktrees/agent-luna-my-task HEAD
-git -C ../nix-arbor-worktrees/agent-luna-my-task submodule update --init
 ```
 
 Start Codex or Claude only after entering that worktree:
@@ -237,9 +253,10 @@ cleanup never accepts force.
 Native commands remain useful when the helper is unavailable:
 
 ```sh
-git worktree add -b agent/name/task ./worktrees/agent-name-task origin/main
+git -C "$MAIN_CHECKOUT" check-ignore -q .worktrees/probe &&
+  git -C "$MAIN_CHECKOUT" worktree add -b agent/name/task "$MAIN_CHECKOUT/.worktrees/agent-name-task" origin/main
 git worktree list
-git worktree remove ./worktrees/agent-name-task
+git worktree remove "$MAIN_CHECKOUT/.worktrees/agent-name-task"
 git worktree prune
 git branch --merged main
 ```
