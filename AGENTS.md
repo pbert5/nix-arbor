@@ -9,8 +9,10 @@ belong in independent flakes and repositories.
 - Default to one task, branch, and worktree. An explicit user or issue
   authorization may select an existing checkout and task branch; first check
   ownership and preserve committed, uncommitted, and unpublished work.
-- Use `agent/<agent-or-role>/<task-slug>` for agent branches. Prefer the
-  `scripts/agent-worktree` helper, with worktrees under `./worktrees/`.
+- Use `agent/<agent-or-role>/<task-slug>` for agent branches. Put new
+  worktrees in the actual main checkout's Git-ignored `.worktrees/` directory.
+  The legacy helper has an older creation path; use native Git as documented
+  in `docs/agent-workflows.md` until the helper supports this location.
 - Read the closest `AGENTS.md` before changing a subtree. `packages/` contains
   active component checkouts; `references/` contains material for inspection,
   not dependencies to modify casually.
@@ -170,3 +172,18 @@ failure episode, not one per status poll. Its read-only instructions prohibit
 repository, runner, credential, or runtime changes. They are behavioral limits,
 not a separate security sandbox. This narrow escalation leaves other model
 defaults and burn tiers unchanged.
+
+## Worktree location
+
+Create new worktrees under `<actual-main-checkout>/.worktrees/<task-slug>`.
+Identify the actual main checkout with `git worktree list --porcelain`; do not
+treat an existing linked worktree's `git rev-parse --show-toplevel` as the main
+checkout or nest another `.worktrees/` inside it. Before creation, verify
+`git -C "$MAIN_CHECKOUT" check-ignore -q .worktrees/probe` succeeds. Add
+`/.worktrees/` to that main checkout's `.gitignore` if missing, then verify
+again. One mutation owner per task, branch, and worktree.
+
+This is the standard for new worktrees, not permission to relocate or delete
+existing worktrees. Preserve active, dirty, and unpublished work in place;
+migration or cleanup requires separate coordination.
+
