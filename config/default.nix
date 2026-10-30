@@ -122,6 +122,7 @@ let
   ];
   r640 = [
     (import ./access/module.nix)
+    (import ./modules/github-runner.nix)
     {
       arbor.access.authorizedKeySets = [
         "operator"
