@@ -1,0 +1,9 @@
+{
+  users.users.madeline = {
+    isNormalUser = true;
+    description = "Madeline";
+    openssh.authorizedKeys.keys = [
+      "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDTAYLzIgqepG6BvcZXOeSqWrx/VIyO8kdiClnRHQ6gr7qmKxaigmJKS2wc+GJbHhbaSLL9zQ54Dc23FaqKwesMD8XHFMJxjciEkf1mrLE5BfvlR0CsO9Vby+zpByonDSyEGFVXFIl6VNecRWiBc7UeKjwI7bC8dU+fgwkl6+pZvE4XTcwjWooDLzHi1AKEHKRNkfQxQzAu5Zxn1WEksw/8qzdBUxxwa0QTPD+c726ZtongYen8jzXDr3/CYZtv/Ys6ADcKcwHhV2kAC/wQuGE4YlSOPiQ6YnaZ6DQWNL3qT+PDKAFIbunAnHlCVpo4A2Z3qgDoj2mYoBq9oXxmpWb8GJLhDVaMUfJpAF4RJSo1ZLncCmidf6Bw1jy0OXSVu8eaBBjK0E/ZaRZ54WFGfmo3tEqK5PKwUHn8mr21aaojGvSfmkqw8u3eEMIoftoS04kxgm7HgLs3RYNLk0EQOID9dA6JV08Ps26wc3yYzigQ2BcSSU5He7xH9A6TgOZEF43Dz15CS38tQgxK8UUq5GALuHXOS6v1nHnbzhQDQY2A3JeTcjn4Pm6aYXTZ6ixF09y+g4jol1flaT6vLUrqZM1usEH/5aFvIWkVDG2LjohSbzPYdtPoE098RVL0gWKUPxPS5FOyRg8v4Hmzg2pgsC54U/zRl7mE0wwFG/RdQt40Vw== cgwilson1992@gmail.com"
+    ];
+  };
+}

@@ -41,6 +41,7 @@ let
       ];
     };
   desktop = [
+    (import ./access/madeline.nix)
     networkPolicy
     inputs.home-manager.nixosModules.home-manager
     inputs.sops-nix.nixosModules.sops
@@ -102,6 +103,7 @@ let
     )
   ];
   server = [
+    (import ./access/madeline.nix)
     networkPolicy
     inputs.home-manager.nixosModules.home-manager
     {
