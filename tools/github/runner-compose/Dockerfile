@@ -6,6 +6,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       ca-certificates curl git jq libicu74 libssl3 libkrb5-3 rsync zlib1g \
+      libsqlite3-0 \
       fonts-liberation libfontconfig1 libfreetype6 \
       libglib2.0-0t64 libnspr4 libnss3 libdbus-1-3 \
       libatk1.0-0t64 libatk-bridge2.0-0t64 libatspi2.0-0t64 \
