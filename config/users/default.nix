@@ -65,7 +65,6 @@ in
     uid = 1001;
     isNormalUser = true;
     description = "Madeline";
-    shell = pkgs.zsh;
     extraGroups = [
       "wheel"
       "docker"

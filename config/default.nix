@@ -51,7 +51,7 @@ let
     (import ./access/module.nix)
     r640Env
     (
-      { config, ... }:
+      { config, pkgs, ... }:
       {
         nix.settings.experimental-features = [
           "nix-command"
@@ -75,6 +75,10 @@ let
         };
         home-manager.useGlobalPkgs = true;
         home-manager.useUserPackages = true;
+        home-manager.users.madeline.home.packages = [
+          inputs.codex-nixpkgs.legacyPackages.${pkgs.system}.codex
+          inputs.codex-switch.packages.${pkgs.system}.codex-switch
+        ];
         home-manager.users.ash = {
           imports = [
             inputs.ashzsh.homeModules.default
