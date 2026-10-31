@@ -52,6 +52,8 @@ fi
 compose config --quiet
 created=1
 compose --progress plain build runner
+compose run --rm -T --no-deps --user 1001:1001 --entrypoint /bin/sh runner \
+  -c 'test -r /lib/x86_64-linux-gnu/libsqlite3.so.0'
 compose run --rm -T --no-deps --user 0:0 --entrypoint /bin/sh runner \
   -c 'chown 0:0 /runner; touch /runner/root-owned-sentinel'
 if compose run --rm -T --no-deps --user 1001:1001 --entrypoint /bin/sh runner \
