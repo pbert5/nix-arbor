@@ -105,8 +105,7 @@ in
     }
   ];
 
-  # No VM/test path is redirected here: this repository currently declares no
-  # host-owned VM storage path, and inventing one would risk the live pool.
+  # Only link datasets whose live topology has been confirmed by the operator.
   systemd.services.zfs-home-links = {
     description = "Expose existing mypool directories to r640 users";
     wantedBy = [ "multi-user.target" ];
@@ -124,7 +123,11 @@ in
         exit 0
       fi
       [ -d ${poolRoot} ] || exit 0
-      echo "mypool is mounted; no dataset links are inferred without live topology"
+      if ${pkgs.util-linux}/bin/mountpoint -q ${poolRoot}/code && [ -d /home/madeline ]; then
+        if [ ! -e /home/madeline/code ] && [ ! -L /home/madeline/code ]; then
+          ${pkgs.coreutils}/bin/ln -s ${poolRoot}/code /home/madeline/code
+        fi
+      fi
     '';
   };
 }
