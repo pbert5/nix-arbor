@@ -16,6 +16,19 @@ when the target account is outside the shared user module. eVolver explicitly
 authorizes the r640 machine key for both `ash` and `root`; desktoptoodle
 authorizes it for `ash`.
 
+To add a public key interactively, enter the Arbor development shell and run:
+
+```sh
+./tools/ssh/add-key
+```
+
+Paste one public key, then press Enter to select all listed users or machines,
+or enter comma-separated numbers to select specific ones. The tool shows the
+key fingerprint and grants before asking to save. It records grants in
+`config/access/extra-keys.json`; review and commit that file, then deploy the
+configuration to each selected machine. Root is not included in the user menu.
+Never paste a private key.
+
 These are three separate pieces:
 
 * the destination's `authorized_keys` contains a public key;

@@ -1,0 +1,79 @@
+#!/usr/bin/env python3
+"""Add a public SSH key to selected Arbor users and machines."""
+import argparse
+import json
+import pathlib
+import subprocess
+import sys
+import tempfile
+
+USERS = ['madeline', 'ash']
+
+
+def select(label, choices):
+    print(f'{label} (Enter for all; comma-separated numbers to select):')
+    for number, choice in enumerate(choices):
+        print(f'  {number}: {choice}')
+    value = input('> ').strip()
+    if not value:
+        return choices
+    try:
+        indexes = [int(part.strip()) for part in value.split(',')]
+        if any(index < 0 or index >= len(choices) for index in indexes):
+            raise ValueError
+        return [choice for index, choice in enumerate(choices) if index in indexes]
+    except ValueError:
+        raise ValueError('Invalid selection') from None
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--root', type=pathlib.Path, default=pathlib.Path(__file__).resolve().parents[2], help=argparse.SUPPRESS)
+    root = parser.parse_args().root
+    key = input('Paste a public SSH key: ').strip()
+    # Accept only a single bare key, never authorized_keys options or private data.
+    parts = key.split()
+    if len(parts) < 2 or not parts[0].startswith(('ssh-', 'ecdsa-', 'sk-')) or '\n' in key or '\r' in key:
+        raise ValueError('Expected one public SSH key')
+    with tempfile.TemporaryDirectory() as temp:
+        keyfile = pathlib.Path(temp) / 'key.pub'
+        keyfile.write_text(key + '\n')
+        result = subprocess.run(['ssh-keygen', '-lf', str(keyfile)], capture_output=True, text=True)
+    if result.returncode:
+        raise ValueError('Invalid public SSH key')
+    print(result.stdout.strip())
+    users = select('Users', USERS)
+    hosts = select('Machines', sorted(p.name for p in (root / 'config/machines').iterdir() if p.is_dir() and (p / 'default.nix').is_file()))
+    if not hosts:
+        raise ValueError('No machines found')
+    path = root / 'config/access/extra-keys.json'
+    data = json.loads(path.read_text()) if path.exists() else {}
+    print(f"Grant to users {', '.join(users)} on machines {', '.join(hosts)}.")
+    if input('Save these grants? [y/N] ').strip().lower() != 'y':
+        print('Cancelled.')
+        return
+    for host in hosts:
+        for user in users:
+            keys = data.setdefault(host, {}).setdefault(user, [])
+            if not any(existing.split()[:2] == parts[:2] for existing in keys):
+                keys.append(key)
+    # Replace atomically only after all input and existing JSON have been validated.
+    with tempfile.NamedTemporaryFile(mode='w', dir=path.parent, delete=False) as output:
+        temp_path = pathlib.Path(output.name)
+        try:
+            json.dump(data, output, indent=2, ensure_ascii=True)
+            output.write('\n')
+            output.flush()
+            temp_path.chmod(0o644)
+            temp_path.replace(path)
+        finally:
+            temp_path.unlink(missing_ok=True)
+    print(f'Saved {path}. Review, commit, and deploy the Nix configuration to apply it.')
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (ValueError, EOFError, OSError, json.JSONDecodeError) as error:
+        print(f'Error: {error}', file=sys.stderr)
+        sys.exit(1)
