@@ -8,9 +8,11 @@ Usage: tools/store/clean [--list]
        tools/store/clean --apply /nix/store/HASH-NAME [...]
        tools/store/clean --help
 
-List dead store paths with smoke-test and VM names first. To delete, pass
-the exact paths to --apply. The local Nix daemon checks liveness and
-referrers at deletion time. A multi-path deletion can partially succeed.
+List registered store paths with likely smoke, test, and VM names first.
+Liveness is unknown in the list. To delete, pass exact paths to --apply.
+The local Nix daemon checks liveness and referrers at deletion time.
+A multi-path deletion can partially succeed. Daemon housekeeping can
+release reserved GC space and prune stale root records and unused store links.
 USAGE
 }
 
@@ -23,8 +25,7 @@ store_path='^/nix/store/[0123456789abcdfghijklmnpqrsvwxyz]{32}-[a-zA-Z0-9+._?=-]
 if (($# == 0)); then
   set -- --list
 fi
-mode=$1
-case $mode in
+case $1 in
   --list) (($# == 1)) || usage_error ;;
   --help|-h)
     (($# == 1)) || usage_error
@@ -40,47 +41,41 @@ case $mode in
         exit 2
       fi
     done
+    command -v nix-store >/dev/null || {
+      printf '%s\n' 'store clean: nix-store is unavailable' >&2
+      exit 1
+    }
+    nix-store --store daemon --check-validity "$@"
+    exec nix-store --store daemon --delete "$@"
     ;;
   *) usage_error ;;
 esac
 
-command -v nix-store >/dev/null || {
-  printf '%s\n' 'store clean: nix-store is unavailable' >&2
+command -v nix >/dev/null || {
+  printf '%s\n' 'store clean: nix is unavailable' >&2
   exit 1
 }
-dead=$(nix-store --store daemon --gc --print-dead) || exit "$?"
+registered=$(nix --extra-experimental-features nix-command path-info --store daemon --all) || exit "$?"
 
-priority_name='(^|[-+._])(smoke[-._]?test|nixos-test|test-driver|vm)([-+._]|$)'
+priority_name='(^|[-+._])(smoke([-._]?tests?)?|tests?|vm)([-+._]|$)'
 priority=()
 other=()
-if [[ -n $dead ]]; then
+if [[ -n $registered ]]; then
   while IFS= read -r path; do
     if [[ ! $path =~ $store_path ]]; then
-      printf 'store clean: unexpected output from nix-store: %q\n' "$path" >&2
+      printf 'store clean: unexpected output from nix path-info: %q\n' "$path" >&2
       exit 1
     fi
-    if [[ $mode == --list ]]; then
-      name=${path#*-}
-      if [[ ${name,,} =~ $priority_name ]]; then
-        priority+=("$path")
-      else
-        other+=("$path")
-      fi
+    name=${path#*-}
+    if [[ ${name,,} =~ $priority_name ]]; then
+      priority+=("$path")
+    else
+      other+=("$path")
     fi
-  done <<< "$dead"
+  done <<< "$registered"
 fi
 
-if [[ $mode == --apply ]]; then
-  dead_lines=$'\n'"$dead"$'\n'
-  for path in "$@"; do
-    if [[ $dead_lines != *$'\n'"$path"$'\n'* ]]; then
-      printf 'store clean: path is absent from the dead set: %s\n' "$path" >&2
-      exit 1
-    fi
-  done
-  exec nix-store --store daemon --delete "$@"
-fi
-
+printf '%s\n' 'store clean: registered store paths (liveness is unknown)' >&2
 if ((${#priority[@]} + ${#other[@]})); then
   printf '%s\n' "${priority[@]}" "${other[@]}"
 fi
