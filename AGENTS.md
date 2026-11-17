@@ -16,6 +16,10 @@ belong in independent flakes and repositories.
 - Read the closest `AGENTS.md` before changing a subtree. `packages/` contains
   active component checkouts; `references/` contains material for inspection,
   not dependencies to modify casually.
+- Before proposing or implementing a feature, use `git submodule status --recursive`
+  to identify relevant submodules and inspect their pinned code, including
+  reference implementations. Trace any existing feature through the root
+  flake to see whether it already works or still needs integration.
 - Keep changes scoped to the request. Do not silently change architecture or
   port whole subsystems from a reference repository.
 
