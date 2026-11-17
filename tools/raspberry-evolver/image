@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """Build and personalize a Raspberry eVolver image (work in progress)."""
 import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import tempfile
 import re
 import shlex
 import sys
@@ -43,12 +50,151 @@ def parse_key(paste):
     return key
 
 
+
+def digest(path):
+    hasher = hashlib.sha256()
+    with path.open('rb') as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+            hasher.update(chunk)
+    return hasher.hexdigest()
+
+
+def write_clean_artifact(source, destination, revision, lock_hash):
+    """Copy a raw clean image to a private directory and write its manifest."""
+    compressed = source.name.endswith('.zst')
+    if compressed:
+        details = subprocess.check_output(['zstd', '-lv', str(source)], text=True, stderr=subprocess.STDOUT)
+        match = re.search(r'^Decompressed Size: .*\((\d+) B\)$', details, re.MULTILINE)
+        if not match or not re.search(r'^# Zstandard Frames: 1$', details, re.MULTILINE):
+            raise OSError('Cannot establish the uncompressed size of the image')
+        size = int(match.group(1))
+    else:
+        size = source.stat().st_size
+    if not size:
+        raise OSError('Image is empty')
+    if shutil.disk_usage(destination.parent).free < size * 2 + 1024**3:
+        raise OSError('Insufficient space for the image and verification staging')
+    manifest_path = Path(str(destination) + '.json')
+    created_image = False
+    created_manifest = False
+    try:
+        with destination.open('xb') as dst:
+            created_image = True
+            os.chmod(destination, 0o600)
+            if compressed:
+                subprocess.run(['zstd', '-q', '-d', '-c', str(source)], stdout=dst, check=True)
+            else:
+                with source.open('rb') as src:
+                    shutil.copyfileobj(src, dst, 1024 * 1024)
+        result_hash = digest(destination)
+        if (not compressed and digest(source) != result_hash) or destination.stat().st_size != size:
+            raise OSError('Image copy verification failed')
+        manifest = {'schema_version': 1, 'model': 'Raspberry Pi 4',
+                    'hostname': 'raspberry-evolver', 'source_revision': revision,
+                    'lock_sha256': lock_hash, 'clean_sha256': result_hash,
+                    'result_size': size, 'result_sha256': result_hash,
+                    'personalized': False}
+        with manifest_path.open('x') as stream:
+            created_manifest = True
+            os.chmod(manifest_path, 0o600)
+            json.dump(manifest, stream, indent=2)
+            stream.write('\n')
+        return manifest
+    except BaseException:
+        if created_manifest:
+            manifest_path.unlink(missing_ok=True)
+        if created_image:
+            destination.unlink(missing_ok=True)
+        raise
+
+
+
+def verify_clean_artifact(path):
+    manifest_path = Path(str(path) + '.json')
+    if path.is_symlink() or manifest_path.is_symlink() or not path.is_file() or not manifest_path.is_file():
+        raise ValueError('Clean image and adjacent manifest must be regular files')
+    if manifest_path.stat().st_size > 65536:
+        raise ValueError('Clean image manifest is too large')
+    try:
+        manifest = json.loads(manifest_path.read_text())
+        valid = (type(manifest) is dict and manifest.get('schema_version') == 1
+                 and manifest.get('model') == 'Raspberry Pi 4'
+                 and manifest.get('hostname') == 'raspberry-evolver'
+                 and manifest.get('personalized') is False
+                 and type(manifest.get('result_size')) is int
+                 and manifest['result_size'] > 0
+                 and all(isinstance(manifest.get(k), str) and re.fullmatch(r'[0-9a-f]{64}', manifest[k])
+                         for k in ('lock_sha256', 'clean_sha256', 'result_sha256'))
+                 and isinstance(manifest.get('source_revision'), str)
+                 and re.fullmatch(r'[0-9a-f]{40,64}', manifest['source_revision'])
+                 and manifest['clean_sha256'] == manifest['result_sha256'])
+    except (ValueError, UnicodeError):
+        valid = False
+    if not valid or path.stat().st_size != manifest['result_size'] or digest(path) != manifest['result_sha256']:
+        raise ValueError('Clean image manifest or digest is invalid')
+    return manifest
+
+def private_directory():
+    base = Path.home() / '.local' / 'state' / 'raspberry-evolver'
+    for path in reversed(base.parents):
+        if path.is_symlink():
+            raise OSError('State directory has a symlink in its path')
+    if base.is_symlink() or str(base).startswith('/nix/store/'):
+        raise OSError('Unsafe state directory')
+    base.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if base.stat().st_uid != os.getuid() or base.stat().st_mode & 0o077:
+        raise OSError('State directory must be owned by the user and mode 0700')
+    check = subprocess.run(['git', '-C', str(base), 'rev-parse', '--show-toplevel'],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if check.returncode == 0:
+        raise OSError('State directory must be outside Git checkouts')
+    return Path(tempfile.mkdtemp(prefix='image-', dir=base))
+
+
+def build_clean():
+    repo = Path(__file__).resolve().parents[2]
+    if subprocess.run(['git', '-C', str(repo), 'status', '--porcelain', '--untracked-files=no'],
+                      capture_output=True, check=True).stdout:
+        raise OSError('Commit tracked changes before building so provenance is reproducible')
+    revision = subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD'], text=True).strip()
+    lock_hash = digest(repo / 'flake.lock')
+    result = subprocess.check_output(['nix', 'build', '--no-link', '--print-out-paths',
+                                      str(repo) + '#nixosConfigurations.raspberry-evolver.config.system.build.sdImage'], text=True)
+    outputs = result.strip().splitlines()
+    if len(outputs) != 1:
+        raise OSError('Expected one Nix image output')
+    images = list(Path(outputs[0]).rglob('*.img')) + list(Path(outputs[0]).rglob('*.img.zst'))
+    if len(images) != 1:
+        raise OSError('Expected exactly one .img or .img.zst in Nix output')
+    directory = private_directory()
+    try:
+        destination = directory / 'clean.img'
+        write_clean_artifact(images[0], destination, revision, lock_hash)
+    except BaseException:
+        directory.rmdir()
+        raise
+    print(f'Clean image: {destination}')
+    print(f'Manifest: {destination}.json')
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--build-only', action='store_true', help='build a clean image without credentials')
     group.add_argument('--from', dest='source', metavar='CLEAN_IMAGE', help='personalize a verified clean image')
-    parser.parse_args()
+    args = parser.parse_args()
+    if args.build_only:
+        try:
+            build_clean()
+            return 0
+        except (OSError, subprocess.SubprocessError) as error:
+            print(f'Clean build failed: {error}', file=sys.stderr)
+            return 1
+    if args.source:
+        try:
+            verify_clean_artifact(Path(args.source))
+        except (OSError, ValueError):
+            print('Clean image verification failed; provide a clean image and its adjacent manifest.', file=sys.stderr)
+            return 1
     print('Image creation is not available yet: clean artifact verification and safe ext4 personalization are incomplete.', file=sys.stderr)
     return 1
 
