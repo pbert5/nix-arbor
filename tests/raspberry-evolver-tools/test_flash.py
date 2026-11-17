@@ -1,3 +1,6 @@
+import sys
+from pathlib import Path as _Path
+sys.path.insert(0, str(_Path(__file__).resolve().parents[2] / "tools/raspberry-evolver"))
 import importlib.machinery
 import importlib.util
 import io
@@ -8,7 +11,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-SCRIPT = pathlib.Path(__file__).resolve().parents[2] / 'tools/raspberry-evolver/flash'
+SCRIPT = pathlib.Path(__file__).resolve().parents[2] / 'tools/raspberry-evolver/flash_impl.py'
 loader = importlib.machinery.SourceFileLoader('flash', str(SCRIPT))
 spec = importlib.util.spec_from_loader(loader.name, loader)
 flash = importlib.util.module_from_spec(spec)
@@ -103,10 +106,15 @@ errors: No known data errors
             image = pathlib.Path(directory) / 'image.img'
             image.write_bytes(b'hello')
             manifest = pathlib.Path(str(image) + '.json')
-            data = {'schema_version': 1, 'result_size': 5,
+            data = {'schema_version': 1, 'model': 'Raspberry Pi 4', 'hostname': 'raspberry-evolver', 'source_revision': 'a' * 40, 'lock_sha256': 'b' * 64, 'clean_sha256': 'c' * 64, 'personalized': True, 'result_size': 5,
                     'result_sha256': '2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824'}
             manifest.write_text(json.dumps(data))
             flash.validate_manifest(image, 5, data['result_sha256'])
+            incomplete = data.copy()
+            del incomplete['model']
+            manifest.write_text(json.dumps(incomplete))
+            with self.assertRaises(flash.SafetyError):
+                flash.validate_manifest(image, 5, data['result_sha256'])
             data['result_size'] = 6
             manifest.write_text(json.dumps(data))
             with self.assertRaises(flash.SafetyError):

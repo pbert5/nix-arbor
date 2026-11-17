@@ -7,6 +7,8 @@ import re
 import subprocess
 import sys
 
+import artifact
+
 STATES = {'missing-key', 'waiting', 'retrying', 'pending-approval', 'enrolled', 'indeterminate'}
 
 
@@ -20,9 +22,7 @@ def valid_remote(value):
 
 
 def verify_artifact(image, manifest):
-    if (manifest.get('schema_version') != 1 or type(manifest.get('result_size')) is not int
-            or type(manifest.get('personalized')) is not bool):
-        raise ValueError('unsupported artifact manifest')
+    artifact.validate(manifest)
     digest = hashlib.sha256()
     size = 0
     with image.open('rb') as stream:

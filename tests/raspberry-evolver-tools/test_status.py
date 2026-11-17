@@ -1,3 +1,6 @@
+import sys
+from pathlib import Path as _Path
+sys.path.insert(0, str(_Path(__file__).resolve().parents[2] / "tools/raspberry-evolver"))
 import hashlib
 import importlib.util
 import json
@@ -16,8 +19,11 @@ class Inspection(unittest.TestCase):
             image = Path(directory) / 'test.img'
             image.write_bytes(b'image fixture')
             digest = hashlib.sha256(image.read_bytes()).hexdigest()
-            manifest = {'schema_version': 1, 'result_size': image.stat().st_size, 'result_sha256': digest, 'personalized': True}
+            manifest = {'schema_version': 1, 'model': 'Raspberry Pi 4', 'hostname': 'raspberry-evolver', 'source_revision': 'a' * 40, 'lock_sha256': 'b' * 64, 'clean_sha256': 'c' * 64, 'result_size': image.stat().st_size, 'result_sha256': digest, 'personalized': True}
             self.assertEqual(inspect.verify_artifact(image, manifest), (image.stat().st_size, digest))
+            for invalid in (None, [], {}, {**manifest, 'model': 'wrong'}):
+                with self.assertRaises(ValueError):
+                    inspect.verify_artifact(image, invalid)
             manifest['personalized'] = 'unknown'
             with self.assertRaises(ValueError):
                 inspect.verify_artifact(image, manifest)
