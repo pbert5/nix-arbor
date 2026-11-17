@@ -36,5 +36,5 @@ Relative paths passed in options are resolved from the checkout root.
   [Arbor Registry](../../README.md#arbor-registry-boundary) sections for checks
   that build and boot guests.
 - **R640 switch contract.** `tests/r640-switch-contract.sh` expects the
-  clean primary `main` checkout and the storage layout checked by the
+  primary `main` checkout and the storage layout checked by the
   switch tool. The contract stubs deployment commands.

@@ -46,10 +46,12 @@ either command without arguments requests activation.
 | `r640-0` | `tools/machines/r640-0/switch` | `tools/machines/r640-0/remote-switch` |
 | `eVolver` | `tools/machines/evolver/switch` | `tools/machines/evolver/remote-switch` |
 
-On `r640-0`, the legacy switch guard requires the clean primary `main`
-checkout and its expected storage mounts. The remote command uses SSH alias
-`r640-0` and requires the remote clean primary `main` to match the invoking
-checkout's committed HEAD. Its dry run builds on `r640-0`.
+On `r640-0`, the legacy switch guard requires the primary `main` checkout and
+its expected storage mounts. A dirty checkout triggers a warning, and local
+switches use the working tree, including changes to tracked files. The remote
+command uses SSH alias `r640-0` and requires the remote primary `main` to match
+the invoking checkout's committed HEAD. It uses that committed revision and
+its dry run builds on `r640-0`.
 
 The eVolver remote command uses `root-evolver` and the invoking checkout's
 flake. Its dry run builds the closure locally. Both remote commands rely on

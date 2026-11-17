@@ -11,7 +11,8 @@ Usage: ./tools/r640/switch [--expected-head COMMIT] [--check | --dry-run]
   --dry-run   Run the same checks and build the exact r640-0 system closure.
   no option   Prompt for sudo, preserve rollback details, and activate r640-0.
 
-Run from the clean primary Nix Arbor main checkout on host r640-0.
+Run from the primary Nix Arbor main checkout on host r640-0.
+A dirty checkout triggers a warning.
 USAGE
 }
 
@@ -47,12 +48,18 @@ branch=$(git -C "$repo_root" branch --show-current)
 host=$(hostname -s)
 [[ $host == r640-0 ]] || fail "host must be r640-0; found $host"
 checkout_status=$(git -C "$repo_root" status --porcelain)
-[[ -z $checkout_status ]] || fail 'checkout is dirty; commit or preserve the changes before activation'
 head=$(git -C "$repo_root" rev-parse --verify HEAD)
 flake_source=$repo_root
 if [[ -n $expected_head ]]; then
   [[ $head == "$expected_head" ]] || fail "expected remote HEAD $expected_head, found $head"
   flake_source="git+file://$repo_root?rev=$expected_head"
+fi
+if [[ -n $checkout_status ]]; then
+  if [[ -n $expected_head ]]; then
+    printf 'r640 switch: warning: checkout is dirty. Using committed revision %s.\n' "$expected_head" >&2
+  else
+    printf 'r640 switch: warning: checkout is dirty. Using the working tree, including local changes to tracked files.\n' >&2
+  fi
 fi
 flake_ref="$flake_source#r640-0"
 config_ref="$flake_source#nixosConfigurations.r640-0.config"
