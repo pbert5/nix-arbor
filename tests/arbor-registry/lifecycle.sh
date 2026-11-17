@@ -19,7 +19,8 @@ cat > bin/ssh <<'MOCK'
 #!/usr/bin/env bash
 [[ "$*" == "-T -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 root-evolver bash -s -- "* ]] || exit 88
 shift 8
-export actual_host=eVolver
+echo ssh >> "$fixture/routes"
+export actual_host=${remote_host:-eVolver} simulated_remote=1
 exec "$@"
 MOCK
 cat > bin/systemctl <<'MOCK'
@@ -70,7 +71,7 @@ printf '#!/usr/bin/env bash\nexit 0\n' > bin/sleep
 cat > bin/sudo <<'MOCK'
 #!/usr/bin/env bash
 set -eu
-if [[ ${actual_host:-} == eVolver ]]; then [[ $1 == -n ]]; shift; fi
+if [[ ${simulated_remote:-} == 1 ]]; then [[ $1 == -n ]]; shift; fi
 if [[ "$*" == '-- systemctl restart arbor-registry-transport.service arbor-registry.service' ]]; then
   echo restart >> "$fixture/log"
   touch "$fixture/restarted"
@@ -125,7 +126,13 @@ jq '.stream="fixture"' config.clean >config.json
 expect_failure "$cli" init-self r640-0
 mv config.clean config.json
 "$cli" status r640-0 >/dev/null
+: > routes
+actual_host=eVolver "$cli" inspect eVolver | jq -e '.initialized == false' >/dev/null
+[[ ! -s routes ]]
 "$cli" inspect eVolver | jq -e '.initialized == false and .nodeId == null' >/dev/null
+[[ $(cat routes) == ssh ]]
+remote_host=r640-0 expect_failure "$cli" init-self eVolver
+actual_host=eVolver expect_failure "$cli" init-self r640-0
 records=2 expect_failure "$cli" init-self r640-0
 bad_op=identity/inspect expect_failure "$cli" init-self r640-0
 extra_op=registry/summary expect_failure "$cli" init-self r640-0
@@ -133,7 +140,9 @@ fail_op=registry/summary expect_failure "$cli" init-self r640-0
 expect_failure "$cli" restart-check r640-0
 no_mutation
 "$cli" init-self eVolver | jq -e '.nodeId == "eVolver" and .generation == 1' >/dev/null
-"$cli" init-self eVolver >/dev/null
+: > routes
+actual_host=eVolver "$cli" init-self eVolver >/dev/null
+[[ ! -s routes ]]
 "$cli" summary eVolver | jq -e '.records.accepted == 1' >/dev/null
 : > log
 foreign=other expect_failure "$cli" init-self r640-0

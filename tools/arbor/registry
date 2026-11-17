@@ -11,8 +11,9 @@ Usage: tools/arbor/registry <status|inspect|summary|init-self|restart-check> <r6
   init-self      Create or verify this host's isolated generation-one root
   restart-check  Restart transport and Registry, then compare the public identity
 
-r640-0 runs locally. eVolver uses the root-evolver SSH alias. Adapter calls
-run as arbor-registry. Use a terminal for local sudo password prompts.
+Each target runs locally on its own host. From r640-0, eVolver uses the
+root-evolver SSH alias with strict host-key checking. Adapter calls run as
+arbor-registry. Use a terminal for local sudo password prompts.
 USAGE
 }
 case $#:${1-} in 1:-h|1:--help) usage; exit 0 ;; esac
@@ -20,7 +21,10 @@ case $#:${1-} in 1:-h|1:--help) usage; exit 0 ;; esac
 case $1 in status|inspect|summary|init-self|restart-check) ;; *) usage >&2; exit 2 ;; esac
 script=$(dirname -- "${BASH_SOURCE[0]}")/registry-host.sh
 case $2 in
-  r640-0) exec bash "$script" "$1" r640-0 ;;
-  eVolver) exec ssh -T -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 root-evolver bash -s -- "$1" eVolver <"$script" ;;
+  r640-0) exec bash "$script" "$1" r640-0 local ;;
+  eVolver)
+    current_host=$(hostname)
+    if [[ $current_host == eVolver ]]; then exec bash "$script" "$1" eVolver local; fi
+    exec ssh -T -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 root-evolver bash -s -- "$1" eVolver remote <"$script" ;;
   *) usage >&2; exit 2 ;;
 esac

@@ -99,7 +99,7 @@ identity() { jq -cS 'del(.records,.projection)'; }
 run() {
   local action=$1 host=$2 adapter before after summary raw attempt listener
   local -a privilege=(sudo)
-  if [[ $host == eVolver ]]; then privilege+=(-n); fi
+  case $3 in local) ;; remote) privilege+=(-n) ;; *) die 'unknown execution route' ;; esac
   [[ $(hostname) == "$host" ]] || die "expected hostname $host"
   check_units
   case $action in
