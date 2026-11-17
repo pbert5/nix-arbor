@@ -164,11 +164,31 @@ def mounted_devices(proc=pathlib.Path('/proc')):
         except OSError:
             raise SafetyError('cannot inspect a mount namespace') from None
         if not lines:
+            try:
+                status = (pid / 'status').read_text().splitlines()
+            except FileNotFoundError:
+                if not pid.exists():
+                    continue
+                raise SafetyError('cannot inspect process state') from None
+            except OSError:
+                raise SafetyError('cannot inspect process state') from None
+            states = [line for line in status if line.startswith('State:')]
+            if len(states) == 1 and states[0].split()[1:2] in (['Z'], ['X']):
+                continue
             raise SafetyError('empty mount namespace information')
         for line in lines:
             fields = line.split()
             if len(fields) < 10 or '-' not in fields:
                 raise SafetyError('cannot parse mount information')
+            separator = fields.index('-')
+            if len(fields) < separator + 4:
+                raise SafetyError('cannot parse mount information')
+            fs_type = fields[separator + 1]
+            if fs_type == 'nsfs' and fields[3].startswith('mnt:['):
+                raise SafetyError('pinned mount namespace cannot be inspected safely')
+            if fs_type == 'proc' and any(option.startswith('hidepid=') and option != 'hidepid=0'
+                                         for option in fields[separator + 3].split(',')):
+                raise SafetyError('procfs hides processes; mount inspection is incomplete')
             mounted.add(fields[2])
     return mounted
 
@@ -210,6 +230,8 @@ def snapshot():
             graph[parents[0]]['children'].append(child)
     for node in graph.values():
         node['children'].sort()
+    if os.readlink('/proc/self/ns/pid') != 'pid:[4026531836]':
+        raise SafetyError('not in the initial PID namespace; mount inspection is incomplete')
     mounted = mounted_devices()
     swaps = set()
     for line in pathlib.Path('/proc/swaps').read_text().splitlines()[1:]:

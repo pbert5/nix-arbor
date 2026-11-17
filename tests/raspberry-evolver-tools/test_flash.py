@@ -226,6 +226,24 @@ class MountNamespaceTests(unittest.TestCase):
                 (proc / pid).mkdir()
                 (proc / pid / 'mountinfo').write_text(f'1 0 {dev} / / rw - ext4 /dev/test rw\n')
             self.assertEqual(flash.mounted_devices(proc), {'8:1', '8:2'})
+            (proc / '102' / 'mountinfo').write_text('2 1 0:4 mnt:[1234] /mnt/ns rw - nsfs nsfs rw\n')
+            with self.assertRaises(flash.SafetyError):
+                flash.mounted_devices(proc)
+            (proc / '102' / 'mountinfo').write_text('1 0 8:2 / / rw - ext4 /dev/test rw\n')
+            (proc / '101' / 'mountinfo').write_text('1 0 0:3 / /proc rw - proc proc rw,hidepid=2\n')
+            with self.assertRaises(flash.SafetyError):
+                flash.mounted_devices(proc)
+            (proc / '101' / 'mountinfo').write_text('1 0 8:1 / / rw - ext4 /dev/test rw\n')
+            (proc / '104').mkdir()
+            (proc / '104' / 'mountinfo').write_text('')
+            (proc / '104' / 'status').write_text('State:\tZ (zombie)\n')
+            self.assertEqual(flash.mounted_devices(proc), {'8:1', '8:2'})
+            (proc / '104' / 'status').write_text('State:\tS (sleeping)\n')
+            with self.assertRaises(flash.SafetyError):
+                flash.mounted_devices(proc)
+            (proc / '104' / 'mountinfo').unlink()
+            (proc / '104' / 'status').unlink()
+            (proc / '104').rmdir()
             (proc / '103').mkdir()
             (proc / '103' / 'mountinfo').mkdir()
             with self.assertRaises(flash.SafetyError):
