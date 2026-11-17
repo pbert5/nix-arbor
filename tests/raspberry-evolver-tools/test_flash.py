@@ -1,15 +1,21 @@
 import sys
 from pathlib import Path as _Path
 sys.path.insert(0, str(_Path(__file__).resolve().parents[2] / "tools/raspberry-evolver"))
+import contextlib
+import copy
 import importlib.machinery
 import importlib.util
 import io
 import json
 import os
 import pathlib
+import stat
+import struct
+import sys
 import tempfile
 import unittest
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 SCRIPT = pathlib.Path(__file__).resolve().parents[2] / 'tools/raspberry-evolver/flash_impl.py'
 loader = importlib.machinery.SourceFileLoader('flash', str(SCRIPT))
@@ -124,3 +130,89 @@ errors: No known data errors
         with self.assertRaises(flash.SafetyError):
             flash.same_device({'identity': 'a', 'size': 32000000000},
                               {'identity': 'b', 'size': 32000000000})
+
+
+class FlashConfirmationTests(unittest.TestCase):
+    def test_post_confirmation_safety_gates(self):
+        # These scenarios execute main's actual ordering; the fake descriptor can
+        # never address a real device, even if a guard under test regresses.
+        scenarios = ('safe', 'identity', 'mounted', 'swap', 'holder', 'disappeared',
+                     'open_disappeared', 'opened_replacement', 'capacity',
+                     'final_identity', 'final_mounted', 'final_swap', 'final_holder',
+                     'final_disappeared')
+        for scenario in scenarios:
+            with self.subTest(scenario=scenario), tempfile.TemporaryDirectory() as directory:
+                image = pathlib.Path(directory) / 'image.img'
+                image.write_bytes(b'hello')
+                pathlib.Path(str(image) + '.json').write_text(json.dumps({
+                    'schema_version': 1, 'result_size': 5,
+                    'result_sha256': '2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824'}))
+                image_device = image.stat().st_dev
+                source_id = f'{os.major(image_device)}:{os.minor(image_device)}'
+                target_id = '240:0'
+                self.assertNotEqual(source_id, target_id)
+                graph = {
+                    target_id: {'type': 'disk', 'size': 32000000000, 'ro': False,
+                                'children': ['240:1'], 'holders': [], 'identity': 'serial',
+                                'model': 'test', 'name': 'fake'},
+                    '240:1': {'type': 'part', 'size': 100, 'ro': False, 'children': [],
+                              'holders': [], 'identity': '', 'name': 'fake1'},
+                    source_id: {'type': 'disk', 'size': 64000000000, 'ro': False,
+                                'children': [], 'holders': [], 'identity': 'source'},
+                }
+                snapshots = [(copy.deepcopy(graph), set(), set()) for _ in range(3)]
+                stage = 2 if scenario.startswith('final_') else 1
+                reason = scenario.removeprefix('final_')
+                if reason == 'identity':
+                    snapshots[stage][0][target_id]['identity'] = 'replacement'
+                if reason == 'mounted':
+                    snapshots[stage][1].add('240:1')
+                if reason == 'swap':
+                    snapshots[stage][2].add('240:1')
+                if reason == 'holder':
+                    snapshots[stage][0]['240:1']['holders'].append('dm-0')
+                if reason == 'disappeared':
+                    del snapshots[stage][0][target_id]
+
+                block = SimpleNamespace(st_mode=stat.S_IFBLK, st_rdev=os.makedev(240, 0))
+                opened = SimpleNamespace(st_mode=stat.S_IFBLK, st_rdev=os.makedev(
+                    240, 2 if scenario == 'opened_replacement' else 0))
+                actual_stat, actual_fstat, actual_realpath = os.stat, os.fstat, os.path.realpath
+                def fake_stat(path, *args, **kwargs):
+                    return block if str(path) == '/dev/fake' else actual_stat(path, *args, **kwargs)
+                def fake_realpath(path, *args, **kwargs):
+                    return '/dev/fake' if str(path) == '/dev/fake' else actual_realpath(path, *args, **kwargs)
+                def fake_fstat(fd):
+                    return opened if fd == 123456 else actual_fstat(fd)
+                target = MagicMock()
+                target.fileno.return_value = 123456
+                context = MagicMock()
+                context.__enter__.return_value = target
+                capacity = 31000000000 if scenario == 'capacity' else 32000000000
+                with contextlib.ExitStack() as stack:
+                    stack.enter_context(patch.object(sys, 'argv', ['flash', '--write', str(image), '/dev/fake']))
+                    stack.enter_context(patch('builtins.input', return_value='/dev/fake serial 32000000000'))
+                    stack.enter_context(patch.object(flash.os.path, 'realpath', side_effect=fake_realpath))
+                    stack.enter_context(patch.object(flash.os, 'stat', side_effect=fake_stat))
+                    stack.enter_context(patch.object(flash.os, 'fstat', side_effect=fake_fstat))
+                    snapshot = stack.enter_context(patch.object(flash, 'snapshot', side_effect=snapshots))
+                    open_device = stack.enter_context(patch.object(flash.os, 'open',
+                        side_effect=FileNotFoundError('device gone') if scenario == 'open_disappeared' else None,
+                        return_value=123456))
+                    stack.enter_context(patch.object(flash.os, 'fdopen', return_value=context))
+                    stack.enter_context(patch.object(flash.fcntl, 'ioctl', return_value=struct.pack('Q', capacity)))
+                    write = stack.enter_context(patch.object(flash, 'copy_and_verify'))
+                    stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+                    if scenario == 'safe':
+                        flash.main()
+                        write.assert_called_once()
+                        self.assertEqual(snapshot.call_count, 3)
+                        self.assertEqual(open_device.call_args.args,
+                                         ('/dev/fake', os.O_RDWR | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC))
+                    else:
+                        with self.assertRaises((flash.SafetyError, OSError)):
+                            flash.main()
+                        write.assert_not_called()
+                        target.write.assert_not_called()
+                        if scenario in ('identity', 'mounted', 'swap', 'holder', 'disappeared'):
+                            open_device.assert_not_called()
