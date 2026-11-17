@@ -146,12 +146,46 @@ let
     (import ./machines/r640-0/storage.nix)
     (import ./machines/r640-0/management.nix)
   ];
+  arborParticipant = [
+    inputs.arbor-registry.nixosModules.default
+    inputs.arbor-registry.nixosModules.service-contract
+    {
+      cluster.registry.enable = true;
+      cluster.registry.runtime = {
+        enable = true;
+        transportRealmId = "nix-arbor-live-v1";
+        transportProtocolEpoch = 1;
+        transportListen = [ ];
+        transportBootstrapPeers = [ ];
+      };
+    }
+  ];
+  privateYggParticipant = [
+    inputs.yggdrasil-private.nixosModules.default
+    (
+      { config, pkgs, ... }:
+      {
+        # The provider module stays dormant until it can consume runtime enrollment.
+        _module.args = {
+          hostName = config.networking.hostName;
+          hostInventory.dendrites = [ "network/yggdrasil-private" ];
+          site.networks.privateYggdrasil.networkManager = {
+            enable = true;
+            package = inputs.arbor-network-manager.packages.${pkgs.stdenv.hostPlatform.system}.default;
+            socket = "/run/arbor/ygg-provider.sock";
+          };
+        };
+      }
+    )
+  ];
   machines = inputs.arbor-manager.lib.mkMachines {
     inherit inputs;
     machinesPath = ./machines;
     profiles = {
       inherit
+        arborParticipant
         desktop
+        privateYggParticipant
         server
         r640
         vscodeRemote
