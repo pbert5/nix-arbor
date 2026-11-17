@@ -4,6 +4,10 @@ set -euo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)
 scratch=$(mktemp -d)
 trap 'rm -rf -- "$scratch"' EXIT
+local_git_vars=$(git rev-parse --local-env-vars)
+while IFS= read -r variable; do
+  unset "$variable"
+done <<< "$local_git_vars"
 export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null
 export GIT_AUTHOR_NAME=Fixture GIT_AUTHOR_EMAIL=fixture@example.org
 export GIT_COMMITTER_NAME=Fixture GIT_COMMITTER_EMAIL=fixture@example.org
@@ -38,7 +42,8 @@ mkdir -p "$repo/tools/worktrees" "$trees"
 cp "$root/$tool" "$repo/$tool"
 printf 'data\n' > "$repo/tracked"
 printf '*.ignored\n' > "$repo/.gitignore"
-repo_git add tracked .gitignore "$tool"
+printf 'tracked filter=fixture-clean\n' > "$repo/.gitattributes"
+repo_git add tracked .gitignore .gitattributes "$tool"
 repo_git commit -qm 'Start fixture'
 repo_git remote add origin "$scratch/offline-origin"
 repo_git update-ref refs/remotes/origin/main HEAD
@@ -46,6 +51,10 @@ repo_git switch -qc feature/source
 repo_git commit -qm 'Advance a non-agent branch' --allow-empty
 repo_git switch -q main
 repo_git worktree add -q "$trees/non-agent" feature/source
+repo_git switch -qc shared-history
+repo_git commit -qm 'Shared branch reflog history' --allow-empty
+repo_git reset -q HEAD^
+repo_git switch -q main
 
 add_tree 'clean path'
 add_tree newline
@@ -67,6 +76,16 @@ add_tree current refs/remotes/origin/main
 add_tree self refs/remotes/origin/main
 add_tree local-ref refs/remotes/origin/main
 git -C "$trees/local-ref" update-ref refs/worktree/test HEAD
+add_tree reflog refs/remotes/origin/main
+git -C "$trees/reflog" switch --detach -q
+git -C "$trees/reflog" commit -qm 'Detached work to preserve' --allow-empty
+detached_commit=$(git -C "$trees/reflog" rev-parse HEAD)
+git -C "$trees/reflog" switch -q agent/test/reflog
+git -C "$trees/reflog" reflog delete 'HEAD@{1}'
+[[ $(git -C "$trees/reflog" reflog show --format=%H HEAD) != *"$detached_commit"* ]] ||
+  fail 'detached commit should only be recorded as the previous tip'
+[[ $(git -C "$trees/reflog" rev-list --single-worktree --reflog --no-walk) == *"$detached_commit"* ]] ||
+  fail 'previous tip should resolve to the detached commit'
 add_tree hidden-change refs/remotes/origin/main
 git -C "$trees/hidden-change" update-index --assume-unchanged tracked
 printf 'local edits\n' >> "$trees/hidden-change/tracked"
@@ -86,13 +105,23 @@ git -C "$trees/unmerged" commit -qm 'Not merged anywhere' --allow-empty
 # Make this candidate published but unmerged into local main.
 repo_git update-ref refs/remotes/origin/main agent/test/unmerged
 
+add_tree filtered
+export WORKTREE_FILTER_MARKER="$scratch/filter-ran"
+filter_command="touch \"\$WORKTREE_FILTER_MARKER\"; cat"
+repo_git config extensions.worktreeConfig true
+repo_git config filter.unused.clean "$filter_command"
+git -C "$trees/filtered" config --worktree filter.fixture-clean.clean "$filter_command"
+touch -m -t 200001010000 "$trees/filtered/tracked"
+
 # Keep a local main commit beyond origin/main to test unpublished separately.
 repo_git commit -qm 'Ahead of origin' --allow-empty
 add_tree local-only
 
 before_trees=$(repo_git worktree list --porcelain)
 before_refs=$(repo_git for-each-ref)
+expect_refusal "$trees/reflog" reflog
 preview=$(run)
+[[ ! -e $WORKTREE_FILTER_MARKER ]] || fail 'preview executed a Git clean filter'
 [[ $preview == "$(run --preview)" ]] || fail 'default mode differs from --preview'
 [[ $preview == "$(GIT_DIR=$scratch/wrong.git GIT_INDEX_FILE=$scratch/wrong.index run)" ]] ||
   fail 'caller Git environment changed the preview'
@@ -104,7 +133,8 @@ preview=$(run)
 
 for spec in 'dirty:changes' 'untracked:changes' 'ignored:ignored' 'locked:locked' 'detached:detached' \
     'non-agent:agent' 'local-only:origin/main' 'unmerged:local main' 'submodule:submodule' \
-    'populated-gitlink:submodule' 'hidden-change:index flags' 'local-ref:worktree-local refs'; do
+    'populated-gitlink:submodule' 'hidden-change:index flags' 'local-ref:worktree-local refs' \
+    'filtered:external Git filter'; do
   expect_refusal "$trees/${spec%%:*}" "${spec#*:}"
 done
 expect_refusal "$repo" primary
@@ -120,6 +150,7 @@ mkdir "$scratch/unregistered"
 expect_refusal "$scratch/unregistered" 'registered worktree'
 [[ $(repo_git worktree list --porcelain) == "$before_trees" ]] || fail 'refused apply changed worktrees'
 [[ $(repo_git for-each-ref) == "$before_refs" ]] || fail 'refused apply changed refs'
+[[ ! -e $WORKTREE_FILTER_MARKER ]] || fail 'apply executed a Git clean filter'
 
 touch "$trees/clean path/new.ignored"
 expect_refusal "$trees/clean path" ignored

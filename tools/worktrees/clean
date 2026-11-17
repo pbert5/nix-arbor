@@ -55,11 +55,15 @@ git_records() {
   local destination=$1
   local fd producer
   shift
-  exec {fd}< <(repo_git "$@")
+  exec {fd}< <("$@")
   producer=$!
   mapfile -d '' -t "$destination" <&"$fd"
   exec {fd}<&-
   wait "$producer"
+}
+
+tracked_filter_attributes() {
+  repo_git "$1" ls-files -z | repo_git "$1" check-attr --stdin -z filter
 }
 
 prefix=$(repo_git "$root" rev-parse --show-prefix) && [[ -z $prefix ]] ||
@@ -67,18 +71,23 @@ prefix=$(repo_git "$root" rev-parse --show-prefix) && [[ -z $prefix ]] ||
 common_dir=$(repo_git "$root" rev-parse --path-format=absolute --git-common-dir) ||
   fail 'cannot identify the checkout repository'
 remotes=$(repo_git "$root" remote) || fail 'cannot inspect configured remotes'
-git_records worktrees "$root" worktree list --porcelain -z || fail 'cannot list worktrees'
+git_records worktrees repo_git "$root" worktree list --porcelain -z || fail 'cannot list worktrees'
 [[ ${worktrees[0]:-} == 'worktree '* ]] || fail 'cannot identify the primary checkout'
 primary=${worktrees[0]#worktree }
 
+# The tool checkout retains its own and all shared reflogs. Git includes both
+# the old and new commit from each entry when enumerating reflog tips.
+preserved_reflog_tips=$(repo_git "$root" rev-list --single-worktree --reflog --no-walk | sed 's/^/^/') ||
+  fail 'cannot inspect retained reflogs'
+
 keep_reason() {
   local path=$1 branch=$2 head=$3 locked=$4 prunable=$5
-  local prefix actual_common git_dir state status entry submodule local_refs
-  local -a index_entries contents
+  local prefix actual_common git_dir state status entry submodule local_refs unique_reflog drivers driver field
+  local -a index_entries contents attributes
 
   if [[ $path == "$primary" ]]; then
     echo 'primary checkout'
-  elif [[ $root == "$path" || $current == "$path" || $current == "$path/"* ]]; then
+  elif [[ $root == "$path" || $root == "$path/"* || $current == "$path" || $current == "$path/"* ]]; then
     echo 'current or tool checkout'
   elif [[ $locked == yes ]]; then
     echo 'locked worktree'
@@ -120,13 +129,24 @@ keep_reason() {
       return
     fi
 
+    if ! unique_reflog=$(
+      printf '%s\n' "$preserved_reflog_tips" |
+        repo_git "$path" rev-list --single-worktree --reflog --not --all --max-count=1 --stdin
+    ); then
+      echo 'cannot inspect the worktree reflog'
+      return
+    elif [[ -n $unique_reflog ]]; then
+      echo 'worktree reflog contains commits with no recovery pointer elsewhere'
+      return
+    fi
+
     if [[ -e $git_dir/modules ]]; then
       echo 'initialized submodule data'
       return
     fi
 
     # Status can omit files hidden by index flags and contents under a gitlink.
-    if ! git_records index_entries "$path" ls-files -v --stage -z; then
+    if ! git_records index_entries repo_git "$path" ls-files -v --stage -z; then
       echo 'cannot inspect index'
       return
     fi
@@ -144,6 +164,26 @@ keep_reason() {
           ;;
       esac
     done
+
+    # Status can run external clean filters when checking a tracked file.
+    if drivers=$(repo_git "$path" config --name-only --get-regexp '^filter\..*\.(clean|process)$'); then
+      if ! git_records attributes tracked_filter_attributes "$path"; then
+        echo 'cannot inspect Git filter attributes'
+        return
+      fi
+      drivers=$'\n'$drivers$'\n'
+      for ((field=2; field<${#attributes[@]}; field+=3)); do
+        driver=${attributes[field]}
+        if [[ $drivers == *$'\n'"filter.$driver.clean"$'\n'* ||
+              $drivers == *$'\n'"filter.$driver.process"$'\n'* ]]; then
+          echo 'external Git filter is configured for a tracked file'
+          return
+        fi
+      done
+    elif [[ $? -ne 1 ]]; then
+      echo 'cannot inspect Git filter configuration'
+      return
+    fi
 
     if ! status=$(repo_git "$path" status --porcelain=v1 --untracked-files=all --ignored --ignore-submodules=none); then
       echo 'cannot check worktree status'
