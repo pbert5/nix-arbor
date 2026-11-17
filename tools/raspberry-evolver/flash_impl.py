@@ -176,6 +176,21 @@ def mounted_devices(proc=pathlib.Path('/proc')):
             if len(states) == 1 and states[0].split()[1:2] in (['Z'], ['X']):
                 continue
             raise SafetyError('empty mount namespace information')
+        try:
+            fds = list((pid / 'fd').iterdir())
+            for fd in fds:
+                try:
+                    target = os.readlink(fd)
+                except FileNotFoundError:
+                    continue  # Descriptor was closed during enumeration.
+                if target.startswith('mnt:['):
+                    raise SafetyError('open mount namespace descriptor cannot be inspected safely')
+        except FileNotFoundError:
+            if not pid.exists():
+                continue
+            raise SafetyError('cannot inspect process descriptors') from None
+        except OSError:
+            raise SafetyError('cannot inspect process descriptors') from None
         for line in lines:
             fields = line.split()
             if len(fields) < 10 or '-' not in fields:

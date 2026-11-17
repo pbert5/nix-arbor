@@ -224,6 +224,7 @@ class MountNamespaceTests(unittest.TestCase):
             proc = pathlib.Path(directory)
             for pid, dev in [('101', '8:1'), ('102', '8:2')]:
                 (proc / pid).mkdir()
+                (proc / pid / 'fd').mkdir()
                 (proc / pid / 'mountinfo').write_text(f'1 0 {dev} / / rw - ext4 /dev/test rw\n')
             self.assertEqual(flash.mounted_devices(proc), {'8:1', '8:2'})
             (proc / '102' / 'mountinfo').write_text('2 1 0:4 mnt:[1234] /mnt/ns rw - nsfs nsfs rw\n')
@@ -234,6 +235,10 @@ class MountNamespaceTests(unittest.TestCase):
             with self.assertRaises(flash.SafetyError):
                 flash.mounted_devices(proc)
             (proc / '101' / 'mountinfo').write_text('1 0 8:1 / / rw - ext4 /dev/test rw\n')
+            (proc / '101' / 'fd' / '5').symlink_to('mnt:[1234]')
+            with self.assertRaises(flash.SafetyError):
+                flash.mounted_devices(proc)
+            (proc / '101' / 'fd' / '5').unlink()
             (proc / '104').mkdir()
             (proc / '104' / 'mountinfo').write_text('')
             (proc / '104' / 'status').write_text('State:\tZ (zombie)\n')
