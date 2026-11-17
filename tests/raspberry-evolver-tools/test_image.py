@@ -77,6 +77,25 @@ class ImageTests(unittest.TestCase):
             self.assertEqual(result.read_bytes(), source.read_bytes())
             self.assertEqual(manifest['result_size'], source.stat().st_size)
 
+    def test_clean_image_without_runtime_directories(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            part = root / 'partition'
+            with part.open('wb') as f:
+                f.truncate(24 * 1024 * 1024)
+            subprocess.run(['mkfs.ext4', '-q', '-F', '-L', 'NIXOS_SD', str(part)], check=True)
+            source = root / 'source.img'
+            with source.open('wb') as f:
+                f.truncate(32 * 1024 * 1024)
+            subprocess.run(['sfdisk', str(source)], input='label: dos\nunit: sectors\n\nstart=2048, size=49152, type=83\n', text=True, capture_output=True, check=True)
+            with source.open('r+b') as f, part.open('rb') as src:
+                f.seek(2048 * 512)
+                f.write(src.read())
+            clean = root / 'clean.img'
+            image.write_clean_artifact(source, clean, 'a' * 40, 'b' * 64)
+            wifi = '[connection]\ntype=wifi\n[wifi]\nssid=Fixture\n[wifi-security]\nkey-mgmt=wpa-psk\npsk=FAKEsecret123\n'
+            image.personalize(clean, root / 'personalized.img', 'tskey-auth-FAKE123-example', wifi)
+
     def test_disposable_partitioned_ext4_personalization(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

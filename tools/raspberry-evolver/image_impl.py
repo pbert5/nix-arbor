@@ -239,6 +239,15 @@ def optional_stat(partition, path, cwd):
     return result.stdout
 
 
+def ensure_directory(partition, path, cwd):
+    info = optional_stat(partition, path, cwd)
+    if info is None:
+        debugfs(partition, 'mkdir ' + path, cwd)
+        info = debugfs(partition, 'stat ' + path, cwd)
+    if 'Type: directory' not in info or 'User:     0   Group:     0' not in info:
+        raise ValueError('Image has unsupported filesystem structure')
+
+
 def reject_source_identity(partition, cwd):
     for path in ('/var/lib/tailscale', '/var/lib/private/tailscale',
                  '/var/lib/raspberry-evolver', '/var/lib/dbus/machine-id'):
@@ -299,9 +308,7 @@ def personalize(source, destination, key, wifi=None):
             subprocess.run(['e2fsck', '-fn', str(partition)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
             reject_source_identity(partition, stage)
             for path in ('/var', '/var/lib'):
-                info = debugfs(partition, 'stat ' + path, stage)
-                if 'Type: directory' not in info or 'User:     0   Group:     0' not in info:
-                    raise ValueError('Image has unsupported filesystem structure')
+                ensure_directory(partition, path, stage)
             for path in ('/var/lib/raspberry-evolver', '/var/lib/raspberry-evolver/bootstrap'):
                 debugfs(partition, 'mkdir ' + path, stage)
                 debugfs(partition, 'set_inode_field ' + path + ' mode 040700', stage)
@@ -318,9 +325,7 @@ def personalize(source, destination, key, wifi=None):
                 raise ValueError('Could not verify image key content')
             if wifi is not None:
                 for path in ('/etc', '/etc/NetworkManager'):
-                    info = debugfs(partition, 'stat ' + path, stage)
-                    if 'Type: directory' not in info or 'User:     0   Group:     0' not in info:
-                        raise ValueError('Image has unsupported NetworkManager directories')
+                    ensure_directory(partition, path, stage)
                 connection_dir = '/etc/NetworkManager/system-connections'
                 debugfs(partition, 'mkdir ' + connection_dir, stage)
                 debugfs(partition, 'set_inode_field ' + connection_dir + ' mode 040700', stage)

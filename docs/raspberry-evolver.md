@@ -1,0 +1,85 @@
+# raspberry-evolver
+
+This is a headless Raspberry Pi 4 Model B configuration. Ethernet uses DHCP;
+an optional selected NetworkManager Wi-Fi profile provides a backup. The Pi
+enrolls in Tailscale on first boot and accepts SSH for the shared operator
+public keys as `ash`. The Pioreactor HAT and Evolver application stack are
+separate future work.
+
+The image build and physical first boot have not yet been verified. In
+particular, verify the image on the intended hardware before relying on it.
+
+## Build and personalize
+
+From a committed Nix Arbor checkout on a machine with a working aarch64 Nix
+builder and enough free disk space:
+
+```sh
+./tools/raspberry-evolver/doctor
+./tools/raspberry-evolver/image
+```
+
+Once the build finishes, paste the Tailscale Linux install command or just its
+auth key at the hidden prompt. The tool extracts the key as data; it never
+executes the pasted command. Prefer a fresh single-use, non-ephemeral key for
+each image. Account approval, key expiry and Tailnet Lock can still require
+operator action. Do not paste a real key into chat, Git or a shell command.
+
+For Wi-Fi, select one simple WPA-PSK NetworkManager profile from the source
+machine. Put a private, owner-only copy somewhere outside the checkout and
+pass it with `--wifi-file /path/to/profile.nmconnection`. The profile must
+contain its saved PSK and be readable by the operator; the tool removes
+source interface and connection identities and configures DHCP. It does not
+support enterprise Wi-Fi or external certificates. Delete the private copy
+when finished. Ethernet does not require this profile.
+
+To build and personalize on different machines, run `image --build-only` on
+the builder, securely copy the printed clean image **and its adjacent `.json`
+manifest** to the operator machine, and run:
+
+```sh
+./tools/raspberry-evolver/image --from /path/to/clean.img --wifi-file /path/to/profile.nmconnection
+```
+
+Omit `--wifi-file` when no Wi-Fi backup is needed. Build outputs and private
+copies live outside the repository under `${XDG_STATE_HOME:-$HOME/.local/state}/raspberry-evolver`.
+The personalized image and any copies contain credentials, even after a Pi
+boots; protect and dispose of them accordingly. Deleting a file does not
+guarantee secure erasure.
+
+An x86 builder needs a working remote ARM builder or aarch64 emulation enabled
+in NixOS and registered with Nix. The current r640 and eVolver configurations
+were observed without either. Enabling emulation requires a separately reviewed
+and activated host change; `boot.binfmt.emulatedSystems = [ "aarch64-linux" ];`
+is the minimal NixOS setting to prepare for that change. Do not assume an
+architecture listed in flake outputs means a builder can execute it.
+
+## Write and boot
+
+The writer is deliberately conservative. Its current identity check supports
+native MMC/SD readers exposing the card CID, and refuses USB readers without
+that card-bound identity: a USB reader's serial commonly identifies the reader,
+not the inserted card. For a USB reader, use Raspberry Pi Imager's custom-image
+option on a trusted machine and independently verify the selected card; its
+safety checks and behavior differ from this tool. No unsafe bypass is provided.
+The physical card is erased by a confirmed write. Inventory and inspect first:
+
+```sh
+./tools/raspberry-evolver/flash
+./tools/raspberry-evolver/flash /path/to/personalized.img /dev/mmcblkX
+./tools/raspberry-evolver/flash /path/to/personalized.img /dev/mmcblkX --write
+```
+
+Replace the device with the independently identified whole SD card. The last
+command requests privileged inspection and then requires the exact printed
+device identity and size. It refuses mounted or conflicting devices and checks
+the written byte range. It does not unmount devices or prove the Pi will boot.
+
+Insert the card, connect Ethernet and power, and allow time for first boot.
+Use your tailnet's machine list to check enrollment and an authorized operator
+SSH key to connect. `./tools/raspberry-evolver/status --remote ash@HOST` gives
+sanitized service and space status. `status --image IMAGE` inspects an image
+and its manifest. If enrollment needs approval or a replacement key, see
+[host recovery notes](../config/machines/raspberry-evolver/README.md).
+The intended image grows its root filesystem on first boot; actual free space
+and physical growth remain to be measured on the chosen card.
