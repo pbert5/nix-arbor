@@ -260,6 +260,11 @@ def snapshot():
     return graph, mounted, swaps
 
 
+def graph_proof_available():
+    # R63-04: concurrent and per-thread mount namespaces are not yet proven safe.
+    return False
+
+
 def main():
     parser = argparse.ArgumentParser(description='Inspect a target; --write and typed confirmation are required to flash it. No automatic sudo or unmounting.')
     parser.add_argument('image', nargs='?', help='uncompressed image file')
@@ -273,6 +278,8 @@ def main():
         return
     if not args.image or not args.device:
         parser.error('provide both IMAGE and DEVICE')
+    if not graph_proof_available():
+        raise SafetyError('target inspection and writing are disabled until mount-namespace safety can be proven')
     path = os.path.realpath(args.device, strict=True)
     info = os.stat(path)
     if not stat.S_ISBLK(info.st_mode):

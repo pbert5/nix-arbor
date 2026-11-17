@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -eu
 if [[ ${1-} == --help || ${1-} == -h ]]; then
-  printf '%s\n' 'Usage: flash [IMAGE DEVICE] [--write]' 'Without --write, inspect only. Writing requires an exact typed device confirmation.'
+  printf '%s\n' 'Usage: flash [IMAGE DEVICE] [--write]' 'Target inspection and writing are temporarily disabled pending mount-namespace safety proof.'
   exit 0
 fi
 here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)

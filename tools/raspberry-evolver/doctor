@@ -11,7 +11,7 @@ elif (( $# )); then
   printf '%s\n' 'Usage: doctor [--image RAW_IMAGE]' >&2
   exit 2
 fi
-for tool in nix python3 git lsblk sfdisk debugfs blkid zstd ssh; do
+for tool in nix python3 git lsblk sfdisk debugfs e2fsck blkid zstd ssh; do
   if command -v "$tool" >/dev/null 2>&1; then
     printf '%s: available\n' "$tool"
   else

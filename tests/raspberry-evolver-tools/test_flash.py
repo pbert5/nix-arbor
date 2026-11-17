@@ -192,6 +192,7 @@ class FlashConfirmationTests(unittest.TestCase):
                 capacity = 31000000000 if scenario == 'capacity' else 32000000000
                 with contextlib.ExitStack() as stack:
                     stack.enter_context(patch.object(sys, 'argv', ['flash', '--write', str(image), '/dev/fake']))
+                    stack.enter_context(patch.object(flash, 'graph_proof_available', return_value=True))
                     stack.enter_context(patch('builtins.input', return_value='/dev/fake serial 32000000000'))
                     stack.enter_context(patch.object(flash.os.path, 'realpath', side_effect=fake_realpath))
                     stack.enter_context(patch.object(flash.os, 'stat', side_effect=fake_stat))
@@ -253,3 +254,9 @@ class MountNamespaceTests(unittest.TestCase):
             (proc / '103' / 'mountinfo').mkdir()
             with self.assertRaises(flash.SafetyError):
                 flash.mounted_devices(proc)
+
+class DisabledWriteTests(unittest.TestCase):
+    def test_targeted_flash_is_fail_closed(self):
+        with patch.object(sys, 'argv', ['flash', '--write', 'image', '/dev/fake']):
+            with self.assertRaisesRegex(flash.SafetyError, 'disabled'):
+                flash.main()

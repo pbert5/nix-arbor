@@ -20,6 +20,7 @@ class Doctor(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn('2468 bytes', result.stdout)
             self.assertIn('unverified', result.stdout)
+            self.assertIn('e2fsck:', result.stdout)
 
 if __name__ == '__main__':
     unittest.main()
