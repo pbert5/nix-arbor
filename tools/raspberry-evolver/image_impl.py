@@ -386,7 +386,7 @@ def build_clean():
     revision = subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD'], text=True).strip()
     lock_hash = digest(repo / 'flake.lock')
     result = subprocess.check_output(['nix', 'build', '--no-link', '--print-out-paths',
-                                      str(repo) + '#nixosConfigurations.raspberry-evolver.config.system.build.sdImage'], text=True)
+                                      str(repo) + '#raspberry-evolver-image'], text=True)
     outputs = result.strip().splitlines()
     if len(outputs) != 1:
         raise OSError('Expected one Nix image output')

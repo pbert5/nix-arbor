@@ -1,4 +1,4 @@
-{ inputs, ... }:
+{ inputs, self, ... }:
 let
   networkPolicy = import ./networks.nix;
   sshAgent = import ./modules/ssh-agent.nix;
@@ -160,6 +160,12 @@ let
   };
 in
 {
+  perSystem = { pkgs, ... }: {
+    packages.raspberry-evolver-image = import ./raspberry-evolver-image.nix {
+      inherit pkgs;
+      pi = self.nixosConfigurations.raspberry-evolver;
+    };
+  };
   flake.nixosConfigurations = machines.configurations // {
     raspberry-evolver = inputs.nixos-raspberrypi.lib.nixosSystem {
       nixpkgs = inputs.nixpkgs;

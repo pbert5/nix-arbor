@@ -6,9 +6,6 @@ enrolls in Tailscale on first boot and accepts SSH for the shared operator
 public keys as `ash`. The Pioreactor HAT and Evolver application stack are
 separate future work.
 
-The image build and physical first boot have not yet been verified. In
-particular, verify the image on the intended hardware before relying on it.
-
 ## Build and personalize
 
 From a committed Nix Arbor checkout on a machine with a working aarch64 Nix
@@ -33,6 +30,18 @@ source interface and connection identities and configures DHCP. It does not
 support enterprise Wi-Fi or external certificates. Delete the private copy
 when finished. Ethernet does not require this profile.
 
+On the machine that has the saved Wi-Fi connection, use the filename of the
+selected profile. With the clean image and manifest present on that machine:
+
+```sh
+nmcli -f NAME,TYPE,FILENAME connection show
+private=$(mktemp -d)
+sudo install -m 0600 -o "$(id -u)" -g "$(id -g)" -- /path/to/selected.nmconnection "$private/backup.nmconnection"
+./tools/raspberry-evolver/image --from /path/to/clean.img --wifi-file "$private/backup.nmconnection"
+rm -- "$private/backup.nmconnection"
+rmdir -- "$private"
+```
+
 To build and personalize on different machines, run `image --build-only` on
 the builder, securely copy the printed clean image **and its adjacent `.json`
 manifest** to the operator machine, and run:
@@ -47,46 +56,51 @@ The personalized image and any copies contain credentials, even after a Pi
 boots; protect and dispose of them accordingly. Deleting a file does not
 guarantee secure erasure.
 
-An x86 builder needs a working remote ARM builder or aarch64 emulation enabled
-in NixOS and registered with Nix. On r640-0, the prepared host-only commit
-`408c72e8941fe2ae8c53b749dce84610499076f7` adds
-`boot.binfmt.emulatedSystems = [ "aarch64-linux" ];`. On 2026-11-17 the
-primary checkout at `bb24db96a0876a9608011646efc09162c4dd8322` evaluated to
-the running system, host preflight passed, and the modified system closure
-built without activation. The operator subsequently activated this change on
-r640-0, and the ARM smoke build below succeeded and reported `aarch64`.
-Activation requires the operator's sudo credentials.
+Keep the clean image and manifest together. For each additional card, run
+`image --from` on that pair with a fresh Tailscale key. This skips both Nix
+evaluation and image assembly.
 
-The supported r640 switch tool requires a clean primary `main` checkout. If
-its state or the running system has changed since the checks above, reassess
-the change before proceeding. Otherwise the operator can apply the isolated
-host change and use the normal switch tool:
+### Building on r640-0
 
-```sh
-cd /home/ash/documents/nix-arbor
-git status --short --branch
-git rev-parse HEAD
-git cherry-pick 408c72e8941fe2ae8c53b749dce84610499076f7
-./tools/r640/switch --check
-./tools/r640/switch --dry-run
-./tools/r640/switch
-```
-
-The switch tool records the previous generation and prints its rollback
-command, normally `sudo nixos-rebuild switch --rollback --flake
-/home/ash/documents/nix-arbor#r640-0`. A rollback alone does not remove the
-configuration change from Git; revert the host commit before a later switch
-if ARM emulation is no longer wanted. After activation, verify actual ARM
-execution from the takeover checkout before retrying the image:
+r640-0 already has working AArch64 emulation. Run the build from the committed
+Pi checkout. This command limits parallelism on the shared host:
 
 ```sh
 cd /home/ash/documents/nix-arbor/.worktrees/raspberry-evolver-takeover
-nix build --no-link --impure --expr 'let p = import (builtins.getFlake (toString ./.)).inputs.nixpkgs { system = "aarch64-linux"; }; in p.runCommand "arm-builder-smoke" {} "uname -m > $out"'
-./tools/raspberry-evolver/image --build-only
+NIX_CONFIG='cores = 8
+max-jobs = 4' ./tools/raspberry-evolver/image --build-only
 ```
 
-The smoke command has succeeded on r640-0 after activation. Do not assume an
-architecture listed in flake outputs means a builder can execute it.
+The normal Nix cache lacks this BCM2711 kernel. Compiling it under QEMU ran
+for over two hours on eight cores. With the current pin, Nix fetches the two
+runtime outputs from the Raspberry Pi Cachix cache and verifies their unpacked
+hashes. The Pi image uses ext4 and FAT, so it also skips the external ZFS
+module. Fetching and verifying both archives in an empty store took 2m 08s
+on r640-0. On x86, the image tool runs ext4 creation, partitioning and
+compression natively. An ARM builder or emulation prepares the Pi system and
+boot files. On ARM the tool uses the standard upstream SD image directly.
+
+On a different builder, this smoke test builds and prints its architecture:
+
+```sh
+cat "$(nix build --no-link --print-out-paths --impure --expr 'let p = import (builtins.getFlake (toString ./.)).inputs.nixpkgs { system = "aarch64-linux"; }; in p.runCommand "arm-builder-smoke" {} "uname -m > $out"')"
+```
+
+The r640-0 smoke build printed `aarch64` after the operator activated
+`boot.binfmt.emulatedSystems = [ "aarch64-linux" ];` (host change
+`408c72e`). For recovery, use the previous generation recorded by
+`./tools/r640/switch`. Revert the host change in the primary checkout before
+a subsequent switch if you want emulation removed.
+
+When updating the Pi kernel, `kernel-cache.nix` compares the evaluated upstream
+output path, including configured patches, to the recorded pin. A changed
+kernel uses the upstream build and emits a warning. Before refreshing the
+pins, verify both upstream store paths with `nix store verify --store
+https://nixos-raspberrypi.cachix.org --option trusted-public-keys KEY
+--sigs-needed 1 OUT MODULES`, using the public key in the locked upstream
+flake. Both narinfos must have empty `References` for this technique. Record
+their URLs and `NarHash` values, then check the SD image with
+`nix build --dry-run .#raspberry-evolver-image`.
 
 ## Write and boot
 
@@ -110,14 +124,19 @@ command requests privileged inspection and then requires the exact printed
 device identity and size. It refuses mounted or conflicting devices and checks
 the written byte range. It does not unmount devices or prove the Pi will boot.
 
-Insert the card, connect Ethernet and power, and allow time for first boot.
-Use your tailnet's machine list to check enrollment and an authorized operator
-SSH key to connect. `./tools/raspberry-evolver/status --remote ash@HOST` gives
-sanitized service and space status. `status --image IMAGE` inspects an image
-and its manifest. If enrollment needs approval or a replacement key, see
+Insert the card in the Pi 4B, attach Ethernet and power it on. Confirm
+`raspberry-evolver` appears in the intended tailnet, then run:
+
+```sh
+./tools/raspberry-evolver/status --remote ash@raspberry-evolver
+ssh ash@raspberry-evolver 'lsblk -b -o NAME,SIZE,MOUNTPOINTS; df -h /; ip -4 route show default'
+```
+
+Use the Pi's LAN address for SSH if tailnet DNS or enrollment is pending.
+To verify Wi-Fi backup, unplug Ethernet, reconnect over Tailscale and check
+the default route again. Reconnect Ethernet and confirm the preferred route
+returns. For approval or key replacement, see the
 [host recovery notes](../config/machines/raspberry-evolver/README.md).
-The intended image grows its root filesystem on first boot; actual free space
-and physical growth remain to be measured on the chosen card.
 
 The flake check runs the image and flash tooling tests. The host bootstrap and
 Nix retention fixtures run separately and require their local command
