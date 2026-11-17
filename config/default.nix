@@ -198,6 +198,7 @@ let
   machines = inputs.arbor-manager.lib.mkMachines {
     inherit inputs;
     machinesPath = ./machines;
+    extraModules = [ { time.timeZone = "America/Chicago"; } ];
     profiles = {
       inherit
         arborParticipant
