@@ -8,9 +8,12 @@ another directory.
 | `tools/test/fast` | Offline test entry point, GitHub runner CLI, and SSH public-key contracts using temporary fixtures. |
 | `tools/test/flake` | The normal Nix flake check for the checkout, with lock-file writes disabled. |
 
-The fast checks use Bash, Python 3, OpenSSH's `ssh-keygen`, and Linux shell
-utilities including util-linux's `script`. The GitHub runner contract uses
-stubs for Docker and GitHub.
+The fast checks use Bash, OpenSSH's `ssh-keygen`, and Linux shell utilities
+including util-linux's `script`. The GitHub runner contract uses stubs for
+Docker and GitHub. The SSH test uses Python 3 from `PATH` when available.
+Otherwise, it uses `nix shell --offline` with the checkout's locked nixpkgs
+input. This fallback requires Nix and a locally available Python package and
+locked inputs.
 
 The flake check needs Nix with flakes enabled and access to cached or fetchable
 locked inputs. Pass Nix options directly, for example `tools/test/flake -L` or
