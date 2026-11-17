@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+command_name=${0##*/}
+usage() {
+  printf 'Usage: %s [--check | --dry-run]\n\n' "$0"
+  if [[ $command_name == remote-switch ]]; then
+    printf 'Runs against eVolver through SSH alias root-evolver.\n'
+  else
+    printf 'Runs on the local eVolver host.\n'
+  fi
+  cat <<'USAGE'
+
+  --check     Validate the flake output and target hostname.
+  --dry-run   Build the eVolver system closure locally without activation.
+  no option   Validate the target and activate eVolver.
+USAGE
+}
+
+case "$#:${1-}" in
+  0:|1:--check|1:--dry-run) ;;
+  1:-h|1:--help) usage; exit 0 ;;
+  *) usage >&2; exit 2 ;;
+esac
+
+fail() { printf 'eVolver %s: %s\n' "$command_name" "$*" >&2; exit 1; }
+
+repo_root=$(CDPATH='' cd -- "$(dirname -- "$0")/../../.." && pwd -P)
+flake_ref="$repo_root#eVolver"
+config_ref="$repo_root#nixosConfigurations.eVolver.config"
+configured_host=$(nix eval --raw "$config_ref.networking.hostName")
+[[ $configured_host == eVolver ]] || fail "flake output eVolver declares hostname '$configured_host'"
+printf 'Flake target: %s\n' "$flake_ref"
+
+if [[ ${1-} == --dry-run ]]; then
+  exec nix build --no-link "$config_ref.system.build.toplevel"
+fi
+
+if [[ $command_name == remote-switch ]]; then
+  host=$(ssh root-evolver hostname -s)
+else
+  host=$(hostname -s)
+fi
+[[ $host == eVolver ]] || fail "host must be eVolver; found $host"
+printf 'Host verified: %s\n' "$host"
+[[ ${1-} != --check ]] || exit 0
+
+if [[ $command_name == remote-switch ]]; then
+  exec nixos-rebuild switch --flake "$flake_ref" --target-host root-evolver
+fi
+exec sudo nixos-rebuild switch --flake "$flake_ref"
