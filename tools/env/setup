@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage: tools/env/setup [--status [--json] | --help]
+
+With no arguments, initialize the checkout's direct Git submodules at their
+recorded revisions and validate its dev shell without running the shell hook.
+--status runs read-only preflight with Nix evaluation skipped.
+--json emits machine-readable preflight results.
+USAGE
+}
+
+case "${1-}" in
+  -h|--help) usage; exit 0 ;;
+  --status)
+    shift
+    if (($# > 1)) || [[ $# == 1 && $1 != --json ]]; then
+      usage >&2
+      exit 2
+    fi
+    # shellcheck source=tools/env/checkout.bash
+    source "$(dirname -- "${BASH_SOURCE[0]}")/checkout.bash"
+    CODEX_PREFLIGHT_SKIP_NIX=1 GIT_OPTIONAL_LOCKS=0 GH_NO_UPDATE_NOTIFIER=1 \
+      exec ./scripts/codex-preflight "$@"
+    ;;
+  '')
+    if (($#)); then
+      usage >&2
+      exit 2
+    fi
+    ;;
+  *) usage >&2; exit 2 ;;
+esac
+
+# shellcheck source=tools/env/checkout.bash
+source "$(dirname -- "${BASH_SOURCE[0]}")/checkout.bash"
+require_flake
+if ! command -v nix >/dev/null 2>&1; then
+  printf 'Nix is required to validate the dev shell.\n' >&2
+  exit 127
+fi
+
+git -c submodule.recurse=false submodule update --init --checkout
+exec ./tools/env/shell --check
