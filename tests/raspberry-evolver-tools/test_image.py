@@ -6,12 +6,13 @@ import hashlib
 import contextlib
 import io
 import json
+import os
 import tempfile
 import unittest
 from unittest import mock
 
 SCRIPT = Path(__file__).resolve().parents[2] / 'tools/raspberry-evolver/image'
-loader = importlib.machinery.SourceFileLoader('image_tool', str(SCRIPT))
+loader = importlib.machinery.SourceFileLoader('image_tool', str(SCRIPT.with_name('image_impl.py')))
 spec = importlib.util.spec_from_loader(loader.name, loader)
 image = importlib.util.module_from_spec(spec)
 loader.exec_module(image)
@@ -169,7 +170,8 @@ method=disabled
             self.assertEqual(image.prompt_key(), 'tskey-auth-FAKE123-example')
 
     def test_help_is_safe_and_personalization_fails_closed(self):
-        result = subprocess.run([str(SCRIPT), '--help'], text=True, capture_output=True)
+        environment = dict(os.environ, PATH='/run/current-system/sw/bin:/etc/profiles/per-user/ash/bin')
+        result = subprocess.run([str(SCRIPT), '--help'], text=True, capture_output=True, env=environment)
         self.assertEqual(result.returncode, 0)
         self.assertIn('--build-only', result.stdout)
         result = subprocess.run([str(SCRIPT), '--from', '/nonexistent'], text=True, capture_output=True, input='')
