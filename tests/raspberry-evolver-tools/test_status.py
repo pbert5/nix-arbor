@@ -5,7 +5,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-path = Path(__file__).resolve().parents[2] / 'tools/raspberry-evolver/inspect.py'
+path = Path(__file__).resolve().parents[2] / 'tools/raspberry-evolver/status_impl.py'
 spec = importlib.util.spec_from_file_location('inspect_evolver', path)
 inspect = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(inspect)
