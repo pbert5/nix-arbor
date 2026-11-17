@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)
+command=${0##*/}
+usage() {
+  cat <<USAGE
+Usage: tools/arbor/$command [options]
+
+  status   [--snapshot FILE] [--socket FILE]  Check supplied inputs and services
+  nodes    --snapshot FILE [--scope SCOPE] [--format FORMAT]
+  inspect  --snapshot FILE --name NODE [--format json|text]
+  snapshot --snapshot FILE [--format json|text]  Inspect a validated snapshot
+  plan     --snapshot FILE [--format json|text]  Show its deployment plan
+  network  status|providers|endpoints|snapshot|export --socket FILE [--format json|text]
+
+All snapshot commands read an existing Manager deployment snapshot. Network
+commands contact only the explicitly supplied socket. Nix and the locked root
+flake inputs must be available; component submodules are not required.
+USAGE
+}
+if [[ ${1:-} == --help || ${1:-} == -h ]]; then usage; exit 0; fi
+if ! command -v nix >/dev/null 2>&1; then
+  echo 'arbor: Nix is unavailable; install Nix and enable flakes' >&2
+  exit 1
+fi
+manager() {
+  local package
+  package=$(NIX_ARBOR_TOOLS_ROOT="$root" nix build --no-link --print-out-paths --no-write-lock-file --impure --expr \
+    '(builtins.getFlake (builtins.getEnv "NIX_ARBOR_TOOLS_ROOT")).inputs.arbor-manager.packages.${builtins.currentSystem}.default') || {
+      echo 'arbor: locked Manager package is unavailable (check Nix and flake inputs)' >&2
+      return 1
+    }
+  "$package/bin/arbor-manager" "$@"
+}
+case "$command" in
+  nodes) exec_args=(nodes list "$@") ;;
+  inspect) exec_args=(machine inspect "$@") ;;
+  snapshot) exec_args=(deployment-plan "$@") ;;
+  plan)
+    format=json
+    args=()
+    while (($#)); do
+      case $1 in
+        --format) (($# >= 2)) || { echo 'arbor plan: --format requires a value' >&2; exit 2; }; format=$2; shift 2 ;;
+        *) args+=("$1"); shift ;;
+      esac
+    done
+    case $format in json|text) ;; *) echo "arbor plan: unknown format '$format'" >&2; exit 2 ;; esac
+    jq_package=$(NIX_ARBOR_TOOLS_ROOT="$root" nix build --no-link --print-out-paths --no-write-lock-file --impure --expr \
+      '(builtins.getFlake (builtins.getEnv "NIX_ARBOR_TOOLS_ROOT")).inputs.nixpkgs.legacyPackages.${builtins.currentSystem}.jq.bin') || exit 1
+    if [[ $format == json ]]; then
+      manager deployment-plan "${args[@]}" --format json | "$jq_package/bin/jq" '{snapshotDigest, plan, acknowledgement}'
+    else
+      manager deployment-plan "${args[@]}" --format json | "$jq_package/bin/jq" -r '"snapshot=" + .snapshotDigest, "backend=" + (.plan.backend // "unknown"), "risks=" + ((.plan.risks // []) | tojson), (.plan.phases[] | "phase=" + .name + " names=" + (.names | tojson) + " commands=" + (.commands | tojson))'
+    fi
+    exit ;;
+
+  network)
+    case ${1:-} in status|providers|endpoints|snapshot|export) ;; *) usage >&2; exit 2 ;; esac
+    exec_args=(network "$@") ;;
+  status)
+    snapshot= socket=
+    while (($#)); do
+      case $1 in
+        --snapshot|--socket)
+          (($# >= 2)) || { echo "arbor status: $1 requires a value" >&2; exit 2; }
+          if [[ $1 == --snapshot ]]; then snapshot=$2; else socket=$2; fi
+          shift 2 ;;
+        *) usage >&2; exit 2 ;;
+      esac
+    done
+    result=0
+    if [[ -z $snapshot ]]; then echo 'snapshot: not supplied'; result=1
+    elif manager nodes list --snapshot "$snapshot" --format names >/dev/null; then echo 'snapshot: valid'
+    else echo 'snapshot: unavailable or invalid'; result=1; fi
+    if [[ -z $socket ]]; then echo 'network: socket not supplied'; result=1
+    elif network_status=$(manager network status --socket "$socket"); then printf 'network: reachable (daemon status follows)\n%s\n' "$network_status"
+    else echo 'network: unavailable'; result=1; fi
+    exit "$result" ;;
+  *) usage >&2; exit 2 ;;
+esac
+manager "${exec_args[@]}"
