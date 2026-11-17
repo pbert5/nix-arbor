@@ -163,9 +163,9 @@ def mounted_devices(path=pathlib.Path('/proc/self/mountinfo')):
         if len(fields) < separator + 4:
             raise SafetyError('cannot parse mount information')
         mountpoint = fields[4].replace('\\040', ' ').replace('\\011', '\t').replace('\\012', '\n').replace('\\134', '\\')
-        system_paths = ('/', '/boot', '/boot/efi', '/nix/store')
+        system_paths = ('/boot', '/boot/efi', '/nix/store')
         if fields[separator + 1] == 'overlay' and any(
-                mountpoint == '/' or target == mountpoint or target.startswith(mountpoint.rstrip('/') + '/')
+                mountpoint == '/' or target == mountpoint or target.startswith(mountpoint.rstrip('/') + '/') or mountpoint.startswith(target.rstrip('/') + '/')
                 for target in system_paths):
             raise SafetyError('unsupported overlay backing for a system path; use a directly booted Linux host')
         mounted.add(fields[2])
@@ -265,8 +265,8 @@ def main():
     if not stat.S_ISBLK(info.st_mode):
         raise SafetyError('target is not a block device')
     selected = f'{os.major(info.st_rdev)}:{os.minor(info.st_rdev)}'
+    print(f'Target: {path} ({selected})')
     if args.write and os.geteuid() != 0:
-        print(f'Target: {path} ({selected})')
         print('Privileged read-only inspection will check visible mounts, swap, source and system backing, holders, identity and capacity before final consent.', flush=True)
         elevate(args)
         return
@@ -277,7 +277,10 @@ def main():
         source_dev = f'{os.major(image_info.st_dev)}:{os.minor(image_info.st_dev)}'
         sha = digest(source, image_info.st_size)
         validate_manifest(args.image, image_info.st_size, sha)
-        graph, mounted, swaps = snapshot()
+        try:
+            graph, mounted, swaps = snapshot()
+        except PermissionError:
+            raise SafetyError('inspection needs additional read-only privilege; an administrator can use --write to request privileged inspection before final consent') from None
         members = validate_graph(graph, selected, mounted, swaps, source_dev, image_info.st_size)
         disk = graph[selected]
         print(f'Image: {os.path.realpath(args.image)}\nBytes: {image_info.st_size}\nSHA-256: {sha}')

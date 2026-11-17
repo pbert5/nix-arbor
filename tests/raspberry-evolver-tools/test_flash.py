@@ -139,7 +139,7 @@ class FlashConfirmationTests(unittest.TestCase):
     def test_post_confirmation_safety_gates(self):
         # These scenarios execute main's actual ordering; the fake descriptor can
         # never address a real device, even if a guard under test regresses.
-        scenarios = ('safe', 'dry_run', 'elevate', 'declined', 'inspection_denied', 'identity', 'mounted', 'swap', 'holder', 'disappeared',
+        scenarios = ('safe', 'dry_run', 'dry_run_denied', 'elevate', 'declined', 'inspection_denied', 'identity', 'mounted', 'swap', 'holder', 'disappeared',
                      'open_disappeared', 'opened_replacement', 'capacity',
                      'final_identity', 'final_mounted', 'final_swap', 'final_holder',
                      'final_disappeared')
@@ -165,7 +165,7 @@ class FlashConfirmationTests(unittest.TestCase):
                                 'children': [], 'holders': [], 'identity': 'source'},
                 }
                 snapshots = [(copy.deepcopy(graph), set(), set()) for _ in range(3)]
-                if scenario == 'inspection_denied':
+                if scenario in ('inspection_denied', 'dry_run_denied'):
                     snapshots = [PermissionError('unreadable swap')]
                 stage = 2 if scenario.startswith('final_') else 1
                 reason = scenario.removeprefix('final_')
@@ -196,8 +196,8 @@ class FlashConfirmationTests(unittest.TestCase):
                 context.__enter__.return_value = target
                 capacity = 31000000000 if scenario == 'capacity' else 32000000000
                 with contextlib.ExitStack() as stack:
-                    stack.enter_context(patch.object(sys, 'argv', ['flash', *([] if scenario == 'dry_run' else ['--write']), str(image), '/dev/fake']))
-                    stack.enter_context(patch.object(flash.os, 'geteuid', return_value=1000 if scenario in ('dry_run', 'elevate') else 0))
+                    stack.enter_context(patch.object(sys, 'argv', ['flash', *([] if scenario in ('dry_run', 'dry_run_denied') else ['--write']), str(image), '/dev/fake']))
+                    stack.enter_context(patch.object(flash.os, 'geteuid', return_value=1000 if scenario in ('dry_run', 'dry_run_denied', 'elevate') else 0))
                     elevated = stack.enter_context(patch.object(flash, 'elevate'))
                     stack.enter_context(patch.object(flash, 'instance_lock', return_value=contextlib.nullcontext()))
                     confirm = stack.enter_context(patch('builtins.input', return_value='no' if scenario == 'declined' else '/dev/fake serial 32000000000'))
@@ -233,9 +233,12 @@ class FlashConfirmationTests(unittest.TestCase):
                             flash.main()
                         write.assert_not_called()
                         target.write.assert_not_called()
-                        if scenario == 'inspection_denied':
+                        if scenario in ('inspection_denied', 'dry_run_denied'):
                             confirm.assert_not_called()
                             open_device.assert_not_called()
+                            if scenario == 'dry_run_denied':
+                                self.assertIn('Target: /dev/fake (240:0)', output.getvalue())
+                                elevated.assert_not_called()
                         if scenario == 'declined':
                             self.assertEqual(snapshot.call_count, 1)
                             confirm.assert_called_once()
@@ -272,6 +275,11 @@ class MountNamespaceTests(unittest.TestCase):
             with self.assertRaises(flash.SafetyError):
                 flash.mounted_devices(path)
             path.write_text('1 0 0:42 / /nix rw - overlay overlay rw\n')
+            with self.assertRaises(flash.SafetyError):
+                flash.mounted_devices(path)
+            path.write_text('1 0 0:42 / /var/lib/docker rw - overlay overlay rw\n')
+            self.assertEqual(flash.mounted_devices(path), {'0:42'})
+            path.write_text('1 0 0:42 / /boot/firmware rw - overlay overlay rw\n')
             with self.assertRaises(flash.SafetyError):
                 flash.mounted_devices(path)
             path.write_text('invalid\n')
