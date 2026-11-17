@@ -53,8 +53,9 @@ in NixOS and registered with Nix. On r640-0, the prepared host-only commit
 `boot.binfmt.emulatedSystems = [ "aarch64-linux" ];`. On 2026-11-17 the
 primary checkout at `bb24db96a0876a9608011646efc09162c4dd8322` evaluated to
 the running system, host preflight passed, and the modified system closure
-built without activation. The image build and an ARM smoke build both failed
-with a platform mismatch. Activation requires the operator's sudo credentials.
+built without activation. The operator subsequently activated this change on
+r640-0, and the ARM smoke build below succeeded and reported `aarch64`.
+Activation requires the operator's sudo credentials.
 
 The supported r640 switch tool requires a clean primary `main` checkout. If
 its state or the running system has changed since the checks above, reassess
@@ -84,9 +85,8 @@ nix build --no-link --impure --expr 'let p = import (builtins.getFlake (toString
 ./tools/raspberry-evolver/image --build-only
 ```
 
-These activation and post-activation commands were prepared but have not yet
-been run successfully. Do not assume an architecture listed in flake outputs
-means a builder can execute it.
+The smoke command has succeeded on r640-0 after activation. Do not assume an
+architecture listed in flake outputs means a builder can execute it.
 
 ## Write and boot
 
