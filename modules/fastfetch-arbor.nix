@@ -20,6 +20,11 @@ in
   programs.fastfetch.settings.modules = lib.mkAfter [
     {
       type = "command";
+      key = "NixOS generation";
+      text = "${lib.getExe status} generation";
+    }
+    {
+      type = "command";
       key = "Arbor Registry";
       text = "${lib.getExe status} registry";
     }

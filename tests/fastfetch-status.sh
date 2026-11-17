@@ -36,3 +36,22 @@ MOCK
 sed -i "1c#!$(command -v bash)" "$work/curl"
 chmod +x "$work/curl"
 [[ $(bash "$script" openbao) == 'seal status unknown; service: absent' ]]
+mkdir -p "$work/host/run" "$work/host/nix/var/nix/profiles" "$work/store/a" "$work/store/b"
+profiles="$work/host/nix/var/nix/profiles"
+ln -s "$work/store/a" "$work/host/run/current-system"
+touch -h -d @100000 "$work/host/run/current-system"
+printf '#!%s\nprintf "190061\\n"\n' "$(command -v bash)" > "$work/date"
+chmod +x "$work/date"
+ln -s "$work/store/a" "$profiles/system-7-link"
+ln -s system-7-link "$profiles/system"
+result=$(bash "$script" generation "$work/host")
+[[ "$result" == 'generation 7 (profile matches active); active for 1d 1h 1m' ]]
+ln -s "$work/store/b" "$profiles/system-8-link"
+ln -sfn system-8-link "$profiles/system"
+result=$(bash "$script" generation "$work/host")
+[[ "$result" == 'generation 7 (active); profile 8 differs; active for 1d 1h 1m' ]]
+ln -s "$work/store/a" "$profiles/system-9-link"
+result=$(bash "$script" generation "$work/host")
+[[ "$result" == 'generation ambiguous; profile 8 differs; active for 1d 1h 1m' ]]
+rm "$work/host/run/current-system"
+[[ $(bash "$script" generation "$work/host") == 'active system unavailable' ]]
