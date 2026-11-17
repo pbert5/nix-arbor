@@ -8,6 +8,9 @@ sed -e "s|/var/lib/raspberry-evolver/bootstrap/tailscale.authkey|$tmp/bootstrap/
 cat > "$tmp/bin/tailscale" <<'MOCK'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$TEST_DIR/argv"
+if [ "$1" = switch ]; then cat "$TEST_DIR/profiles"; exit; fi
+if [ "$1" = debug ]; then cat "$TEST_DIR/prefs"; exit; fi
+if [ -e "$TEST_DIR/offline" ]; then exit 1; fi
 if [ "$1" = up ]; then
   if [ -f "$TEST_DIR/after-up" ]; then cp "$TEST_DIR/after-up" "$TEST_DIR/state"; fi
   exit 1
@@ -22,13 +25,28 @@ run() { bash "$tmp/bootstrap.sh" >"$tmp/output" 2>&1; }
 needs='{"BackendState":"NeedsLogin"}'
 enrolled='{"BackendState":"Running","Self":{"Online":true,"TailscaleIPs":["100.1.2.3"]}}'
 pending='{"BackendState":"NeedsMachineAuth"}'
+printf '[]' > "$tmp/profiles"
+printf '{"Config":null}' > "$tmp/prefs"
 printf '%s' "$needs" > "$tmp/state"
 run; test "$(cat "$status")" = missing-key
 printf '%s' 'tskey-auth-SENTINEL' > "$key"
+touch "$tmp/offline"
+: > "$tmp/argv"
+run; test "$(cat "$status")" = indeterminate; test -s "$key"; ! rg -q '^up ' "$tmp/argv"
+rm "$tmp/offline"
 run; test "$(cat "$status")" = indeterminate; test -s "$key"
 printf '%s' '{"BackendState":"Running","Self":{"ID":"existing","Online":false}}' > "$tmp/state"
 : > "$tmp/argv"
 run; test "$(cat "$status")" = indeterminate; test -s "$key"; ! rg -q '^up ' "$tmp/argv"
+printf '%s' "$needs" > "$tmp/state"
+printf '[{"id":"old-profile"}]' > "$tmp/profiles"
+: > "$tmp/argv"
+run; test "$(cat "$status")" = indeterminate; test -s "$key"; ! rg -q '^up ' "$tmp/argv"
+printf '[]' > "$tmp/profiles"
+printf '{"Config":{"NodeID":"old-node"}}' > "$tmp/prefs"
+: > "$tmp/argv"
+run; test "$(cat "$status")" = indeterminate; test -s "$key"; ! rg -q '^up ' "$tmp/argv"
+printf '{"Config":null}' > "$tmp/prefs"
 printf '%s' "$pending" > "$tmp/state"
 run; test "$(cat "$status")" = pending-approval; test -s "$key"
 printf '%s' "$needs" > "$tmp/state"

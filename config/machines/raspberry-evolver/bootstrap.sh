@@ -17,10 +17,15 @@ inspect() {
     state pending-approval
     return 0
   fi
-  # Only an explicit logged-out state without a local node identity permits
-  # initial enrollment. Offline or ambiguous state must never cause reauth.
+  # Status alone cannot establish whether a prior identity is persisted.
   if jq -e '.BackendState == "NeedsLogin" and ((.Self.ID // "") == "")' >/dev/null <<<"$response"; then
-    return 1
+    local profiles prefs
+    profiles=$(timeout 15 tailscale switch --list --json 2>/dev/null) || { state indeterminate; return 2; }
+    prefs=$(timeout 15 tailscale debug prefs 2>/dev/null) || { state indeterminate; return 2; }
+    if jq -e 'type == "array" and length == 0' >/dev/null <<<"$profiles" &&
+       jq -e 'type == "object" and has("Config") and (.Config == null or (.Config | type == "object" and (.NodeID // "") == ""))' >/dev/null <<<"$prefs"; then
+      return 1
+    fi
   fi
   state indeterminate
   return 2
