@@ -25,10 +25,11 @@ if command -v nix >/dev/null 2>&1; then
   nix config show extra-platforms 2>/dev/null || printf '%s\n' 'unavailable'
   builders=$(nix config show builders 2>/dev/null || true)
   if [[ -n $builders ]]; then printf '%s\n' 'Remote builders: configured (not tested)'; else printf '%s\n' 'Remote builders: none configured'; fi
-  if [[ -r /proc/sys/fs/binfmt_misc/qemu-aarch64 ]] && [[ $(</proc/sys/fs/binfmt_misc/qemu-aarch64) == enabled* ]]; then
+  if { [[ -r /proc/sys/fs/binfmt_misc/aarch64-linux ]] && [[ $(</proc/sys/fs/binfmt_misc/aarch64-linux) == enabled* ]]; } ||
+     { [[ -r /proc/sys/fs/binfmt_misc/qemu-aarch64 ]] && [[ $(</proc/sys/fs/binfmt_misc/qemu-aarch64) == enabled* ]]; }; then
     printf '%s\n' 'aarch64 binfmt: registered (not tested)'
   else
-    printf '%s\n' 'aarch64 binfmt: not registered under qemu-aarch64'
+    printf '%s\n' 'aarch64 binfmt: not registered under aarch64-linux or qemu-aarch64'
   fi
   printf '%s\n' 'Working aarch64 build route: unverified; configuration alone is not proof.'
   printf '%s\n' 'Verify a native/approved remote ARM builder or working binfmt/QEMU with an actual aarch64 build.'
