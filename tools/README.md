@@ -24,6 +24,12 @@ its `PATH` as the command-line entry points.
 See the [checkout test guide](test/README.md) for prerequisites and opt-in
 Docker, VM, and other checks.
 
+## Registry identities
+
+Run `tools/arbor/registry status r640-0` or `tools/arbor/registry inspect eVolver`
+from the r640 checkout. The [local Registry runbook](arbor/README.md#local-registry)
+covers service checks, self-initialization, summaries and restart verification.
+
 ## Machine rebuilds
 
 Use `switch --check` on the target host and `remote-switch --check` to check

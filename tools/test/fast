@@ -5,8 +5,8 @@ usage() {
   cat <<'USAGE'
 Usage: tools/test/fast [-h | --help]
 
-Run the checkout test tool, GitHub runner CLI, and SSH public-key contracts.
-Requires Bash, ssh-keygen, and Linux utilities including script.
+Run the checkout test tool, GitHub runner CLI, Registry lifecycle, and SSH public-key contracts.
+Requires Bash, jq, ssh-keygen, and Linux utilities including script.
 Uses Python 3 from PATH or the checkout's cached Nix inputs.
 For Docker, VM, and Nix-dependent tests, see tools/test/README.md.
 USAGE
@@ -25,6 +25,8 @@ printf 'Running test entry point contract...\n'
 tests/tool-test/contract.sh
 printf 'Running GitHub runner CLI contract (mock Docker and GitHub)...\n'
 tests/github/runners-contract.sh
+printf 'Running Registry lifecycle contract (mock services and SSH)...\n'
+tests/arbor-registry/lifecycle.sh
 printf 'Running SSH public-key contract...\n'
 if command -v python3 >/dev/null; then
   exec python3 tests/ssh/add-key.py

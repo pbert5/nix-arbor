@@ -45,10 +45,11 @@ printf '%s\n' --override-input demo 'path:./with spaces' --no-build >>"$tmp/nix.
 diff -u "$tmp/nix.expected" "$ARBOR_TEST_NIX_LOG"
 
 checkout="$tmp/cold checkout"
-mkdir -p "$checkout"/{bin,tools/test,tests/tool-test,tests/github}
+mkdir -p "$checkout"/{bin,tools/test,tests/tool-test,tests/github,tests/arbor-registry}
 cp "$root/tools/test/fast" "$checkout/tools/test/fast"
 printf '#!/usr/bin/env bash\nexit 0\n' >"$checkout/tests/tool-test/contract.sh"
 cp "$checkout/tests/tool-test/contract.sh" "$checkout/tests/github/runners-contract.sh"
+cp "$checkout/tests/tool-test/contract.sh" "$checkout/tests/arbor-registry/lifecycle.sh"
 ln -s "$(command -v bash)" "$checkout/bin/bash"
 ln -s "$(command -v dirname)" "$checkout/bin/dirname"
 cat >"$checkout/bin/nix" <<'MOCK'
@@ -64,7 +65,7 @@ case $1 in
   *) exit 43 ;;
 esac
 MOCK
-chmod +x "$checkout"/bin/{nix,nix-store} "$checkout"/tests/{tool-test/contract.sh,github/runners-contract.sh}
+chmod +x "$checkout"/bin/{nix,nix-store} "$checkout"/tests/{tool-test/contract.sh,github/runners-contract.sh,arbor-registry/lifecycle.sh}
 status=0
 PATH="$checkout/bin" "$checkout/tools/test/fast" >"$tmp/cold.out" 2>"$tmp/cold.err" || status=$?
 [[ $status == 1 ]] || { printf 'Unexpected fast-test exit for uncached nixpkgs (%s)\n' "$status" >&2; exit 1; }

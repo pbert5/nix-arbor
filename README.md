@@ -243,6 +243,8 @@ omitted.
 
 ## Arbor Registry boundary
 
+For the running r640-0 and eVolver services, see the [local Registry operator commands](tools/arbor/README.md#local-registry).
+
 The standalone `packages/arbor-registry` component owns pure signed-record
 validation, accepted/materialized projections, quarantine, relationship graph
 queries, endpoint/service metadata, and declarative public policy options. The

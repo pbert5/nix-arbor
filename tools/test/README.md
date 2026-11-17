@@ -5,10 +5,10 @@ another directory.
 
 | Command | What it runs |
 | --- | --- |
-| `tools/test/fast` | Offline test entry point, GitHub runner CLI, and SSH public-key contracts using temporary fixtures. |
+| `tools/test/fast` | Offline test entry point, GitHub runner CLI, Registry lifecycle, and SSH public-key contracts using temporary fixtures. |
 | `tools/test/flake` | The normal Nix flake check for the checkout, with lock-file writes disabled. |
 
-The fast checks use Bash, OpenSSH's `ssh-keygen`, and Linux shell utilities
+The fast checks use Bash, jq, OpenSSH's `ssh-keygen`, and Linux shell utilities
 including util-linux's `script`. The GitHub runner contract uses stubs for
 Docker and GitHub. The SSH test uses Python 3 from `PATH` when available.
 Otherwise, it uses `nix shell --offline` with the nixpkgs source that matches
