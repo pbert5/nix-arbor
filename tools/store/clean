@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export LC_ALL=C
+
+usage() {
+  cat <<'USAGE'
+Usage: tools/store/clean [--list]
+       tools/store/clean --apply /nix/store/HASH-NAME [...]
+       tools/store/clean --help
+
+List dead store paths with smoke-test and VM names first. To delete, pass
+the exact paths to --apply. The local Nix daemon checks liveness and
+referrers at deletion time. A multi-path deletion can partially succeed.
+USAGE
+}
+
+usage_error() {
+  usage >&2
+  exit 2
+}
+
+store_path='^/nix/store/[0123456789abcdfghijklmnpqrsvwxyz]{32}-[a-zA-Z0-9+._?=-]+$'
+if (($# == 0)); then
+  set -- --list
+fi
+mode=$1
+case $mode in
+  --list) (($# == 1)) || usage_error ;;
+  --help|-h)
+    (($# == 1)) || usage_error
+    usage
+    exit 0
+    ;;
+  --apply)
+    shift
+    (($#)) || usage_error
+    for path in "$@"; do
+      if [[ ! $path =~ $store_path ]]; then
+        printf 'store clean: expected a full store path, got %q\n' "$path" >&2
+        exit 2
+      fi
+    done
+    ;;
+  *) usage_error ;;
+esac
+
+command -v nix-store >/dev/null || {
+  printf '%s\n' 'store clean: nix-store is unavailable' >&2
+  exit 1
+}
+dead=$(nix-store --store daemon --gc --print-dead) || exit "$?"
+
+priority_name='(^|[-+._])(smoke[-._]?test|nixos-test|test-driver|vm)([-+._]|$)'
+priority=()
+other=()
+if [[ -n $dead ]]; then
+  while IFS= read -r path; do
+    if [[ ! $path =~ $store_path ]]; then
+      printf 'store clean: unexpected output from nix-store: %q\n' "$path" >&2
+      exit 1
+    fi
+    if [[ $mode == --list ]]; then
+      name=${path#*-}
+      if [[ ${name,,} =~ $priority_name ]]; then
+        priority+=("$path")
+      else
+        other+=("$path")
+      fi
+    fi
+  done <<< "$dead"
+fi
+
+if [[ $mode == --apply ]]; then
+  dead_lines=$'\n'"$dead"$'\n'
+  for path in "$@"; do
+    if [[ $dead_lines != *$'\n'"$path"$'\n'* ]]; then
+      printf 'store clean: path is absent from the dead set: %s\n' "$path" >&2
+      exit 1
+    fi
+  done
+  exec nix-store --store daemon --delete "$@"
+fi
+
+if ((${#priority[@]} + ${#other[@]})); then
+  printf '%s\n' "${priority[@]}" "${other[@]}"
+fi
