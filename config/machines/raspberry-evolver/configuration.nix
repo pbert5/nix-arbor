@@ -1,5 +1,9 @@
 { pkgs, lib, ... }:
 {
+  # The Pi bootloader installs firmware DTBs; the upstream kernel package lacks
+  # the buildDTBs attribute expected by the root nixpkgs device-tree default.
+  hardware.deviceTree.enable = false;
+  system.boot.loader.kernelFile = "Image";
   system.stateVersion = "26.05";
   nix.settings.experimental-features = [
     "nix-command"
@@ -29,12 +33,12 @@
     enable = true;
     memoryPercent = 25;
   };
-  services.journald.extraConfig = ''
-    Storage=persistent
-    SystemMaxUse=64M
-    RuntimeMaxUse=32M
-    MaxRetentionSec=1month
-  '';
+  services.journald.settings.Journal = {
+    Storage = "persistent";
+    SystemMaxUse = "64M";
+    RuntimeMaxUse = "32M";
+    MaxRetentionSec = "1month";
+  };
   boot.tmp.cleanOnBoot = true;
   systemd.services.raspberry-evolver-maintenance = {
     description = "Collect old Raspberry Pi system generations";
@@ -50,7 +54,7 @@
     };
   };
   systemd.timers.raspberry-evolver-maintenance = {
-    wantedBy = [ "timers.target" ];
+    # Disabled until generation retention is serialized with other Nix operations.
     timerConfig = {
       OnCalendar = "weekly";
       Persistent = true;
@@ -73,7 +77,7 @@
     };
   };
   systemd.timers.raspberry-evolver-bootstrap = {
-    wantedBy = [ "timers.target" ];
+    # Disabled until persisted identity can be distinguished from a fresh node.
     timerConfig = {
       OnBootSec = "30s";
       OnUnitInactiveSec = "2min";
