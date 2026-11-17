@@ -18,6 +18,10 @@ class Inspection(unittest.TestCase):
             digest = hashlib.sha256(image.read_bytes()).hexdigest()
             manifest = {'schema_version': 1, 'result_size': image.stat().st_size, 'result_sha256': digest, 'personalized': True}
             self.assertEqual(inspect.verify_artifact(image, manifest), (image.stat().st_size, digest))
+            manifest['personalized'] = 'unknown'
+            with self.assertRaises(ValueError):
+                inspect.verify_artifact(image, manifest)
+            manifest['personalized'] = True
             image.write_bytes(b'changed')
             with self.assertRaises(ValueError):
                 inspect.verify_artifact(image, manifest)

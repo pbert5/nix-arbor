@@ -20,7 +20,8 @@ def valid_remote(value):
 
 
 def verify_artifact(image, manifest):
-    if manifest.get('schema_version') != 1 or type(manifest.get('result_size')) is not int:
+    if (manifest.get('schema_version') != 1 or type(manifest.get('result_size')) is not int
+            or type(manifest.get('personalized')) is not bool):
         raise ValueError('unsupported artifact manifest')
     digest = hashlib.sha256()
     size = 0
