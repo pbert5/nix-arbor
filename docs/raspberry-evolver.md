@@ -48,11 +48,45 @@ boots; protect and dispose of them accordingly. Deleting a file does not
 guarantee secure erasure.
 
 An x86 builder needs a working remote ARM builder or aarch64 emulation enabled
-in NixOS and registered with Nix. The current r640 and eVolver configurations
-were observed without either. Enabling emulation requires a separately reviewed
-and activated host change; `boot.binfmt.emulatedSystems = [ "aarch64-linux" ];`
-is the minimal NixOS setting to prepare for that change. Do not assume an
-architecture listed in flake outputs means a builder can execute it.
+in NixOS and registered with Nix. On r640-0, the prepared host-only commit
+`408c72e8941fe2ae8c53b749dce84610499076f7` adds
+`boot.binfmt.emulatedSystems = [ "aarch64-linux" ];`. On 2026-11-17 the
+primary checkout at `bb24db96a0876a9608011646efc09162c4dd8322` evaluated to
+the running system, host preflight passed, and the modified system closure
+built without activation. The image build and an ARM smoke build both failed
+with a platform mismatch. Activation requires the operator's sudo credentials.
+
+The supported r640 switch tool requires a clean primary `main` checkout. If
+its state or the running system has changed since the checks above, reassess
+the change before proceeding. Otherwise the operator can apply the isolated
+host change and use the normal switch tool:
+
+```sh
+cd /home/ash/documents/nix-arbor
+git status --short --branch
+git rev-parse HEAD
+git cherry-pick 408c72e8941fe2ae8c53b749dce84610499076f7
+./tools/r640/switch --check
+./tools/r640/switch --dry-run
+./tools/r640/switch
+```
+
+The switch tool records the previous generation and prints its rollback
+command, normally `sudo nixos-rebuild switch --rollback --flake
+/home/ash/documents/nix-arbor#r640-0`. A rollback alone does not remove the
+configuration change from Git; revert the host commit before a later switch
+if ARM emulation is no longer wanted. After activation, verify actual ARM
+execution from the takeover checkout before retrying the image:
+
+```sh
+cd /home/ash/documents/nix-arbor/.worktrees/raspberry-evolver-takeover
+nix build --no-link --impure --expr 'let p = import (builtins.getFlake (toString ./.)).inputs.nixpkgs { system = "aarch64-linux"; }; in p.runCommand "arm-builder-smoke" {} "uname -m > $out"'
+./tools/raspberry-evolver/image --build-only
+```
+
+These activation and post-activation commands were prepared but have not yet
+been run successfully. Do not assume an architecture listed in flake outputs
+means a builder can execute it.
 
 ## Write and boot
 
