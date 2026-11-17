@@ -10,10 +10,52 @@
     { "label": "Agent: Cleanup Merged Worktrees", "type": "shell", "command": "./scripts/agent-worktree cleanup-merged", "problemMatcher": [] },
     { "label": "Agent: Prune Worktrees", "type": "shell", "command": "./scripts/agent-worktree prune", "problemMatcher": [] },
     { "label": "Git: Branch Overview", "type": "shell", "command": "git branch -vv", "problemMatcher": [] },
-    { "label": "Submodules: Update/Initialize", "type": "shell", "command": "git submodule update --init", "problemMatcher": [] }
+    { "label": "Submodules: Update/Initialize", "type": "shell", "command": "git submodule update --init", "problemMatcher": [] },
+
+    { "label": "Arbor: Machines / Check r640-0 Locally", "type": "process", "command": "${workspaceFolder}/tools/machines/r640-0/switch", "args": ["--check"], "problemMatcher": [] },
+    { "label": "Arbor: Machines / Check r640-0 via SSH", "type": "process", "command": "${workspaceFolder}/tools/machines/r640-0/remote-switch", "args": ["--check"], "problemMatcher": [] },
+    { "label": "Arbor: Machines / Check eVolver Locally", "type": "process", "command": "${workspaceFolder}/tools/machines/evolver/switch", "args": ["--check"], "problemMatcher": [] },
+    { "label": "Arbor: Machines / Check eVolver via SSH", "type": "process", "command": "${workspaceFolder}/tools/machines/evolver/remote-switch", "args": ["--check"], "problemMatcher": [] },
+    { "label": "Arbor: Machines / Switch r640-0 Locally", "type": "process", "command": "${workspaceFolder}/tools/machines/r640-0/switch", "problemMatcher": [] },
+    { "label": "Arbor: Machines / Switch r640-0 via SSH", "type": "process", "command": "${workspaceFolder}/tools/machines/r640-0/remote-switch", "problemMatcher": [] },
+    { "label": "Arbor: Machines / Switch eVolver Locally", "type": "process", "command": "${workspaceFolder}/tools/machines/evolver/switch", "problemMatcher": [] },
+    { "label": "Arbor: Machines / Switch eVolver via SSH", "type": "process", "command": "${workspaceFolder}/tools/machines/evolver/remote-switch", "problemMatcher": [] },
+
+    { "label": "Arbor: SSH / List Public Grants", "type": "process", "command": "${workspaceFolder}/tools/ssh/keys/list", "problemMatcher": [] },
+    { "label": "Arbor: SSH / Find Public Grants", "type": "process", "command": "${workspaceFolder}/tools/ssh/keys/find", "args": ["--", "${input:sshGrantQuery}"], "problemMatcher": [] },
+    { "label": "Arbor: SSH / Add Public Grant", "type": "process", "command": "${workspaceFolder}/tools/ssh/add-key", "problemMatcher": [] },
+    { "label": "Arbor: SSH / Remove Extra Public Grant", "type": "process", "command": "${workspaceFolder}/tools/ssh/keys/remove", "problemMatcher": [] },
+    { "label": "Arbor: SSH / Generate Local Ed25519 Keypair", "type": "process", "command": "${workspaceFolder}/tools/ssh/keys/generate", "problemMatcher": [] },
+
+    { "label": "Arbor: Software / Preview Codex Pin", "type": "process", "command": "${workspaceFolder}/tools/software/update/codex", "args": ["preview", "--host", "${input:codexHost}"], "problemMatcher": [] },
+    { "label": "Arbor: Software / Preview VS Code Pin", "type": "process", "command": "${workspaceFolder}/tools/software/update/vscode", "args": ["preview", "--host", "${input:vscodeHost}"], "problemMatcher": [] },
+    { "label": "Arbor: Software / Update r640-0 Codex Pin", "type": "process", "command": "${workspaceFolder}/tools/software/update/codex", "args": ["update", "--host", "r640-0", "--revision", "${input:nixpkgsRevision}"], "problemMatcher": [] },
+    { "label": "Arbor: Software / Update eVolver Codex via Shared Host Nixpkgs", "type": "process", "command": "${workspaceFolder}/tools/software/update/codex", "args": ["update", "--host", "eVolver", "--allow-host-nixpkgs", "--revision", "${input:nixpkgsRevision}"], "problemMatcher": [] },
+    { "label": "Arbor: Software / Update VS Code Pin", "type": "process", "command": "${workspaceFolder}/tools/software/update/vscode", "args": ["update", "--host", "${input:vscodeHost}", "--revision", "${input:nixpkgsRevision}"], "problemMatcher": [] },
+    { "label": "Arbor: Software / Switch Host to Pinned Codex", "type": "process", "command": "${workspaceFolder}/tools/software/update/codex", "args": ["switch", "--host", "${input:codexHost}"], "problemMatcher": [] },
+    { "label": "Arbor: Software / Build Checkout-local VS Code Link", "type": "process", "command": "${workspaceFolder}/tools/software/update/vscode", "args": ["switch", "--host", "${input:vscodeHost}"], "problemMatcher": [] },
+
+    { "label": "Arbor: Worktrees / Preview Cleanup", "type": "process", "command": "${workspaceFolder}/tools/worktrees/clean", "args": ["--preview"], "problemMatcher": [] },
+    { "label": "Arbor: Worktrees / Remove Selected Inactive Worktree", "type": "process", "command": "${workspaceFolder}/tools/worktrees/clean", "args": ["--apply", "${input:worktreePath}"], "problemMatcher": [] },
+    { "label": "Arbor: Store / List Registered Nix Paths", "type": "process", "command": "${workspaceFolder}/tools/store/clean", "args": ["--list"], "problemMatcher": [] },
+    { "label": "Arbor: Store / Delete Selected Store Path", "type": "process", "command": "${workspaceFolder}/tools/store/clean", "args": ["--apply", "${input:storePath}"], "problemMatcher": [] },
+
+    { "label": "Arbor: Tests / Run Fast Checks", "type": "process", "command": "${workspaceFolder}/tools/test/fast", "problemMatcher": [] },
+    { "label": "Arbor: Tests / Run Flake Checks", "type": "process", "command": "${workspaceFolder}/tools/test/flake", "problemMatcher": [] },
+
+    { "label": "Arbor: Environment / Show Checkout Status", "type": "process", "command": "${workspaceFolder}/tools/env/setup", "args": ["--status"], "problemMatcher": [] },
+    { "label": "Arbor: Environment / Check Dev Shell", "type": "process", "command": "${workspaceFolder}/tools/env/shell", "args": ["--check"], "problemMatcher": [] },
+    { "label": "Arbor: Environment / Initialize Direct Submodules and Check Dev Shell", "type": "process", "command": "${workspaceFolder}/tools/env/setup", "problemMatcher": [] },
+    { "label": "Arbor: Environment / Enter Dev Shell", "type": "process", "command": "${workspaceFolder}/tools/env/shell", "problemMatcher": [] }
   ],
   "inputs": [
     { "id": "agentTask", "type": "promptString", "description": "Task slug" },
-    { "id": "agentName", "type": "promptString", "description": "Agent or role name", "default": "agent" }
+    { "id": "agentName", "type": "promptString", "description": "Agent or role name", "default": "agent" },
+    { "id": "sshGrantQuery", "type": "promptString", "description": "Public SSH key fingerprint, comment, or source" },
+    { "id": "codexHost", "type": "pickString", "description": "Codex target host", "options": ["r640-0", "eVolver"] },
+    { "id": "vscodeHost", "type": "pickString", "description": "VS Code target host", "options": ["r640-0", "eVolver", "desktoptoodle"] },
+    { "id": "nixpkgsRevision", "type": "promptString", "description": "Full 40-character upstream Nixpkgs commit SHA" },
+    { "id": "worktreePath", "type": "promptString", "description": "Literal absolute path of an eligible inactive worktree" },
+    { "id": "storePath", "type": "promptString", "description": "Exact /nix/store/HASH-NAME path to delete" }
   ]
 }
