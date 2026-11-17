@@ -68,10 +68,12 @@ Expect generation 1, local genesis, self-rooted, zero parents and zero peers.
 The two identities have independent authority. Peering, enrollment and private
 Ygg activation are outside this workflow.
 
-To test persistence during a maintenance window, restart one Registry daemon
-at a time. The command requires an initialized identity, keeps the transport
-running, waits for the adapter and compares the full public identity against
-the pre-restart inspection. A mismatch or unavailable service exits nonzero.
+To test persistence during a maintenance window, restart one host at a time.
+The command requires an initialized identity and restarts transport and Registry
+in one systemd transaction. Registry starts after transport. The check waits
+for the transport Unix listener (using `ss`) and a valid adapter reply, compares
+the full public identity, and verifies both services are active. A mismatch or
+unavailable service exits nonzero.
 
 ```sh
 tools/arbor/registry restart-check r640-0

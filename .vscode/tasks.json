@@ -16,7 +16,7 @@
     { "label": "Arbor: Registry / Inspect Identity", "type": "process", "command": "${workspaceFolder}/tools/arbor/registry", "args": ["inspect", "${input:registryHost}"], "problemMatcher": [] },
     { "label": "Arbor: Registry / Show Summary", "type": "process", "command": "${workspaceFolder}/tools/arbor/registry", "args": ["summary", "${input:registryHost}"], "problemMatcher": [] },
     { "label": "Arbor: Registry / Initialize or Verify Self-Root", "type": "process", "command": "${workspaceFolder}/tools/arbor/registry", "args": ["init-self", "${input:registryHost}"], "problemMatcher": [] },
-    { "label": "Arbor: Registry / Restart Registry and Verify Identity", "type": "process", "command": "${workspaceFolder}/tools/arbor/registry", "args": ["restart-check", "${input:registryHost}"], "problemMatcher": [] },
+    { "label": "Arbor: Registry / Restart Transport and Registry and Verify Identity", "type": "process", "command": "${workspaceFolder}/tools/arbor/registry", "args": ["restart-check", "${input:registryHost}"], "problemMatcher": [] },
 
     { "label": "Arbor: Machines / Check r640-0 Locally", "type": "process", "command": "${workspaceFolder}/tools/machines/r640-0/switch", "args": ["--check"], "problemMatcher": [] },
     { "label": "Arbor: Machines / Check r640-0 via SSH", "type": "process", "command": "${workspaceFolder}/tools/machines/r640-0/remote-switch", "args": ["--check"], "problemMatcher": [] },

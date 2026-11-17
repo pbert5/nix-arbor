@@ -9,7 +9,7 @@ Usage: tools/arbor/registry <status|inspect|summary|init-self|restart-check> <r6
   inspect        Read the local identity (including an empty Registry)
   summary        Read public identity, record and projection counts
   init-self      Create or verify this host's isolated generation-one root
-  restart-check  Restart the Registry daemon and compare the public identity
+  restart-check  Restart transport and Registry, then compare the public identity
 
 r640-0 runs locally. eVolver uses the root-evolver SSH alias. Adapter calls
 run as arbor-registry. Use a terminal for local sudo password prompts.

@@ -97,7 +97,7 @@ query() {
 identity() { jq -cS 'del(.records,.projection)'; }
 
 run() {
-  local action=$1 host=$2 adapter before after summary raw attempt
+  local action=$1 host=$2 adapter before after summary raw attempt listener
   local -a privilege=(sudo)
   if [[ $host == eVolver ]]; then privilege+=(-n); fi
   [[ $(hostname) == "$host" ]] || die "expected hostname $host"
@@ -127,18 +127,20 @@ run() {
       ;;
     restart-check)
       [[ $(jq -r .initialized <<<"$before") == true ]] || die 'restart-check requires an initialized identity'
-      "${privilege[@]}" -- systemctl restart "$registry"
-      check_units
+      command -v ss >/dev/null || die 'restart-check requires ss to verify the transport listener'
+      "${privilege[@]}" -- systemctl restart "$transport" "$registry"
       for attempt in {1..10}; do
-        if raw=$(call_adapter identity/inspect); then
+        if listener=$(ss -Hxl src /run/arbor-registry-transport/transport.sock) &&
+            [[ -n $listener ]] && raw=$(call_adapter identity/inspect); then
           after=$(validate identity/inspect <<<"$raw")
           [[ $(identity <<<"$before") == "$(identity <<<"$after")" ]] || die 'identity changed after restart'
+          check_units
           echo "$after"
           return
         fi
         (( attempt == 10 )) || sleep 1
       done
-      die 'Registry adapter unavailable after restart'
+      die 'transport listener or Registry adapter unavailable after restart'
       ;;
     *) die 'unknown Registry command' ;;
   esac

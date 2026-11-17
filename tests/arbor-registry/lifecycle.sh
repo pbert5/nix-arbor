@@ -26,7 +26,8 @@ cat > bin/systemctl <<'MOCK'
 #!/usr/bin/env bash
 set -eu
 case "$1:$3" in
-  show:--property=ActiveState) echo "${active:-active}" ;;
+  show:--property=ActiveState)
+    if [[ -e $fixture/restarted && ${failed_after:-} == "$2" ]]; then echo failed; else echo "${active:-active}"; fi ;;
   show:--property=UnitFileState) echo enabled ;;
   show:--property=User) echo arbor-registry ;;
   show:--property=StateDirectory) echo "${state_dir:-${2%.service}-canary-v1}" ;;
@@ -60,11 +61,17 @@ test() {
   esac
 }
 export -f realpath test
+cat > bin/ss <<'MOCK'
+#!/usr/bin/env bash
+[[ "$*" == "-Hxl src /run/arbor-registry-transport/transport.sock" ]] || exit 88
+if [[ -z ${no_listener:-} ]]; then echo LISTEN; fi
+MOCK
+printf '#!/usr/bin/env bash\nexit 0\n' > bin/sleep
 cat > bin/sudo <<'MOCK'
 #!/usr/bin/env bash
 set -eu
 if [[ ${actual_host:-} == eVolver ]]; then [[ $1 == -n ]]; shift; fi
-if [[ "$*" == '-- systemctl restart arbor-registry.service' ]]; then
+if [[ "$*" == '-- systemctl restart arbor-registry-transport.service arbor-registry.service' ]]; then
   echo restart >> "$fixture/log"
   touch "$fixture/restarted"
   exit 0
@@ -136,4 +143,10 @@ delay=1 "$cli" restart-check r640-0 >/dev/null
 [[ -e retried ]]
 rm restarted
 rotate=1 expect_failure "$cli" restart-check r640-0
+rm restarted
+no_listener=1 expect_failure "$cli" restart-check r640-0
+for unit in arbor-registry-transport.service arbor-registry.service; do
+  rm restarted
+  failed_after=$unit expect_failure "$cli" restart-check r640-0
+done
 printf 'Registry lifecycle contract checks passed.\n'
