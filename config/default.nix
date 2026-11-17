@@ -210,5 +210,24 @@ let
   };
 in
 {
-  flake.nixosConfigurations = machines.configurations;
+  flake.nixosConfigurations = machines.configurations // {
+    # Temporary test-only output for the captured eVolver generation 10 baseline.
+    # See docs/registry-canary.md for mandatory access and state preflight.
+    eVolver-registry-canary = machines.configurations.eVolver.extendModules {
+      modules = [
+        ({ lib, pkgs, ... }: {
+          users.users.madeline.openssh.authorizedKeys.keys = lib.mkForce [ ];
+          home-manager.users.madeline = lib.mkForce {
+            home.username = "madeline";
+            home.homeDirectory = "/home/madeline";
+            home.stateVersion = "26.05";
+          };
+          systemd.services.home-manager-madeline = {
+            restartIfChanged = false;
+            serviceConfig.ExecStart = lib.mkForce "${pkgs.coreutils}/bin/true";
+          };
+        })
+      ];
+    };
+  };
 }

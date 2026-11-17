@@ -8,7 +8,7 @@ On your management machine, use a clean checkout of the verified main revision a
 
 ```sh
 nix build --no-update-lock-file --no-link --print-out-paths .#nixosConfigurations.r640-0.config.system.build.toplevel
-nix build --no-update-lock-file --no-link --print-out-paths .#nixosConfigurations.eVolver.config.system.build.toplevel
+nix build --no-update-lock-file --no-link --print-out-paths .#nixosConfigurations.eVolver-registry-canary.config.system.build.toplevel
 ```
 
 Record the output paths as `R640_CANDIDATE` and `EVOLVER_CANDIDATE`. Copy each closure to its host if needed: `nix copy --to ssh://r640-0 "$R640_CANDIDATE"` and `nix copy --to ssh://evolver "$EVOLVER_CANDIDATE"`. From the management machine, confirm fresh SSH works to each host, then open and retain separate interactive sessions:
@@ -18,7 +18,7 @@ ssh -o BatchMode=yes -o StrictHostKeyChecking=yes r640-0 hostname
 ssh -o BatchMode=yes -o StrictHostKeyChecking=yes evolver hostname
 ```
 
-On each host separately, record the current and profile links and confirm they match; record these as `ROLLBACK`. Verify the path exists and has an executable `bin/switch-to-configuration`. Check normal controller health and confirm no other operator owns the host. Stop if any path exists, including a symlink, or if the services/processes are present. Confirm `/var/lib` and `/run` are normal writable directories with expected permissions. Check the full system change before activation. On eVolver, main also adds the existing repository-declared Madeline SSH key and Home Manager shell profile; inspect and accept that access change before continuing. Existing Ash and root grants must remain usable.
+On each host separately, record the current and profile links and confirm they match; record these as `ROLLBACK`. Verify the path exists and has an executable `bin/switch-to-configuration`. Check normal controller health and confirm no other operator owns the host. Stop if any path exists, including a symlink, or if the services/processes are present. Confirm `/var/lib` and `/run` are normal writable directories with expected permissions. Check the full system change before activation. The eVolver canary is only for the captured generation 10 baseline: it leaves the currently absent Madeline managed key absent and suppresses her new Home Manager activation. Normal eVolver retains main’s declared grant and profile. Existing Ash and root grants must remain usable.
 
 ```sh
 readlink -f /run/current-system
@@ -31,6 +31,41 @@ systemctl status arbor-registry.service arbor-registry-transport.service --no-pa
 pgrep -f 'arbor-registry[d-]|yggdrasil' || true
 sudo nix store diff-closures "$ROLLBACK" "$CANDIDATE"
 ```
+
+Before the test, compare the public managed SSH key files and relevant service definitions in the running and candidate systems. For example, on the target host:
+
+```sh
+for system in "$ROLLBACK" "$CANDIDATE"; do
+  printf '\n%s\n' "$system"
+  for user in ash root madeline; do
+    file="$system/etc/ssh/authorized_keys.d/$user"
+    if test -e "$file"; then printf '%s ' "$user"; sha256sum "$file"; else printf '%s absent\n' "$user"; fi
+  done
+  for unit in sshd tailscaled NetworkManager docker syncthing; do
+    file="$system/etc/systemd/system/$unit.service"
+    if test -e "$file"; then sha256sum "$file"; else printf '%s absent\n' "$unit"; fi
+  done
+done
+```
+
+Investigate every unexpected difference, including account and Home Manager activation changes, firewall, boot, storage and application services; a store-path diff alone does not establish operational equivalence. The eVolver canary omits the absent managed key only for this test. Its Home Manager unit is a no-op; rollback can restart the original Home Manager unit and reapply the existing live profile. Stop if this effect is unsuitable. Never remove an existing authorized key to make a canary pass.
+
+Before testing eVolver, the following must all succeed. The first two checks deliberately constrain the special output to its observed live baseline; do not use it if a managed Madeline grant has since been installed.
+
+```sh
+test "$(readlink -f /run/current-system)" = /nix/store/zsm64hks6j6v8bhvfsx6qzy23p7vxvsm-nixos-system-eVolver-26.11.20261023.3ec6363
+test "$(readlink -f /nix/var/nix/profiles/system)" = /nix/store/zsm64hks6j6v8bhvfsx6qzy23p7vxvsm-nixos-system-eVolver-26.11.20261023.3ec6363
+test ! -e /etc/ssh/authorized_keys.d/madeline && test ! -L /etc/ssh/authorized_keys.d/madeline
+systemctl is-active home-manager-madeline.service
+test -x "$CANDIDATE/bin/switch-to-configuration"
+live_profile=$(readlink -e /etc/profiles/per-user/madeline)
+candidate_profile=$(readlink -e "$CANDIDATE/etc/profiles/per-user/madeline")
+test -n "$live_profile" && test "$live_profile" = "$candidate_profile"
+getent passwd madeline
+id madeline
+```
+
+The captured account was UID 1001, primary group `users`, home `/home/madeline`, zsh shell, and supplementary groups wheel, dialout, networkmanager, docker and home-share. Stop on drift. The special output is for `test` only; do not persistently switch or reboot into it. Its no-op Home Manager unit must not be used as a lasting access policy.
 
 Run the r640-0 canary first, setting `CANDIDATE` and `ROLLBACK` to the recorded paths on that host. `test` changes the running system and may write new persistent state, but does not change the system profile. Do not proceed to eVolver if any check fails.
 
@@ -67,21 +102,3 @@ readlink -f /run/current-system
 readlink -f /nix/var/nix/profiles/system
 systemctl is-active sshd tailscaled NetworkManager
 ```
-
-Before the test, compare the public managed SSH key files and relevant service definitions in the running and candidate systems. For example, on the target host:
-
-```sh
-for system in "$ROLLBACK" "$CANDIDATE"; do
-  printf '\n%s\n' "$system"
-  for user in ash root madeline; do
-    file="$system/etc/ssh/authorized_keys.d/$user"
-    if test -e "$file"; then printf '%s ' "$user"; sha256sum "$file"; else printf '%s absent\n' "$user"; fi
-  done
-  for unit in sshd tailscaled NetworkManager docker syncthing; do
-    file="$system/etc/systemd/system/$unit.service"
-    if test -e "$file"; then sha256sum "$file"; else printf '%s absent\n' "$unit"; fi
-  done
-done
-```
-
-Investigate every unexpected difference, including account and Home Manager activation changes, firewall, boot, storage and application services; a store-path diff alone does not establish operational equivalence. On eVolver the known Madeline managed key and profile addition can persist changes to her home even after `test` rollback. Stop if you cannot review or accept those effects. Never remove an existing authorized key to make a canary pass.
