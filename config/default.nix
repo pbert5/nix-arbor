@@ -160,5 +160,19 @@ let
   };
 in
 {
-  flake.nixosConfigurations = machines.configurations;
+  flake.nixosConfigurations = machines.configurations // {
+    raspberry-evolver = inputs.nixos-raspberrypi.lib.nixosSystem {
+      nixpkgs = inputs.nixpkgs;
+      trustCaches = false;
+      specialArgs = {
+        inherit inputs;
+        machine = machines.machines.raspberry-evolver.machine;
+        nixos-raspberrypi = inputs.nixos-raspberrypi;
+      };
+      modules = machines.machines.raspberry-evolver.modules ++ [
+        inputs.nixos-raspberrypi.nixosModules.raspberry-pi-4.base
+        inputs.nixos-raspberrypi.nixosModules.sd-image
+      ];
+    };
+  };
 }
