@@ -84,3 +84,12 @@ and its manifest. If enrollment needs approval or a replacement key, see
 [host recovery notes](../config/machines/raspberry-evolver/README.md).
 The intended image grows its root filesystem on first boot; actual free space
 and physical growth remain to be measured on the chosen card.
+
+The flake check runs the image and flash tooling tests. The host bootstrap and
+Nix retention fixtures run separately and require their local command
+dependencies; they are not part of the sandboxed flake check:
+
+```sh
+bash tests/raspberry-evolver-host/bootstrap.sh
+bash tests/raspberry-evolver-host/maintenance.sh
+```
