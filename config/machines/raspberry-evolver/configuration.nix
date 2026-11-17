@@ -1,5 +1,7 @@
 { pkgs, ... }:
 {
+  imports = [ ./kernel-cache.nix ];
+
   # The Pi bootloader installs firmware DTBs; the upstream kernel package lacks
   # the buildDTBs attribute expected by the root nixpkgs device-tree default.
   hardware.deviceTree.enable = false;
@@ -39,6 +41,8 @@
     RuntimeMaxUse = "32M";
     MaxRetentionSec = "1month";
   };
+  # The SD image uses FAT and ext4. ZFS pulls in an external kernel module.
+  boot.supportedFilesystems.zfs = false;
   boot.tmp.cleanOnBoot = true;
   nix.gc = {
     automatic = true;
