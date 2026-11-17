@@ -217,3 +217,16 @@ class FlashConfirmationTests(unittest.TestCase):
                         target.write.assert_not_called()
                         if scenario in ('identity', 'mounted', 'swap', 'holder', 'disappeared'):
                             open_device.assert_not_called()
+
+class MountNamespaceTests(unittest.TestCase):
+    def test_collects_mounts_from_all_processes_and_rejects_unreadable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            proc = pathlib.Path(directory)
+            for pid, dev in [('101', '8:1'), ('102', '8:2')]:
+                (proc / pid).mkdir()
+                (proc / pid / 'mountinfo').write_text(f'1 0 {dev} / / rw - ext4 /dev/test rw\n')
+            self.assertEqual(flash.mounted_devices(proc), {'8:1', '8:2'})
+            (proc / '103').mkdir()
+            (proc / '103' / 'mountinfo').mkdir()
+            with self.assertRaises(flash.SafetyError):
+                flash.mounted_devices(proc)

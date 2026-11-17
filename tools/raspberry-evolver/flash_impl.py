@@ -148,6 +148,31 @@ def zfs_devices(graph):
     return devices
 
 
+def mounted_devices(proc=pathlib.Path('/proc')):
+    """Collect visible process mount namespaces; inaccessible processes fail closed."""
+    mounted = set()
+    pids = [entry for entry in proc.iterdir() if entry.name.isdigit()]
+    if not pids:
+        raise SafetyError('cannot enumerate process mount namespaces')
+    for pid in pids:
+        try:
+            lines = (pid / 'mountinfo').read_text().splitlines()
+        except FileNotFoundError:
+            if not pid.exists():
+                continue
+            raise SafetyError('cannot inspect a mount namespace') from None
+        except OSError:
+            raise SafetyError('cannot inspect a mount namespace') from None
+        if not lines:
+            raise SafetyError('empty mount namespace information')
+        for line in lines:
+            fields = line.split()
+            if len(fields) < 10 or '-' not in fields:
+                raise SafetyError('cannot parse mount information')
+            mounted.add(fields[2])
+    return mounted
+
+
 def snapshot():
     # Btrfs can own multiple devices without sysfs holders.
     if pathlib.Path('/sys/module/btrfs').exists():
@@ -185,12 +210,7 @@ def snapshot():
             graph[parents[0]]['children'].append(child)
     for node in graph.values():
         node['children'].sort()
-    mounted = set()
-    for line in pathlib.Path('/proc/self/mountinfo').read_text().splitlines():
-        fields = line.split()
-        if len(fields) < 10 or '-' not in fields:
-            raise SafetyError('cannot parse mount information')
-        mounted.add(fields[2])
+    mounted = mounted_devices()
     swaps = set()
     for line in pathlib.Path('/proc/swaps').read_text().splitlines()[1:]:
         fields = line.split()
