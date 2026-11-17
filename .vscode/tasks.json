@@ -33,7 +33,7 @@
     { "label": "Arbor: Software / Update eVolver Codex via Shared Host Nixpkgs", "type": "process", "command": "${workspaceFolder}/tools/software/update/codex", "args": ["update", "--host", "eVolver", "--allow-host-nixpkgs", "--revision", "${input:nixpkgsRevision}"], "problemMatcher": [] },
     { "label": "Arbor: Software / Update VS Code Pin", "type": "process", "command": "${workspaceFolder}/tools/software/update/vscode", "args": ["update", "--host", "${input:vscodeHost}", "--revision", "${input:nixpkgsRevision}"], "problemMatcher": [] },
     { "label": "Arbor: Software / Switch Host to Pinned Codex", "type": "process", "command": "${workspaceFolder}/tools/software/update/codex", "args": ["switch", "--host", "${input:codexHost}"], "problemMatcher": [] },
-    { "label": "Arbor: Software / Build Checkout-local VS Code Link", "type": "process", "command": "${workspaceFolder}/tools/software/update/vscode", "args": ["switch", "--host", "${input:vscodeHost}"], "problemMatcher": [] },
+    { "label": "Arbor: Software / Build Checkout-local VS Code Link on This Host", "type": "process", "command": "${workspaceFolder}/tools/software/update/vscode", "args": ["switch", "--host", "${input:vscodeHost}"], "problemMatcher": [] },
 
     { "label": "Arbor: Worktrees / Preview Cleanup", "type": "process", "command": "${workspaceFolder}/tools/worktrees/clean", "args": ["--preview"], "problemMatcher": [] },
     { "label": "Arbor: Worktrees / Remove Selected Inactive Worktree", "type": "process", "command": "${workspaceFolder}/tools/worktrees/clean", "args": ["--apply", "${input:worktreePath}"], "problemMatcher": [] },

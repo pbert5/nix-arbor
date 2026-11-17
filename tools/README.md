@@ -94,18 +94,19 @@ The VS Code update changes the nested AshDesktopApps unstable Nixpkgs input
 shared by the optional editor and other unstable desktop apps. Desktop core
 omits the editor. The Remote-SSH module on `r640-0` and `eVolver` supplies
 compatibility libraries, and the desktop client supplies the remote runtime.
-`tools/software/update/vscode switch --host HOST` builds or refreshes
-`result-vscode/bin/code` in the invoking checkout. Launch that binary to use the
-selected pin with your existing profiles.
+Run `tools/software/update/vscode switch --host HOST` on the selected host to
+build or refresh `result-vscode/bin/code` in the invoking checkout. Launch that
+binary to use the selected pin with your existing profiles.
 
 ## Cleanup
 
 - `tools/worktrees/clean` previews linked worktrees and explains what keeps
   them ineligible. Confirm a worktree is inactive before passing its exact
-  path to `tools/worktrees/clean --apply PATH`. In the VS Code prompt, enter
-  the literal absolute path, including any spaces. Apply rechecks eligibility
-  and preserves branch refs. With a remote configured, the commit must be
-  present in both local `main` and cached `origin/main`.
+  path to `tools/worktrees/clean --apply PATH`. Preview shell-escapes paths
+  for Bash. In the VS Code prompt, enter the literal absolute path with its
+  spaces, such as `/path/to/my worktree`. Apply rechecks eligibility and
+  preserves branch refs. With a remote configured, the commit must be present
+  in both local `main` and cached `origin/main`.
 - `tools/store/clean` lists registered Nix store paths, with likely smoke,
   test, and VM outputs first. Liveness is unknown. `tools/store/clean --apply
   /nix/store/HASH-NAME` requests deletion of the exact path. The local Nix
