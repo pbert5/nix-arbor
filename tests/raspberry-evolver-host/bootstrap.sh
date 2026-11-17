@@ -49,6 +49,9 @@ exec 8>"$tmp/lock/bootstrap.lock"; flock -n 8
 flock -u 8
 # Ambiguous crash may leave a fresh-looking state; a later run retries safely.
 : > "$tmp/argv"; run; test "$(rg -c '^up ' "$tmp/argv")" -eq 3
+# A retained but unauthenticated profile must accept a replacement key.
+printf '%s' '{"BackendState":"NeedsLogin","HaveNodeKey":true,"Self":{"ID":"old-node"}}' > "$tmp/state"
+: > "$tmp/argv"; run; test "$(rg -c '^up ' "$tmp/argv")" -eq 3; test -s "$key"
 printf '%s' "$pending" > "$tmp/state"; : > "$tmp/argv"
 run; test "$(cat "$status")" = pending-approval; test -s "$key"; ! rg -q '^up ' "$tmp/argv"
 printf '%s' "$enrolled" > "$tmp/state"

@@ -9,7 +9,7 @@ exec 9>/run/lock/raspberry-evolver-bootstrap.lock
 flock -n 9 || exit 0
 state() { printf '%s\n' "$1" > "$status"; chmod 0644 "$status"; }
 inspect() {
-  local response profiles prefs lock_status
+  local response lock_status
   response=$(timeout 15 tailscale status --json 2>/dev/null) || { state indeterminate; return 2; }
   if jq -e '.BackendState == "Running" and .HaveNodeKey == true and (.Self.ID // "") != "" and (.Self.TailscaleIPs | type == "array" and length > 0)' >/dev/null <<<"$response"; then
     lock_status=$(timeout 15 tailscale lock status --json 2>/dev/null) || { state indeterminate; return 2; }
@@ -26,14 +26,9 @@ inspect() {
     state pending-approval
     return 2
   fi
-  if jq -e '.BackendState == "NeedsLogin" and (.Self.ID // "") == "" and (.HaveNodeKey // false) == false' >/dev/null <<<"$response"; then
-    profiles=$(timeout 15 tailscale switch --list --json 2>/dev/null) || { state indeterminate; return 2; }
-    prefs=$(timeout 15 tailscale debug prefs 2>/dev/null) || { state indeterminate; return 2; }
-    if jq -e 'type == "array" and length == 0' >/dev/null <<<"$profiles" &&
-       jq -e 'type == "object" and has("Config") and (.Config == null or (.Config | type == "object" and (.NodeID // "") == ""))' >/dev/null <<<"$prefs"; then
-      return 1
-    fi
-  fi
+  # NeedsLogin is not proof of failure or success, but permits another
+  # non-forced attempt with the supplied key under CR-01.
+  if jq -e '.BackendState == "NeedsLogin"' >/dev/null <<<"$response"; then return 1; fi
   state indeterminate
   return 2
 }
