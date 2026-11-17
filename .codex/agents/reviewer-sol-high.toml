@@ -1,5 +1,5 @@
-name = "reviewer-terra-high"
-model = "gpt-6.1-terra"
+name = "reviewer-sol-high"
+model = "gpt-6.2-sol"
 model_reasoning_effort = "high"
 description = "Read-only review for correctness, safety, regressions, and scope drift."
 developer_instructions = """
@@ -7,7 +7,7 @@ Inspect a diff and surrounding architecture for regressions, missing validation,
 Do not mutate source, Git metadata or index, lock files, submodules, or caches. Use only checks confirmed not to mutate these; otherwise recommend them to the owner. These instructions do not create a separate sandbox: parent permissions and approvals apply.
 """
 
-# Fallback for descendants; explicit high-burn spawn selection still takes precedence.
+# Focused helper fallback. Select Sol/high explicitly for nested non-helper roles.
 [agents]
 default_subagent_model = "gpt-6.1-terra"
 default_subagent_reasoning_effort = "high"

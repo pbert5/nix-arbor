@@ -32,10 +32,12 @@ and verification role defaults are unchanged.
 ## Explicit high-burn opt-in
 
 Only an explicit request in the current prompt/session setup enables high-burn
-mode. It substitutes `gpt-6.1-terra` at `high` effort for every otherwise-Luna
-subagent, not just workstream owners. Use the `*-terra-high` project-role variants
-and explicit model/effort on every owner, worker, loader, reviewer, verifier and
-nested spawn. Do not infer opt-in from quota, urgency, task size or prior sessions.
+mode. Use `gpt-6.2-sol` at `high` effort for owners, workers, prompt loaders,
+reviewers, verifiers, scouts, and all other high-burn subagent roles. Use
+`gpt-6.1-terra` at `high` effort for focused nested helpers. Use the
+`*-sol-high` project-role variants for Sol roles and select the model and
+effort explicitly on every spawn, including nested spawns. Do not infer
+opt-in from quota, urgency, task size or prior sessions.
 Normal mode and personal settings are unchanged. Keep the existing topology,
 issue-first groundwork, thin launchers, ownership and independent review.
 In high-burn, maximize independent READY workstreams within the actual supported
@@ -136,7 +138,7 @@ a failure.
   remains personal.
 - Keep stable, reusable Codex roles in the user's personal Codex configuration.
   Project `.codex/agents` contains two normal Nix Arbor-specific roles and
-  five self-contained, opt-in Terra/high compatibility variants.
+  five self-contained, opt-in Sol/high compatibility variants.
 - Use delegation only when the active agent runtime supports it and the task
   contract permits it. Every concurrent mutable task gets its own
   `agent/<agent-or-role>/<task-slug>` branch and worktree unless an explicit
