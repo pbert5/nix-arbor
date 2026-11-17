@@ -25,6 +25,45 @@ loader.exec_module(flash)
 
 
 class FlashTests(unittest.TestCase):
+    def test_usb_reader_requires_stable_reader_and_disk_sequence(self):
+        target = {'type': 'disk', 'size': 32000000000, 'ro': False,
+                  'children': [], 'holders': [], 'identity': 'usb:1234:abcd:reader123:42',
+                  'identity_kind': 'usb-reader'}
+        graph = {'8:0': target, '9:0': {'type': 'disk'}}
+        flash.validate_graph(graph, '8:0', set(), set(), '9:0', 10)
+        before = copy.deepcopy(graph)
+        target['identity'] = 'usb:1234:abcd:reader123:43'
+        with self.assertRaises(flash.SafetyError):
+            flash.same_device(before, graph)
+        for identity in ('usb:1234:abcd::42', 'usb:1234:abcd:reader123:0', ''):
+            target['identity'] = identity
+            with self.assertRaises(flash.SafetyError):
+                flash.validate_graph(graph, '8:0', set(), set(), '9:0', 10)
+
+    def test_usb_reader_identity_requires_removable_device_and_serial(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            bus = root / 'usb-bus'
+            bus.mkdir()
+            usb = root / 'devices' / 'usb1' / 'reader'
+            device = usb / 'interface' / 'disk'
+            device.mkdir(parents=True)
+            (usb / 'subsystem').symlink_to(bus)
+            for name, value in [('idVendor', '1234'), ('idProduct', 'abcd'), ('serial', 'reader123')]:
+                (usb / name).write_text(value)
+            entry = root / 'block'
+            entry.mkdir()
+            (entry / 'device').symlink_to(device)
+            (entry / 'removable').write_text('1')
+            (entry / 'diskseq').write_text('42')
+            with patch.object(flash, 'USB_BUS', bus):
+                self.assertEqual(flash.card_identity(entry), ('usb:1234:abcd:reader123:42', 'usb-reader'))
+                (entry / 'removable').write_text('0')
+                self.assertEqual(flash.card_identity(entry), ('', ''))
+                (entry / 'removable').write_text('1')
+                (usb / 'serial').unlink()
+                self.assertEqual(flash.card_identity(entry), ('', ''))
+
     def test_copy_and_verify_exact_range(self):
         with tempfile.TemporaryFile() as source, tempfile.TemporaryFile() as target:
             source.write(b'hello world')
@@ -143,7 +182,7 @@ class FlashConfirmationTests(unittest.TestCase):
     def test_post_confirmation_safety_gates(self):
         # These scenarios execute main's actual ordering; the fake descriptor can
         # never address a real device, even if a guard under test regresses.
-        scenarios = ('safe', 'dry_run', 'dry_run_denied', 'elevate', 'declined', 'inspection_denied', 'identity', 'mounted', 'swap', 'holder', 'disappeared',
+        scenarios = ('safe', 'usb_safe', 'usb_changed', 'dry_run', 'dry_run_denied', 'elevate', 'declined', 'inspection_denied', 'identity', 'mounted', 'swap', 'holder', 'disappeared',
                      'open_disappeared', 'opened_replacement', 'capacity',
                      'final_identity', 'final_mounted', 'final_swap', 'final_holder',
                      'final_disappeared')
@@ -168,7 +207,11 @@ class FlashConfirmationTests(unittest.TestCase):
                     source_id: {'type': 'disk', 'size': 64000000000, 'ro': False,
                                 'children': [], 'holders': [], 'identity': 'source'},
                 }
+                if scenario.startswith('usb_'):
+                    graph[target_id].update(identity='usb:1234:abcd:reader123:42', identity_kind='usb-reader')
                 snapshots = [(copy.deepcopy(graph), set(), set()) for _ in range(3)]
+                if scenario == 'usb_changed':
+                    snapshots[2][0][target_id]['identity'] = 'usb:1234:abcd:reader123:43'
                 if scenario in ('inspection_denied', 'dry_run_denied'):
                     snapshots = [PermissionError('unreadable swap')]
                 stage = 2 if scenario.startswith('final_') else 1
@@ -204,7 +247,8 @@ class FlashConfirmationTests(unittest.TestCase):
                     stack.enter_context(patch.object(flash.os, 'geteuid', return_value=1000 if scenario in ('dry_run', 'dry_run_denied', 'elevate') else 0))
                     elevated = stack.enter_context(patch.object(flash, 'elevate'))
                     stack.enter_context(patch.object(flash, 'instance_lock', return_value=contextlib.nullcontext()))
-                    confirm = stack.enter_context(patch('builtins.input', return_value='no' if scenario == 'declined' else '/dev/fake ' + 'a' * 32 + ' 32000000000'))
+                    identity = graph[target_id]['identity']
+                    confirm = stack.enter_context(patch('builtins.input', return_value='no' if scenario == 'declined' else f'/dev/fake {identity} 32000000000'))
                     stack.enter_context(patch.object(flash.os.path, 'realpath', side_effect=fake_realpath))
                     stack.enter_context(patch.object(flash.os, 'stat', side_effect=fake_stat))
                     stack.enter_context(patch.object(flash.os, 'fstat', side_effect=fake_fstat))
@@ -216,9 +260,11 @@ class FlashConfirmationTests(unittest.TestCase):
                     stack.enter_context(patch.object(flash.fcntl, 'ioctl', return_value=struct.pack('Q', capacity)))
                     write = stack.enter_context(patch.object(flash, 'copy_and_verify'))
                     output = stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
-                    if scenario == 'safe':
+                    if scenario in ('safe', 'usb_safe'):
                         flash.main()
                         write.assert_called_once()
+                        if scenario == 'usb_safe':
+                            self.assertIn('not the card', output.getvalue())
                         self.assertEqual(snapshot.call_count, 3)
                         self.assertEqual(open_device.call_args.args,
                                          ('/dev/fake', os.O_RDWR | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC))

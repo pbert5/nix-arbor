@@ -56,12 +56,13 @@ architecture listed in flake outputs means a builder can execute it.
 
 ## Write and boot
 
-The writer is deliberately conservative. Its current identity check supports
-native MMC/SD readers exposing the card CID, and refuses USB readers without
-that card-bound identity: a USB reader's serial commonly identifies the reader,
-not the inserted card. For a USB reader, use Raspberry Pi Imager's custom-image
-option on a trusted machine and independently verify the selected card; its
-safety checks and behavior differ from this tool. No unsafe bypass is provided.
+The writer supports native MMC/SD readers exposing the card CID and removable
+USB readers with a usable reader serial and Linux disk sequence. A USB serial
+identifies the reader, not the card; some readers do not report card changes.
+Do not remove or swap the card between inspection and the end of verification.
+Readers without the required identifiers or a removable-device flag are refused.
+Raspberry Pi Imager's
+custom-image option is an alternative; independently verify its selected card.
 The physical card is erased by a confirmed write. Inventory and inspect first:
 
 ```sh

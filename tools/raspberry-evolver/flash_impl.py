@@ -17,6 +17,7 @@ import artifact
 
 SYS = pathlib.Path('/sys/class/block')
 MMC_BUS = pathlib.Path('/sys/bus/mmc')
+USB_BUS = pathlib.Path('/sys/bus/usb')
 MIN_CARD_BYTES = 29_500_000_000  # Allow normal 32 GB cards with manufacturer rounding.
 CHUNK = 1024 * 1024
 
@@ -60,10 +61,13 @@ def validate_graph(graph, selected, mounted, swaps, source_dev, image_size):
     if selected not in graph or graph[selected]['type'] != 'disk':
         raise SafetyError('select a resolved whole disk, not a partition')
     disk = graph[selected]
-    if (disk.get('identity_kind') != 'mmc-cid'
-            or not re.fullmatch(r'[0-9a-fA-F]{32}', disk.get('identity', ''))
-            or not int(disk['identity'], 16)):
-        raise SafetyError('card identity is ambiguous; use a native MMC/SD reader exposing its card CID')
+    identity = disk.get('identity', '')
+    mmc = (disk.get('identity_kind') == 'mmc-cid'
+           and re.fullmatch(r'[0-9a-fA-F]{32}', identity) and int(identity, 16))
+    usb = (disk.get('identity_kind') == 'usb-reader'
+           and re.fullmatch(r'usb:[0-9a-f]{4}:[0-9a-f]{4}:[A-Za-z0-9._-]{1,128}:[1-9][0-9]*', identity))
+    if not (mmc or usb):
+        raise SafetyError('reader or card identity is ambiguous; use a native MMC reader or an identifiable removable USB reader')
     if disk['size'] < MIN_CARD_BYTES or disk['size'] < image_size:
         raise SafetyError('device is too small: use a 32 GB or larger card that fits the image')
     if source_dev not in graph or graph[source_dev]['type'] == 'virtual':
@@ -177,10 +181,26 @@ def mounted_devices(path=pathlib.Path('/proc/self/mountinfo')):
 
 
 def card_identity(entry):
-    # A USB reader serial generally identifies the reader, not inserted media.
     try:
         if (entry / 'device/subsystem').resolve(strict=True) == MMC_BUS:
             return read(entry / 'device/cid'), 'mmc-cid'
+    except OSError:
+        pass
+    # USB serial and diskseq identify the reader and drive instance, not the
+    # card; the operator must keep the same card inserted throughout.
+    try:
+        if read(entry / 'removable') != '1':
+            return '', ''
+        seq = read(entry / 'diskseq')
+        device = (entry / 'device').resolve(strict=True)
+        for parent in (device, *device.parents):
+            if (parent / 'subsystem').resolve() != USB_BUS or not (parent / 'idVendor').exists():
+                continue
+            vendor, product, serial = (read(parent / name) for name in ('idVendor', 'idProduct', 'serial'))
+            identity = f'usb:{vendor.lower()}:{product.lower()}:{serial}:{seq}'
+            if re.fullmatch(r'usb:[0-9a-f]{4}:[0-9a-f]{4}:[A-Za-z0-9._-]{1,128}:[1-9][0-9]*', identity):
+                return identity, 'usb-reader'
+            return '', ''
     except OSError:
         pass
     return '', ''
@@ -255,7 +275,7 @@ def elevate(args):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Inspect a target; --write and typed confirmation are required to flash it. No automatic sudo or unmounting.')
+    parser = argparse.ArgumentParser(description='Inspect a target; --write requests sudo and typed confirmation. No automatic unmounting.')
     parser.add_argument('image', nargs='?', help='uncompressed image file')
     parser.add_argument('device', nargs='?', help='explicit whole block device')
     parser.add_argument('--write', action='store_true', help='enable writing after typed confirmation')
@@ -291,7 +311,9 @@ def main():
         members = validate_graph(graph, selected, mounted, swaps, source_dev, image_info.st_size)
         disk = graph[selected]
         print(f'Image: {os.path.realpath(args.image)}\nBytes: {image_info.st_size}\nSHA-256: {sha}')
-        print(f'Device: {path} ({selected})\nModel: {disk["model"] or "unknown"}\nCard CID: {disk["identity"]}\nCapacity: {disk["size"]} bytes')
+        print(f'Device: {path} ({selected})\nModel: {disk["model"] or "unknown"}\nIdentity ({disk["identity_kind"]}): {disk["identity"]}\nCapacity: {disk["size"]} bytes')
+        if disk['identity_kind'] == 'usb-reader':
+            print('USB identity describes the reader and drive instance, not the card. Do not remove or swap the card until writing and verification finish; some swaps may not be detected.')
         print('Partitions: ' + (', '.join(graph[d]['name'] for d in sorted(members - {selected})) or 'none'))
         print('Visible mountpoints on target or partitions: none')
         print('Inspection scope: visible mounts, swap, source filesystem, holders and supported block topology.')

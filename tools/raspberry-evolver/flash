@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -eu
 if [[ ${1-} == --help || ${1-} == -h ]]; then
-  printf '%s\n' 'Usage: flash [IMAGE DEVICE] [--write]' 'Dry-run is unprivileged; --write performs privileged inspection and requires typed confirmation. Native MMC/SD card CID is required; ambiguous USB readers are refused.'
+  printf '%s\n' 'Usage: flash [IMAGE DEVICE] [--write]' 'Dry-run is unprivileged; --write performs privileged inspection and requires typed confirmation. USB readers need a serial and disk sequence; do not swap the card during the operation.'
   exit 0
 fi
 here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
