@@ -8,7 +8,7 @@ sed -e "s|/var/lib/raspberry-evolver/bootstrap/tailscale.authkey|$tmp/bootstrap/
 cat > "$tmp/bin/tailscale" <<'MOCK'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$TEST_DIR/argv"
-if [ "$1" = switch ]; then cat "$TEST_DIR/profiles"; exit; fi
+if [ "$1" = switch ]; then [ ! -e "$TEST_DIR/profile-error" ] || exit 1; cat "$TEST_DIR/profiles"; exit; fi
 if [ "$1" = debug ]; then cat "$TEST_DIR/prefs"; exit; fi
 if [ -e "$TEST_DIR/offline" ]; then exit 1; fi
 if [ "$1" = up ]; then
@@ -39,11 +39,18 @@ printf '%s' '{"BackendState":"Running","Self":{"ID":"existing","Online":false}}'
 : > "$tmp/argv"
 run; test "$(cat "$status")" = indeterminate; test -s "$key"; ! rg -q '^up ' "$tmp/argv"
 printf '%s' "$needs" > "$tmp/state"
+touch "$tmp/profile-error"
+: > "$tmp/argv"
+run; test "$(cat "$status")" = indeterminate; test -s "$key"; ! rg -q '^up ' "$tmp/argv"
+rm "$tmp/profile-error"
 printf '[{"id":"old-profile"}]' > "$tmp/profiles"
 : > "$tmp/argv"
 run; test "$(cat "$status")" = indeterminate; test -s "$key"; ! rg -q '^up ' "$tmp/argv"
 printf '[]' > "$tmp/profiles"
 printf '{"Config":{"NodeID":"old-node"}}' > "$tmp/prefs"
+: > "$tmp/argv"
+run; test "$(cat "$status")" = indeterminate; test -s "$key"; ! rg -q '^up ' "$tmp/argv"
+printf '{"Config":{"NodeID":"","UserProfile":{"LoginName":"previous"}}}' > "$tmp/prefs"
 : > "$tmp/argv"
 run; test "$(cat "$status")" = indeterminate; test -s "$key"; ! rg -q '^up ' "$tmp/argv"
 printf '{"Config":null}' > "$tmp/prefs"

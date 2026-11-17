@@ -72,7 +72,7 @@
     serviceConfig = {
       Type = "oneshot";
       ExecStart = "${pkgs.bash}/bin/bash ${./bootstrap.sh}";
-      TimeoutStartSec = 120;
+      TimeoutStartSec = 180;
       UMask = "0077";
     };
   };

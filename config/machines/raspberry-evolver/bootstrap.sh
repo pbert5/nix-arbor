@@ -23,7 +23,7 @@ inspect() {
     profiles=$(timeout 15 tailscale switch --list --json 2>/dev/null) || { state indeterminate; return 2; }
     prefs=$(timeout 15 tailscale debug prefs 2>/dev/null) || { state indeterminate; return 2; }
     if jq -e 'type == "array" and length == 0' >/dev/null <<<"$profiles" &&
-       jq -e 'type == "object" and has("Config") and (.Config == null or (.Config | type == "object" and (.NodeID // "") == ""))' >/dev/null <<<"$prefs"; then
+       jq -e 'type == "object" and has("Config") and .Config == null' >/dev/null <<<"$prefs"; then
       return 1
     fi
   fi
