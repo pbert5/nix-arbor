@@ -139,7 +139,7 @@ class FlashConfirmationTests(unittest.TestCase):
     def test_post_confirmation_safety_gates(self):
         # These scenarios execute main's actual ordering; the fake descriptor can
         # never address a real device, even if a guard under test regresses.
-        scenarios = ('safe', 'dry_run', 'elevate', 'declined', 'identity', 'mounted', 'swap', 'holder', 'disappeared',
+        scenarios = ('safe', 'dry_run', 'elevate', 'declined', 'inspection_denied', 'identity', 'mounted', 'swap', 'holder', 'disappeared',
                      'open_disappeared', 'opened_replacement', 'capacity',
                      'final_identity', 'final_mounted', 'final_swap', 'final_holder',
                      'final_disappeared')
@@ -165,6 +165,8 @@ class FlashConfirmationTests(unittest.TestCase):
                                 'children': [], 'holders': [], 'identity': 'source'},
                 }
                 snapshots = [(copy.deepcopy(graph), set(), set()) for _ in range(3)]
+                if scenario == 'inspection_denied':
+                    snapshots = [PermissionError('unreadable swap')]
                 stage = 2 if scenario.startswith('final_') else 1
                 reason = scenario.removeprefix('final_')
                 if reason == 'identity':
@@ -209,7 +211,7 @@ class FlashConfirmationTests(unittest.TestCase):
                     stack.enter_context(patch.object(flash.os, 'fdopen', return_value=context))
                     stack.enter_context(patch.object(flash.fcntl, 'ioctl', return_value=struct.pack('Q', capacity)))
                     write = stack.enter_context(patch.object(flash, 'copy_and_verify'))
-                    stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+                    output = stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
                     if scenario == 'safe':
                         flash.main()
                         write.assert_called_once()
@@ -222,11 +224,18 @@ class FlashConfirmationTests(unittest.TestCase):
                         open_device.assert_not_called()
                         confirm.assert_not_called()
                         self.assertEqual(elevated.call_count, int(scenario == 'elevate'))
+                        self.assertEqual(snapshot.call_count, int(scenario == 'dry_run'))
+                        if scenario == 'elevate':
+                            self.assertIn('Target: /dev/fake (240:0)', output.getvalue())
+                            self.assertIn('Privileged read-only inspection', output.getvalue())
                     else:
                         with self.assertRaises((flash.SafetyError, OSError)):
                             flash.main()
                         write.assert_not_called()
                         target.write.assert_not_called()
+                        if scenario == 'inspection_denied':
+                            confirm.assert_not_called()
+                            open_device.assert_not_called()
                         if scenario == 'declined':
                             self.assertEqual(snapshot.call_count, 1)
                             confirm.assert_called_once()
@@ -259,11 +268,24 @@ class MountNamespaceTests(unittest.TestCase):
             path = pathlib.Path(directory) / 'mountinfo'
             path.write_text('1 0 8:1 / / rw - ext4 /dev/test rw\n')
             self.assertEqual(flash.mounted_devices(path), {'8:1'})
+            path.write_text('1 0 0:42 / / rw - overlay overlay rw\n')
+            with self.assertRaises(flash.SafetyError):
+                flash.mounted_devices(path)
+            path.write_text('1 0 0:42 / /nix rw - overlay overlay rw\n')
+            with self.assertRaises(flash.SafetyError):
+                flash.mounted_devices(path)
             path.write_text('invalid\n')
             with self.assertRaises(flash.SafetyError):
                 flash.mounted_devices(path)
 
 class EntryPointTests(unittest.TestCase):
+    def test_denied_elevation_stops_without_retry(self):
+        args = SimpleNamespace(image='image', device='/dev/fake')
+        with patch.object(flash.subprocess, 'run', return_value=SimpleNamespace(returncode=1)) as sudo:
+            with self.assertRaisesRegex(flash.SafetyError, 'no retry'):
+                flash.elevate(args)
+            sudo.assert_called_once()
+
     def test_no_args_shows_inventory(self):
         with patch.object(sys, 'argv', ['flash']), patch.object(flash.subprocess, 'run') as run:
             with contextlib.redirect_stdout(io.StringIO()):

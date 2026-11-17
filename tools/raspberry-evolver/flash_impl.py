@@ -159,6 +159,15 @@ def mounted_devices(path=pathlib.Path('/proc/self/mountinfo')):
         fields = line.split()
         if len(fields) < 10 or '-' not in fields:
             raise SafetyError('cannot parse mount information')
+        separator = fields.index('-')
+        if len(fields) < separator + 4:
+            raise SafetyError('cannot parse mount information')
+        mountpoint = fields[4].replace('\\040', ' ').replace('\\011', '\t').replace('\\012', '\n').replace('\\134', '\\')
+        system_paths = ('/', '/boot', '/boot/efi', '/nix/store')
+        if fields[separator + 1] == 'overlay' and any(
+                mountpoint == '/' or target == mountpoint or target.startswith(mountpoint.rstrip('/') + '/')
+                for target in system_paths):
+            raise SafetyError('unsupported overlay backing for a system path; use a directly booted Linux host')
         mounted.add(fields[2])
     return mounted
 
@@ -256,6 +265,11 @@ def main():
     if not stat.S_ISBLK(info.st_mode):
         raise SafetyError('target is not a block device')
     selected = f'{os.major(info.st_rdev)}:{os.minor(info.st_rdev)}'
+    if args.write and os.geteuid() != 0:
+        print(f'Target: {path} ({selected})')
+        print('Privileged read-only inspection will check visible mounts, swap, source and system backing, holders, identity and capacity before final consent.', flush=True)
+        elevate(args)
+        return
     with open(args.image, 'rb') as source:
         image_info = os.fstat(source.fileno())
         if not stat.S_ISREG(image_info.st_mode) or image_info.st_size == 0:
@@ -275,10 +289,6 @@ def main():
         print(f'Action: overwrite the first {image_info.st_size} bytes, sync and verify that byte range.')
         if not args.write:
             print('Dry run only. Add --write for an interactive confirmation.')
-            return
-        if os.geteuid() != 0:
-            print('Privileged read-only inspection is required before final consent; sudo will be requested.', flush=True)
-            elevate(args)
             return
         phrase = f'{path} {disk["identity"]} {disk["size"]}'
         if input(f'Type exactly "{phrase}" to write: ') != phrase:
