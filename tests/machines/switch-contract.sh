@@ -172,6 +172,7 @@ evolver="$checkout/tools/machines/evolver/switch"
 evolver_remote="$checkout/tools/machines/evolver/remote-switch"
 r640="$MOCK_PRIMARY/tools/machines/r640-0/switch"
 r640_remote="$checkout/tools/machines/r640-0/remote-switch"
+moved_head=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 
 for command in "$evolver" "$evolver_remote" "$r640" "$r640_remote"; do
   run 0 "$command" --help
@@ -220,7 +221,7 @@ called "mountpoint<-q><$MOCK_PRIMARY/mypool>"
 called 'zpool<list><-H><mypool>'
 no_activation
 
-run 1 env MOCK_REMOTE_HEAD=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa "$r640_remote"
+run 1 env MOCK_REMOTE_HEAD="$moved_head" "$r640_remote"
 output "expected remote HEAD $MOCK_HEAD"
 no_activation
 run 1 env MOCK_BRANCH=topic "$r640_remote"
@@ -260,7 +261,7 @@ run 0 "$r640_remote" --dry-run
 called 'ssh<r640-0>'
 called "nix<build><--no-link><$r640_pin#nixosConfigurations.r640-0.config.system.build.toplevel>"
 no_activation
-run 0 env MOCK_MOVED_HEAD=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa "$r640_remote"
+run 0 env MOCK_MOVED_HEAD="$moved_head" "$r640_remote"
 called 'ssh<-t><r640-0>'
 called 'sudo<-v>'
 called "sudo<nixos-rebuild><switch><--flake><$r640_pin#r640-0>"
@@ -270,5 +271,9 @@ grep -Fxq "rollback_command=sudo nixos-rebuild switch --rollback --flake $MOCK_P
 output 'Switch completed'
 run 1 env MOCK_CODEX_VERSION=0.0.0 "$r640_remote"
 output 'activated Codex is 0.0.0, expected 1.2.3'
+
+run 0 env MOCK_HOST=r640-0 MOCK_MOVED_HEAD="$moved_head" "$r640"
+called "sudo<nixos-rebuild><switch><--flake><$MOCK_PRIMARY#r640-0>"
+grep -Fxq "head=$moved_head" "$MOCK_ROLLBACK"
 
 printf 'Machine switch contract checks passed.\n'

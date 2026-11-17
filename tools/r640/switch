@@ -117,6 +117,9 @@ printf 'System generations before switch:\n%s\n' "$generations"
 printf 'Sudo may prompt for your password before activation.\n'
 sudo -v
 sudo install -d -m 0700 /var/lib/nix-arbor-r640-switch
+if [[ -z $expected_head ]]; then
+  head=$(git -C "$repo_root" rev-parse --verify HEAD)
+fi
 {
   printf 'timestamp_utc=%s\n' "$timestamp"
   printf 'checkout=%s\nbranch=%s\nhead=%s\nflake=%s\n' "$repo_root" "$branch" "$head" "$flake_ref"
