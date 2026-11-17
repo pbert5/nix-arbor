@@ -4,6 +4,8 @@
   profiles = [
     "server"
     "vscodeRemote"
+    "arborParticipant"
+    "privateYggParticipant"
   ];
   hardware.snapshot = {
     format = "arbor/hardware";

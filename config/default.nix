@@ -146,12 +146,62 @@ let
     (import ./machines/r640-0/storage.nix)
     (import ./machines/r640-0/management.nix)
   ];
+  arborParticipant = [
+    inputs.arbor-registry.nixosModules.default
+    inputs.arbor-registry.nixosModules.service-contract
+    (
+      { lib, ... }:
+      {
+        cluster.registry.enable = true;
+        cluster.registry.runtime = {
+          enable = true;
+          stateDirectory = "arbor-registry-canary-v1";
+          transportStateDirectory = "arbor-registry-transport-canary-v1";
+          bootstrapAuthoritiesFile = "/var/lib/arbor-registry-canary-v1/bootstrap-authorities.json";
+          transportRealmId = "nix-arbor-live-v1";
+          transportProtocolEpoch = 1;
+          transportListen = [ ];
+          transportBootstrapPeers = [ ];
+        };
+
+        # The pinned status probe exposes the socket token in its process arguments.
+        systemd.services.arbor-runtime-status = {
+          enable = false;
+          wantedBy = lib.mkForce [ ];
+        };
+        systemd.timers.arbor-runtime-status = {
+          enable = false;
+          wantedBy = lib.mkForce [ ];
+        };
+      }
+    )
+  ];
+  privateYggParticipant = [
+    inputs.yggdrasil-private.nixosModules.default
+    (
+      { config, pkgs, ... }:
+      {
+        # The provider module stays dormant until it can consume runtime enrollment.
+        _module.args = {
+          hostName = config.networking.hostName;
+          hostInventory.dendrites = [ "network/yggdrasil-private" ];
+          site.networks.privateYggdrasil.networkManager = {
+            enable = true;
+            package = inputs.arbor-network-manager.packages.${pkgs.stdenv.hostPlatform.system}.default;
+            socket = "/run/arbor/ygg-provider.sock";
+          };
+        };
+      }
+    )
+  ];
   machines = inputs.arbor-manager.lib.mkMachines {
     inherit inputs;
     machinesPath = ./machines;
     profiles = {
       inherit
+        arborParticipant
         desktop
+        privateYggParticipant
         server
         r640
         vscodeRemote

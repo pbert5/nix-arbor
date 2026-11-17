@@ -3,5 +3,7 @@
   profiles = [
     "server"
     "r640"
+    "arborParticipant"
+    "privateYggParticipant"
   ];
 }
