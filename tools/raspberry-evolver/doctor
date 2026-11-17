@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+set -eu
+if [[ ${1-} == --help || ${1-} == -h ]]; then
+  printf '%s\n' 'Usage: doctor [--image RAW_IMAGE]' 'Report read-only image-building and personalization prerequisites.'
+  exit 0
+fi
+image=
+if (( $# == 2 )) && [[ $1 == --image ]]; then
+  image=$2
+elif (( $# )); then
+  printf '%s\n' 'Usage: doctor [--image RAW_IMAGE]' >&2
+  exit 2
+fi
+for tool in nix python3 git lsblk sfdisk debugfs e2fsck blkid zstd ssh; do
+  if command -v "$tool" >/dev/null 2>&1; then
+    printf '%s: available\n' "$tool"
+  else
+    printf '%s: missing (install with nix shell or your system package manager if needed)\n' "$tool"
+  fi
+done
+if command -v nix >/dev/null 2>&1; then
+  printf 'Nix system: '
+  nix config show system 2>/dev/null || printf '%s\n' 'unavailable'
+  printf 'Nix extra platforms: '
+  nix config show extra-platforms 2>/dev/null || printf '%s\n' 'unavailable'
+  builders=$(nix config show builders 2>/dev/null || true)
+  if [[ -n $builders ]]; then printf '%s\n' 'Remote builders: configured (not tested)'; else printf '%s\n' 'Remote builders: none configured'; fi
+  if [[ -r /proc/sys/fs/binfmt_misc/qemu-aarch64 ]] && [[ $(</proc/sys/fs/binfmt_misc/qemu-aarch64) == enabled* ]]; then
+    printf '%s\n' 'aarch64 binfmt: registered (not tested)'
+  else
+    printf '%s\n' 'aarch64 binfmt: not registered under qemu-aarch64'
+  fi
+  printf '%s\n' 'Working aarch64 build route: unverified; configuration alone is not proof.'
+  printf '%s\n' 'Verify a native/approved remote ARM builder or working binfmt/QEMU with an actual aarch64 build.'
+fi
+state=${XDG_STATE_HOME:-${HOME:?HOME is required}/.local/state}
+if [[ $state != /* ]]; then
+  printf "%s\n" "XDG_STATE_HOME must be an absolute path." >&2
+  exit 1
+fi
+probe=$state
+while [[ ! -d $probe && $probe != / ]]; do probe=${probe%/*}; [[ -n $probe ]] || probe=/; done
+printf 'Private state location: %s\n' "$state/raspberry-evolver"
+if command -v df >/dev/null 2>&1; then df -Pk "$probe"; fi
+if [[ -n $image ]]; then
+  if [[ ! -f $image ]]; then printf '%s\n' 'RAW_IMAGE must be an existing regular file.' >&2; exit 1; fi
+  bytes=$(stat -Lc %s -- "$image")
+  printf 'Private copy and root staging upper bound: %s bytes (twice the raw image size).\n' "$((bytes * 2))"
+else
+  printf '%s\n' 'Planning estimate: up to 64000000000 bytes for a 32 GB raw image copy plus equally sized root staging.'
+fi
+printf '%s\n' 'Also allow for the clean input, compressed archive, Nix build/store space and filesystem overhead; use --image with the actual raw image for a tighter estimate.'
+printf '%s\n' 'No builder test, privilege escalation, image creation or device write was performed.'
