@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+set -eu
+if [[ ${1-} == --help || ${1-} == -h ]]; then
+  printf '%s\n' 'Usage: doctor' 'Report read-only image-building and personalization prerequisites.'
+  exit 0
+fi
+if (( $# )); then
+  printf '%s\n' 'Usage: doctor' >&2
+  exit 2
+fi
+for tool in nix python3 git lsblk sfdisk debugfs blkid zstd ssh; do
+  if command -v "$tool" >/dev/null 2>&1; then
+    printf '%s: available\n' "$tool"
+  else
+    printf '%s: missing (install with nix shell or your system package manager if needed)\n' "$tool"
+  fi
+done
+if command -v nix >/dev/null 2>&1; then
+  printf 'Nix system: '
+  nix config show system 2>/dev/null || printf '%s\n' 'unavailable'
+  printf 'Nix extra platforms: '
+  nix config show extra-platforms 2>/dev/null || printf '%s\n' 'unavailable'
+  printf '%s\n' 'An advertised platform or builder is not proof of a working aarch64 build route.'
+  printf '%s\n' 'Verify a native/approved remote ARM builder or working binfmt/QEMU with an actual aarch64 build.'
+fi
+state=${XDG_STATE_HOME:-${HOME:?HOME is required}/.local/state}
+if [[ $state != /* ]]; then
+  printf "%s\n" "XDG_STATE_HOME must be an absolute path." >&2
+  exit 1
+fi
+probe=$state
+while [[ ! -d $probe && $probe != / ]]; do probe=${probe%/*}; [[ -n $probe ]] || probe=/; done
+printf 'Private state location: %s\n' "$state/raspberry-evolver"
+if command -v df >/dev/null 2>&1; then df -Pk "$probe"; fi
+printf '%s\n' 'Allow space for the compressed archive, uncompressed source, private image, ext4 staging and verification; exact bytes depend on the built image.'
+printf '%s\n' 'No builder test, privilege escalation, image creation or device write was performed.'
