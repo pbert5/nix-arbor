@@ -2,28 +2,35 @@
 set -eu
 key=/var/lib/raspberry-evolver/bootstrap/tailscale.authkey
 status=/run/raspberry-evolver/bootstrap.status
-mkdir -p "${status%/*}"
+rejected=${status%/*}/rejected.sha256
+install -d -m 0755 "${status%/*}"
 umask 077
-state() { printf '%s\n' "$1" > "$status"; }
+exec 9>/run/lock/raspberry-evolver-bootstrap.lock
+flock -n 9 || exit 0
+state() { printf '%s\n' "$1" > "$status"; chmod 0644 "$status"; }
 inspect() {
-  local response
+  local response profiles prefs lock_status
   response=$(timeout 15 tailscale status --json 2>/dev/null) || { state indeterminate; return 2; }
-  if jq -e '.BackendState == "Running" and .Self != null and .Self.Online == true and (.Self.TailscaleIPs | length > 0)' >/dev/null <<<"$response"; then
+  if jq -e '.BackendState == "Running" and .HaveNodeKey == true and (.Self.ID // "") != "" and (.Self.TailscaleIPs | type == "array" and length > 0)' >/dev/null <<<"$response"; then
+    lock_status=$(timeout 15 tailscale lock status --json 2>/dev/null) || { state indeterminate; return 2; }
+    if jq -e '.Enabled == true and .NodeKeySigned == false' >/dev/null <<<"$lock_status"; then
+      state pending-approval
+      return 2
+    fi
+    jq -e '.Enabled == false or (.Enabled == true and .NodeKeySigned == true)' >/dev/null <<<"$lock_status" || { state indeterminate; return 2; }
     state enrolled
-    rm -f -- "$key"
+    rm -f -- "$key" "$rejected"
     return 0
   fi
   if jq -e '.BackendState == "NeedsMachineAuth"' >/dev/null <<<"$response"; then
     state pending-approval
-    return 0
+    return 2
   fi
-  # Status alone cannot establish whether a prior identity is persisted.
-  if jq -e '.BackendState == "NeedsLogin" and ((.Self.ID // "") == "")' >/dev/null <<<"$response"; then
-    local profiles prefs
+  if jq -e '.BackendState == "NeedsLogin" and (.Self.ID // "") == "" and (.HaveNodeKey // false) == false' >/dev/null <<<"$response"; then
     profiles=$(timeout 15 tailscale switch --list --json 2>/dev/null) || { state indeterminate; return 2; }
     prefs=$(timeout 15 tailscale debug prefs 2>/dev/null) || { state indeterminate; return 2; }
     if jq -e 'type == "array" and length == 0' >/dev/null <<<"$profiles" &&
-       jq -e 'type == "object" and has("Config") and .Config == null' >/dev/null <<<"$prefs"; then
+       jq -e 'type == "object" and has("Config") and (.Config == null or (.Config | type == "object" and (.NodeID // "") == ""))' >/dev/null <<<"$prefs"; then
       return 1
     fi
   fi
@@ -38,9 +45,23 @@ if [ ! -s "$key" ]; then
   state missing-key
   exit 0
 fi
-state retrying
-# Neither the key contents nor daemon output are sent to the journal.
-timeout 60 tailscale up --auth-key="file:$key" --accept-dns=false >/dev/null 2>&1 || true
-result=0
-inspect || result=$?
-[ "$result" -eq 0 ] || state indeterminate
+fingerprint=$(sha256sum < "$key")
+if [ -f "$rejected" ] && [ "$(cat "$rejected")" = "$fingerprint" ]; then
+  state needs-new-key
+  exit 0
+fi
+for delay in 10 20 0; do
+  state retrying
+  output=$(timeout 60 tailscale up --auth-key="file:$key" --accept-dns=false 2>&1) || true
+  result=0
+  inspect || result=$?
+  [ "$result" -ne 0 ] || exit 0
+  [ "$result" -eq 1 ] || exit 0
+  if [ "$output" = 'backend error: invalid authkey' ]; then
+    printf '%s\n' "$fingerprint" > "$rejected"
+    state needs-new-key
+    exit 0
+  fi
+  [ "$delay" -eq 0 ] || sleep "$delay"
+done
+state indeterminate
