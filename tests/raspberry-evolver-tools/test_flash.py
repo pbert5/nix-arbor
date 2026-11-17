@@ -145,8 +145,9 @@ class FlashConfirmationTests(unittest.TestCase):
                 image = pathlib.Path(directory) / 'image.img'
                 image.write_bytes(b'hello')
                 pathlib.Path(str(image) + '.json').write_text(json.dumps({
-                    'schema_version': 1, 'result_size': 5,
-                    'result_sha256': '2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824'}))
+                    'schema_version': 1, 'model': 'Raspberry Pi 4', 'hostname': 'raspberry-evolver',
+                    'source_revision': 'a' * 40, 'lock_sha256': 'b' * 64, 'clean_sha256': 'c' * 64,
+                    'personalized': True, 'result_size': 5, 'result_sha256': '2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824'}))
                 image_device = image.stat().st_dev
                 source_id = f'{os.major(image_device)}:{os.minor(image_device)}'
                 target_id = '240:0'
