@@ -12,6 +12,12 @@
     { "label": "Git: Branch Overview", "type": "shell", "command": "git branch -vv", "problemMatcher": [] },
     { "label": "Submodules: Update/Initialize", "type": "shell", "command": "git submodule update --init", "problemMatcher": [] },
 
+    { "label": "Arbor: Registry / Check Services", "type": "process", "command": "${workspaceFolder}/tools/arbor/registry", "args": ["status", "${input:registryHost}"], "problemMatcher": [] },
+    { "label": "Arbor: Registry / Inspect Identity", "type": "process", "command": "${workspaceFolder}/tools/arbor/registry", "args": ["inspect", "${input:registryHost}"], "problemMatcher": [] },
+    { "label": "Arbor: Registry / Show Summary", "type": "process", "command": "${workspaceFolder}/tools/arbor/registry", "args": ["summary", "${input:registryHost}"], "problemMatcher": [] },
+    { "label": "Arbor: Registry / Initialize or Verify Self-Root", "type": "process", "command": "${workspaceFolder}/tools/arbor/registry", "args": ["init-self", "${input:registryHost}"], "problemMatcher": [] },
+    { "label": "Arbor: Registry / Restart Registry and Verify Identity", "type": "process", "command": "${workspaceFolder}/tools/arbor/registry", "args": ["restart-check", "${input:registryHost}"], "problemMatcher": [] },
+
     { "label": "Arbor: Machines / Check r640-0 Locally", "type": "process", "command": "${workspaceFolder}/tools/machines/r640-0/switch", "args": ["--check"], "problemMatcher": [] },
     { "label": "Arbor: Machines / Check r640-0 via SSH", "type": "process", "command": "${workspaceFolder}/tools/machines/r640-0/remote-switch", "args": ["--check"], "problemMatcher": [] },
     { "label": "Arbor: Machines / Check eVolver Locally", "type": "process", "command": "${workspaceFolder}/tools/machines/evolver/switch", "args": ["--check"], "problemMatcher": [] },
@@ -52,6 +58,7 @@
     { "id": "agentTask", "type": "promptString", "description": "Task slug" },
     { "id": "agentName", "type": "promptString", "description": "Agent or role name", "default": "agent" },
     { "id": "sshGrantQuery", "type": "promptString", "description": "Public SSH key fingerprint, comment, or source" },
+    { "id": "registryHost", "type": "pickString", "description": "Registry target host", "options": ["r640-0", "eVolver"] },
     { "id": "codexHost", "type": "pickString", "description": "Codex target host", "options": ["r640-0", "eVolver"] },
     { "id": "vscodeHost", "type": "pickString", "description": "VS Code target host", "options": ["r640-0", "eVolver", "desktoptoodle"] },
     { "id": "nixpkgsRevision", "type": "promptString", "description": "Full 40-character upstream Nixpkgs commit SHA" },

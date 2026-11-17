@@ -1,5 +1,7 @@
 # Local Registry canary
 
+**Historical activation procedure.** The eVolver generation 10 test output below is archived. Both hosts now run the Registry services and eVolver has advanced to generation 11. Use the [local Registry commands](../tools/arbor/README.md#local-registry) for current identity and service operations.
+
 This preparation starts a local Registry and transport on r640-0 and eVolver. It does not open a network listener, enroll peers, or establish a cluster. Private Ygg remains dormant. The status timer is masked because its upstream probe exposes a token in process arguments.
 
 The new `/var/lib/arbor-registry-canary-v1` and `/var/lib/arbor-registry-transport-canary-v1` paths are separate from historical state. Do not migrate, remove, or reuse the historical paths. The runtime uses `/run/arbor-registry` and `/run/arbor-registry-transport`; stop if either already exists or a Registry process is running. Do not print token or identity contents. Repeat all checks immediately before each host's test, with an independent console available. Keep existing fixture state intact.
