@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import pathlib
+import re
 import stat
 import struct
 import subprocess
@@ -58,8 +59,10 @@ def validate_graph(graph, selected, mounted, swaps, source_dev, image_size):
     if selected not in graph or graph[selected]['type'] != 'disk':
         raise SafetyError('select a resolved whole disk, not a partition')
     disk = graph[selected]
-    if not disk['identity']:
-        raise SafetyError('device has no stable serial or WWID')
+    if (disk.get('identity_kind') != 'mmc-cid'
+            or not re.fullmatch(r'[0-9a-fA-F]{32}', disk.get('identity', ''))
+            or not int(disk['identity'], 16)):
+        raise SafetyError('card identity is ambiguous; use a native MMC/SD reader exposing its card CID')
     if disk['size'] < MIN_CARD_BYTES or disk['size'] < image_size:
         raise SafetyError('device is too small: use a 32 GB or larger card that fits the image')
     if source_dev not in graph or graph[source_dev]['type'] == 'virtual':
@@ -185,17 +188,18 @@ def snapshot():
         if str(real).startswith('/sys/devices/virtual/') and kind == 'disk':
             kind = 'virtual'
         identity = ''
-        for path in (entry / 'device/wwid', entry / 'wwid', entry / 'device/serial'):
-            try:
-                identity = read(path)
-            except OSError:
-                continue
-            if identity:
-                break
+        identity_kind = ''
+        # USB reader serials generally identify the reader, not inserted media.
+        try:
+            if (entry / 'device/subsystem').resolve(strict=True) == pathlib.Path('/sys/bus/mmc'):
+                identity = read(entry / 'device/cid')
+                identity_kind = 'mmc-cid'
+        except OSError:
+            pass
         node = {'type': kind, 'size': int(read(entry / 'size')) * 512,
                 'ro': read(entry / 'ro') != '0', 'children': [],
                 'holders': sorted(p.name for p in (entry / 'holders').iterdir()),
-                'identity': identity, 'name': entry.name,
+                'identity': identity, 'identity_kind': identity_kind, 'name': entry.name,
                 'model': read(entry / 'device/model') if (entry / 'device/model').exists() else ''}
         if dev in graph:
             raise SafetyError('duplicate block device identity')
@@ -284,7 +288,7 @@ def main():
         members = validate_graph(graph, selected, mounted, swaps, source_dev, image_info.st_size)
         disk = graph[selected]
         print(f'Image: {os.path.realpath(args.image)}\nBytes: {image_info.st_size}\nSHA-256: {sha}')
-        print(f'Device: {path} ({selected})\nModel: {disk["model"] or "unknown"}\nStable identity: {disk["identity"]}\nCapacity: {disk["size"]} bytes')
+        print(f'Device: {path} ({selected})\nModel: {disk["model"] or "unknown"}\nCard CID: {disk["identity"]}\nCapacity: {disk["size"]} bytes')
         print('Partitions: ' + (', '.join(graph[d]['name'] for d in sorted(members - {selected})) or 'none'))
         print('Visible mountpoints on target or partitions: none')
         print('Inspection scope: visible mounts, swap, source filesystem, holders and supported block topology.')

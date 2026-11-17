@@ -65,7 +65,7 @@ class FlashTests(unittest.TestCase):
 
     def test_graph_rejects_active_or_unresolved_devices(self):
         graph = {'8:0': {'type': 'disk', 'size': 32000000000, 'ro': False,
-                          'children': ['8:1'], 'holders': [], 'identity': 'serial'},
+                          'children': ['8:1'], 'holders': [], 'identity': 'a' * 32, 'identity_kind': 'mmc-cid'},
                  '8:1': {'type': 'part', 'size': 100, 'ro': False,
                           'children': [], 'holders': [], 'identity': ''},
                  '9:0': {'type': 'disk', 'size': 64000000000, 'ro': False,
@@ -74,6 +74,10 @@ class FlashTests(unittest.TestCase):
         graph['8:0']['size'] = 64000000000
         flash.validate_graph(graph, '8:0', set(), set(), '9:0', 10)
         graph['8:0']['size'] = 32000000000
+        graph['8:0']['identity_kind'] = 'reader-serial'
+        with self.assertRaises(flash.SafetyError):
+            flash.validate_graph(graph, '8:0', set(), set(), '9:0', 10)
+        graph['8:0']['identity_kind'] = 'mmc-cid'
         with self.assertRaises(flash.SafetyError):
             flash.validate_graph(graph, '8:0', set(), set(), '9:0', 33000000000)
         for active, swap, source in [({'8:1'}, set(), '9:0'), (set(), {'8:1'}, '9:0'),
@@ -157,7 +161,7 @@ class FlashConfirmationTests(unittest.TestCase):
                 self.assertNotEqual(source_id, target_id)
                 graph = {
                     target_id: {'type': 'disk', 'size': 32000000000, 'ro': False,
-                                'children': ['240:1'], 'holders': [], 'identity': 'serial',
+                                'children': ['240:1'], 'holders': [], 'identity': 'a' * 32, 'identity_kind': 'mmc-cid',
                                 'model': 'test', 'name': 'fake'},
                     '240:1': {'type': 'part', 'size': 100, 'ro': False, 'children': [],
                               'holders': [], 'identity': '', 'name': 'fake1'},
@@ -170,7 +174,7 @@ class FlashConfirmationTests(unittest.TestCase):
                 stage = 2 if scenario.startswith('final_') else 1
                 reason = scenario.removeprefix('final_')
                 if reason == 'identity':
-                    snapshots[stage][0][target_id]['identity'] = 'replacement'
+                    snapshots[stage][0][target_id]['identity'] = 'b' * 32
                 if reason == 'mounted':
                     snapshots[stage][1].add('240:1')
                 if reason == 'swap':
@@ -200,7 +204,7 @@ class FlashConfirmationTests(unittest.TestCase):
                     stack.enter_context(patch.object(flash.os, 'geteuid', return_value=1000 if scenario in ('dry_run', 'dry_run_denied', 'elevate') else 0))
                     elevated = stack.enter_context(patch.object(flash, 'elevate'))
                     stack.enter_context(patch.object(flash, 'instance_lock', return_value=contextlib.nullcontext()))
-                    confirm = stack.enter_context(patch('builtins.input', return_value='no' if scenario == 'declined' else '/dev/fake serial 32000000000'))
+                    confirm = stack.enter_context(patch('builtins.input', return_value='no' if scenario == 'declined' else '/dev/fake ' + 'a' * 32 + ' 32000000000'))
                     stack.enter_context(patch.object(flash.os.path, 'realpath', side_effect=fake_realpath))
                     stack.enter_context(patch.object(flash.os, 'stat', side_effect=fake_stat))
                     stack.enter_context(patch.object(flash.os, 'fstat', side_effect=fake_fstat))
