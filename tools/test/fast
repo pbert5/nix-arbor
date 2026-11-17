@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage: tools/test/fast [-h | --help]
+
+Run the checkout test tool, GitHub runner CLI, and SSH public-key contracts.
+Requires Bash, Python 3, ssh-keygen, and Linux utilities including script.
+For Docker, VM, and Nix-dependent tests, see tools/test/README.md.
+USAGE
+}
+
+case $#:${1-} in
+  0:) ;;
+  1:-h|1:--help) usage; exit 0 ;;
+  *) usage >&2; exit 2 ;;
+esac
+
+root=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd -P)
+cd -- "$root"
+
+printf 'Running test entry point contract...\n'
+tests/tool-test/contract.sh
+printf 'Running GitHub runner CLI contract (mock Docker and GitHub)...\n'
+tests/github/runners-contract.sh
+printf 'Running SSH public-key contract...\n'
+python3 tests/ssh/add-key.py
