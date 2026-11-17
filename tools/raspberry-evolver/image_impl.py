@@ -13,6 +13,7 @@ import tempfile
 import uuid
 import re
 import shlex
+import signal
 import sys
 import stat
 import warnings
@@ -431,7 +432,7 @@ def read_wifi(path):
             os.close(fd)
 
 
-def main():
+def _main():
     parser = argparse.ArgumentParser(description=__doc__)
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--build-only', action='store_true', help='build a clean image without credentials')
@@ -457,6 +458,8 @@ def main():
             destination = directory / 'personalized.img'
             personalize(source, destination, key, wifi)
         except BaseException:
+            (directory / 'personalized.img.json').unlink(missing_ok=True)
+            (directory / 'personalized.img').unlink(missing_ok=True)
             directory.rmdir()
             raise
         print(f'Personalized image: {destination}')
@@ -467,8 +470,31 @@ def main():
         print('Image operation failed. Check the clean image, private storage, tools, terminal and selected profile.', file=sys.stderr)
         return 1
     except KeyboardInterrupt:
-        print('Image operation interrupted; incomplete output was removed.', file=sys.stderr)
+        print('Image operation interrupted; check private state for incomplete output.', file=sys.stderr)
         return 1
+
+
+def main():
+    signals = (signal.SIGTERM, signal.SIGHUP)
+    previous = {number: signal.getsignal(number) for number in signals}
+
+    def terminate(_number, _frame):
+        # Avoid a second termination interrupting sensitive-file cleanup.
+        for number in signals:
+            signal.signal(number, signal.SIG_IGN)
+        raise KeyboardInterrupt
+
+    try:
+        for number in signals:
+            signal.signal(number, terminate)
+        try:
+            return _main()
+        except KeyboardInterrupt:
+            print('Image operation interrupted; check private state for incomplete output.', file=sys.stderr)
+            return 1
+    finally:
+        for number, handler in previous.items():
+            signal.signal(number, handler)
 
 
 if __name__ == '__main__':

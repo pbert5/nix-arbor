@@ -7,6 +7,9 @@ import contextlib
 import io
 import json
 import os
+import signal
+import sys
+import time
 import tempfile
 import unittest
 from unittest import mock
@@ -126,6 +129,53 @@ class ImageTests(unittest.TestCase):
             image.write_clean_artifact(source, suspect_machine, 'a' * 40, 'b' * 64)
             with self.assertRaises(ValueError):
                 image.personalize(suspect_machine, root / 'rejected-machine.img', 'tskey-auth-FAKE123-example')
+            runner = root / 'signal_fixture.py'
+            runner.write_text("""import importlib.util, pathlib, shutil, sys, time
+spec = importlib.util.spec_from_file_location('image_tool', sys.argv[1])
+image = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(image)
+source, destination, marker, case = map(pathlib.Path, sys.argv[2:])
+image.private_directory = lambda: destination
+image.prompt_key = lambda: 'tskey-auth-FAKE123-example'
+original_open = pathlib.Path.open
+original_copy = shutil.copyfileobj
+def wait():
+    marker.touch()
+    while True:
+        time.sleep(.1)
+def tracked_open(path, *args, **kwargs):
+    if case.name == 'staging' and path == source and list(destination.glob('staging-*/key')):
+        wait()
+    return original_open(path, *args, **kwargs)
+def partial_copy(src, dst, *args):
+    if case.name == 'partial':
+        dst.write(src.read(4096))
+        dst.flush()
+        wait()
+    return original_copy(src, dst, *args)
+pathlib.Path.open = tracked_open
+shutil.copyfileobj = partial_copy
+sys.argv = ['image', '--from', str(source)]
+raise SystemExit(image.main())
+""")
+            for sig in (signal.SIGTERM, signal.SIGHUP):
+                for case in ('staging', 'partial'):
+                    with self.subTest(signal=sig, case=case):
+                        stage_dir = root / f'signal-{sig}-{case}'
+                        stage_dir.mkdir(mode=0o700)
+                        marker = root / f'marker-{sig}-{case}'
+                        process = subprocess.Popen([sys.executable, str(runner), str(SCRIPT.with_name('image_impl.py')),
+                                                    str(clean), str(stage_dir), str(marker), case],
+                                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                        deadline = time.monotonic() + 15
+                        while not marker.exists() and process.poll() is None and time.monotonic() < deadline:
+                            time.sleep(.05)
+                        self.assertTrue(marker.exists(), 'fixture did not reach sensitive staging')
+                        process.send_signal(sig)
+                        stdout, stderr = process.communicate(timeout=15)
+                        self.assertNotIn('tskey-auth-FAKE123-example', stdout + stderr)
+                        self.assertNotEqual(process.returncode, 0)
+                        self.assertFalse(stage_dir.exists())
             cli_directory = root / 'cli'
             cli_directory.mkdir(mode=0o700)
             captured = io.StringIO()
