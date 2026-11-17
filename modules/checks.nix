@@ -29,6 +29,20 @@ in
     in
     {
       checks = {
+        fastfetch-status =
+          pkgs.runCommand "nix-arbor-fastfetch-status"
+            {
+              nativeBuildInputs = [
+                pkgs.bash
+                pkgs.coreutils
+                pkgs.jq
+              ];
+            }
+            ''
+              cd ${src}
+              bash tests/fastfetch-status.sh
+              touch $out
+            '';
         free-rtk = import ./rtk-check.nix {
           inherit
             config

@@ -83,6 +83,7 @@ let
         home-manager.users.ash = {
           imports = [
             inputs.ashzsh.homeModules.default
+            ../modules/fastfetch-arbor.nix
             inputs.tilingDesktop.homeModules.hyprland
             inputs.ashes-desktop-apps.homeModules.default
           ];

@@ -2,7 +2,10 @@
 {
   programs.zsh.enable = true;
   home-manager.users.madeline = {
-    imports = [ inputs.ashzsh.homeModules.default ];
+    imports = [
+      inputs.ashzsh.homeModules.default
+      ../../modules/fastfetch-arbor.nix
+    ];
     home.username = "madeline";
     home.homeDirectory = "/home/madeline";
     home.stateVersion = "26.05";

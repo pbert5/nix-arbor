@@ -3,7 +3,12 @@
   # Export child component modules from one neutral composition boundary.
   config.flake = {
     homeModules = {
-      ashzsh = inputs.ashzsh.homeModules.default;
+      ashzsh = { ... }: {
+        imports = [
+          inputs.ashzsh.homeModules.default
+          ./fastfetch-arbor.nix
+        ];
+      };
       tilingDesktop = inputs.tilingDesktop.homeModules.default;
     };
     nixosModules = {

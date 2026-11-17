@@ -7,6 +7,7 @@
         inherit pkgs;
         modules = [
           inputs.ashzsh.homeModules.default
+          ./fastfetch-arbor.nix
           {
             home = {
               username = "ash";
