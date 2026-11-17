@@ -42,6 +42,7 @@ git -C "$checkout" commit -q -m 'declare direct submodule and environment tools'
 REAL_GIT=$(command -v git)
 export REAL_GIT
 export NIX_CALL="$fixture/nix-call"
+export FSMONITOR_CALL="$fixture/fsmonitor-call"
 export PATH="$fixture/bin:$PATH"
 cat > "$fixture/bin/git" <<'STUB'
 #!/usr/bin/env bash
@@ -58,6 +59,11 @@ STUB
 cat > "$fixture/bin/gh" <<'STUB'
 #!/usr/bin/env bash
 exit 1
+STUB
+cat > "$fixture/bin/fsmonitor" <<'STUB'
+#!/usr/bin/env bash
+touch "$FSMONITOR_CALL"
+printf 'fixture\0'
 STUB
 cp -- "$fixture/bin/gh" "$fixture/bin/codex"
 chmod +x "$fixture/bin/"*
@@ -88,6 +94,7 @@ expect_exit 2 "$shell" --check extra >/dev/null 2>&1
 [[ ! -e $NIX_CALL ]] || fail 'help or invalid arguments invoked Nix'
 
 touch -t 200001010000 "$checkout/flake.nix"
+git -C "$checkout" config core.fsmonitor "$fixture/bin/fsmonitor"
 cp -- "$checkout/.git/index" "$fixture/index-before"
 cp -- "$checkout/.git/config" "$fixture/config-before"
 status=$(GIT_DIR="$foreign/.git" GIT_WORK_TREE="$foreign" "$setup" --status --json)
@@ -98,6 +105,7 @@ jq -e --arg repo "$checkout" '
 ' <<< "$status" > /dev/null || fail 'status must inspect the checkout containing the command'
 cmp -s "$fixture/index-before" "$checkout/.git/index" || fail 'status rewrote the Git index'
 cmp -s "$fixture/config-before" "$checkout/.git/config" || fail 'status modified Git config'
+[[ ! -e $FSMONITOR_CALL ]] || fail 'status started the configured Git filesystem monitor'
 [[ ! -e "$checkout/components/direct child/.git" && ! -e $NIX_CALL ]] || fail 'status initialized a submodule or invoked Nix'
 
 mv -- "$checkout/flake.nix" "$fixture/flake.nix"

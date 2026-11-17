@@ -22,7 +22,9 @@ case "${1-}" in
     fi
     # shellcheck source=tools/env/checkout.bash
     source "$(dirname -- "${BASH_SOURCE[0]}")/checkout.bash"
+    # Status must neither refresh the index nor start a configured file monitor.
     CODEX_PREFLIGHT_SKIP_NIX=1 GIT_OPTIONAL_LOCKS=0 GH_NO_UPDATE_NOTIFIER=1 \
+      GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.fsmonitor GIT_CONFIG_VALUE_0=false \
       exec ./scripts/codex-preflight "$@"
     ;;
   '')
