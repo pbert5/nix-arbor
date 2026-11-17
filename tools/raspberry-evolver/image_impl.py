@@ -114,6 +114,15 @@ def write_clean_artifact(source, destination, revision, lock_hash):
 
 
 
+def unique_json_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError('Duplicate manifest key')
+        result[key] = value
+    return result
+
+
 def verify_clean_artifact(path):
     manifest_path = Path(str(path) + '.json')
     if path.is_symlink() or manifest_path.is_symlink() or not path.is_file() or not manifest_path.is_file():
@@ -121,8 +130,10 @@ def verify_clean_artifact(path):
     if manifest_path.stat().st_size > 65536:
         raise ValueError('Clean image manifest is too large')
     try:
-        manifest = json.loads(manifest_path.read_text())
-        valid = (type(manifest) is dict and manifest.get('schema_version') == 1
+        manifest = json.loads(manifest_path.read_text(), object_pairs_hook=unique_json_object)
+        valid = (type(manifest) is dict
+                 and set(manifest) == {'schema_version', 'model', 'hostname', 'source_revision',
+                                      'lock_sha256', 'clean_sha256', 'result_size', 'result_sha256', 'personalized'} and manifest.get('schema_version') == 1
                  and manifest.get('model') == 'Raspberry Pi 4'
                  and manifest.get('hostname') == 'raspberry-evolver'
                  and manifest.get('personalized') is False

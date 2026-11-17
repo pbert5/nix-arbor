@@ -48,6 +48,14 @@ class ImageTests(unittest.TestCase):
             self.assertFalse(manifest['personalized'])
             self.assertEqual(json.loads(Path(str(destination) + '.json').read_text()), manifest)
             self.assertEqual(image.verify_clean_artifact(destination), manifest)
+            manifest_file = Path(str(destination) + '.json')
+            manifest_file.write_text(json.dumps(dict(manifest, unexpected='fake-sensitive-value')))
+            with self.assertRaises(ValueError):
+                image.verify_clean_artifact(destination)
+            manifest_file.write_text(json.dumps(manifest).replace('{', '{\"schema_version\": 1, ', 1))
+            with self.assertRaises(ValueError):
+                image.verify_clean_artifact(destination)
+            manifest_file.write_text(json.dumps(manifest))
             destination.write_bytes(b'tampered')
             with self.assertRaises(ValueError):
                 image.verify_clean_artifact(destination)
