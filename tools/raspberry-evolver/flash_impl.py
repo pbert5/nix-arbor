@@ -16,6 +16,7 @@ import sys
 import artifact
 
 SYS = pathlib.Path('/sys/class/block')
+MMC_BUS = pathlib.Path('/sys/bus/mmc')
 MIN_CARD_BYTES = 29_500_000_000  # Allow normal 32 GB cards with manufacturer rounding.
 CHUNK = 1024 * 1024
 
@@ -175,6 +176,16 @@ def mounted_devices(path=pathlib.Path('/proc/self/mountinfo')):
     return mounted
 
 
+def card_identity(entry):
+    # A USB reader serial generally identifies the reader, not inserted media.
+    try:
+        if (entry / 'device/subsystem').resolve(strict=True) == MMC_BUS:
+            return read(entry / 'device/cid'), 'mmc-cid'
+    except OSError:
+        pass
+    return '', ''
+
+
 def snapshot():
     # Btrfs can own multiple devices without sysfs holders.
     if pathlib.Path('/sys/module/btrfs').exists():
@@ -187,15 +198,7 @@ def snapshot():
         kind = 'part' if (entry / 'partition').exists() else 'disk'
         if str(real).startswith('/sys/devices/virtual/') and kind == 'disk':
             kind = 'virtual'
-        identity = ''
-        identity_kind = ''
-        # USB reader serials generally identify the reader, not inserted media.
-        try:
-            if (entry / 'device/subsystem').resolve(strict=True) == pathlib.Path('/sys/bus/mmc'):
-                identity = read(entry / 'device/cid')
-                identity_kind = 'mmc-cid'
-        except OSError:
-            pass
+        identity, identity_kind = card_identity(entry)
         node = {'type': kind, 'size': int(read(entry / 'size')) * 512,
                 'ro': read(entry / 'ro') != '0', 'children': [],
                 'holders': sorted(p.name for p in (entry / 'holders').iterdir()),

@@ -249,6 +249,27 @@ class FlashConfirmationTests(unittest.TestCase):
                         if scenario in ('declined', 'identity', 'mounted', 'swap', 'holder', 'disappeared'):
                             open_device.assert_not_called()
 
+class MediaIdentityTests(unittest.TestCase):
+    def test_native_mmc_cid_discovery_and_reader_refusal(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            bus = root / 'bus-mmc'
+            bus.mkdir()
+            entry = root / 'mmcblk0'
+            device = entry / 'device'
+            device.mkdir(parents=True)
+            (device / 'subsystem').symlink_to(bus)
+            (device / 'cid').write_text('a' * 32 + '\n')
+            with patch.object(flash, 'MMC_BUS', bus):
+                self.assertEqual(flash.card_identity(entry), ('a' * 32, 'mmc-cid'))
+                (device / 'subsystem').unlink()
+                (device / 'subsystem').symlink_to(root)
+                self.assertEqual(flash.card_identity(entry), ('', ''))
+                (device / 'subsystem').unlink()
+                (device / 'subsystem').symlink_to(bus)
+                (device / 'cid').unlink()
+                self.assertEqual(flash.card_identity(entry), ('', ''))
+
 class LocalLockTests(unittest.TestCase):
     def test_competing_instances_are_refused(self):
         with tempfile.TemporaryDirectory() as directory:
