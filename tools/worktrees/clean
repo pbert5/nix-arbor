@@ -1,0 +1,183 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  tools/worktrees/clean [--preview]
+  tools/worktrees/clean --apply PATH
+
+Preview lists linked worktrees and explains which ones are eligible.
+Apply removes one explicitly selected worktree. Confirm it is inactive first.
+Use the absolute path from preview or a path relative to your current directory.
+
+Eligible worktrees are clean, unlocked, on a local agent/<role>/<task> branch,
+and merged into local main. If remotes are configured, the commit must also be
+reachable from the cached origin/main. Apply preserves branch refs.
+USAGE
+}
+
+fail() {
+  printf 'worktrees clean: %s\n' "$*" >&2
+  exit 1
+}
+
+target=
+case "${1:---preview}:$#" in
+  --help:1|-h:1) usage; exit 0 ;;
+  --preview:0|--preview:1) ;;
+  --apply:2)
+    IFS= read -r -d '' target < <(realpath -ez -- "$2") || fail "cannot resolve path $2"
+    ;;
+  *) usage >&2; exit 2 ;;
+esac
+
+IFS= read -r -d '' root < <(realpath -ez -- "$(dirname -- "${BASH_SOURCE[0]}")/../..") ||
+  fail 'cannot locate the checkout containing the tool'
+IFS= read -r -d '' current < <(realpath -ez -- .) || fail 'cannot locate the current directory'
+
+# Ignore repository overrides inherited from callers such as Git hooks.
+local_git_vars=$(git rev-parse --local-env-vars)
+while IFS= read -r variable; do
+  unset "$variable"
+done <<< "$local_git_vars"
+
+export GIT_NO_REPLACE_OBJECTS=1 GIT_NO_LAZY_FETCH=1
+
+repo_git() {
+  local directory=$1
+  shift
+  git --no-optional-locks -c core.fsmonitor=false -C "$directory" "$@"
+}
+
+# Buffer NUL-delimited Git output and check the producer before using it.
+git_records() {
+  local destination=$1
+  local fd producer
+  shift
+  exec {fd}< <(repo_git "$@")
+  producer=$!
+  mapfile -d '' -t "$destination" <&"$fd"
+  exec {fd}<&-
+  wait "$producer"
+}
+
+prefix=$(repo_git "$root" rev-parse --show-prefix) && [[ -z $prefix ]] ||
+  fail 'tool is outside the checkout root'
+common_dir=$(repo_git "$root" rev-parse --path-format=absolute --git-common-dir) ||
+  fail 'cannot identify the checkout repository'
+remotes=$(repo_git "$root" remote) || fail 'cannot inspect configured remotes'
+git_records worktrees "$root" worktree list --porcelain -z || fail 'cannot list worktrees'
+[[ ${worktrees[0]:-} == 'worktree '* ]] || fail 'cannot identify the primary checkout'
+primary=${worktrees[0]#worktree }
+
+keep_reason() {
+  local path=$1 branch=$2 head=$3 locked=$4 prunable=$5
+  local prefix actual_common git_dir state status entry submodule local_refs
+  local -a index_entries contents
+
+  if [[ $path == "$primary" ]]; then
+    echo 'primary checkout'
+  elif [[ $root == "$path" || $current == "$path" || $current == "$path/"* ]]; then
+    echo 'current or tool checkout'
+  elif [[ $locked == yes ]]; then
+    echo 'locked worktree'
+  elif [[ $prunable == yes || ! -d $path ]]; then
+    echo 'missing or prunable worktree'
+  elif [[ -z $branch ]]; then
+    echo 'detached HEAD'
+  elif [[ ! $branch =~ ^refs/heads/agent/[^/]+/[^/]+$ ]]; then
+    echo 'branch is outside agent/<role>/<task>'
+  elif ! prefix=$(repo_git "$path" rev-parse --show-prefix) || [[ -n $prefix ]] ||
+       ! actual_common=$(repo_git "$path" rev-parse --path-format=absolute --git-common-dir) ||
+       [[ $actual_common != "$common_dir" ]]; then
+    echo 'checkout does not match the registered repository'
+  elif [[ $(repo_git "$path" symbolic-ref --quiet HEAD) != "$branch" ||
+          $(repo_git "$path" rev-parse --verify HEAD) != "$head" ]]; then
+    echo 'worktree HEAD changed or could not be verified'
+  elif ! repo_git "$root" merge-base --is-ancestor "$head" refs/heads/main; then
+    echo 'merge into local main is unverified'
+  elif [[ -n $remotes ]] &&
+       ! repo_git "$root" merge-base --is-ancestor "$head" refs/remotes/origin/main; then
+    echo 'publication to origin/main is unverified'
+  else
+    git_dir=$(repo_git "$path" rev-parse --absolute-git-dir) || {
+      echo 'cannot inspect worktree metadata'
+      return
+    }
+    for state in index.lock HEAD.lock MERGE_HEAD CHERRY_PICK_HEAD REVERT_HEAD rebase-apply rebase-merge sequencer BISECT_START; do
+      if [[ -e $git_dir/$state ]]; then
+        echo 'Git operation in progress'
+        return
+      fi
+    done
+
+    if ! local_refs=$(repo_git "$path" for-each-ref refs/bisect/ refs/rewritten/ refs/worktree/); then
+      echo 'cannot inspect worktree-local refs'
+      return
+    elif [[ -n $local_refs ]]; then
+      echo 'worktree-local refs'
+      return
+    fi
+
+    if [[ -e $git_dir/modules ]]; then
+      echo 'initialized submodule data'
+      return
+    fi
+
+    # Status can omit files hidden by index flags and contents under a gitlink.
+    if ! git_records index_entries "$path" ls-files -v --stage -z; then
+      echo 'cannot inspect index'
+      return
+    fi
+    shopt -s nullglob dotglob
+    for entry in "${index_entries[@]}"; do
+      case "$entry" in
+        [a-zS]' '*) echo 'index flags can hide local changes'; return ;;
+        ?' 160000 '*)
+          submodule=$path/${entry#*$'\t'}
+          contents=("$submodule"/*)
+          if [[ -L $submodule || ${#contents[@]} -ne 0 ]]; then
+            echo 'submodule directory contains local data'
+            return
+          fi
+          ;;
+      esac
+    done
+
+    if ! status=$(repo_git "$path" status --porcelain=v1 --untracked-files=all --ignored --ignore-submodules=none); then
+      echo 'cannot check worktree status'
+    elif [[ -n $status ]]; then
+      echo 'has local changes, untracked files, or ignored data'
+    fi
+  fi
+}
+
+path='' branch='' head='' locked=no prunable=no
+for record in "${worktrees[@]}"; do
+  case "$record" in
+    'worktree '*) path=${record#worktree } ;;
+    'HEAD '*) head=${record#HEAD } ;;
+    'branch '*) branch=${record#branch } ;;
+    locked|'locked '*) locked=yes ;;
+    prunable|'prunable '*) prunable=yes ;;
+    '')
+      if [[ -n $path && ( -z $target || $target == "$path" ) ]]; then
+        reason=$(keep_reason "$path" "$branch" "$head" "$locked" "$prunable")
+        if [[ -n $target ]]; then
+          [[ -z $reason ]] || fail "$reason: $(printf '%q' "$path")"
+          repo_git "$root" worktree remove -- "$path"
+          printf 'removed %q\n' "$path"
+          exit 0
+        elif [[ -n $reason ]]; then
+          printf 'keep     %q  (%s)\n' "$path" "$reason"
+        else
+          printf 'eligible %q\n' "$path"
+        fi
+      fi
+      path='' branch='' head='' locked=no prunable=no
+      ;;
+  esac
+done
+
+[[ -z $target ]] || fail "path is not a registered worktree: $(printf '%q' "$target")"
