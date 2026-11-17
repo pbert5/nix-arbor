@@ -257,6 +257,23 @@ class MountNamespaceTests(unittest.TestCase):
 
 class DisabledWriteTests(unittest.TestCase):
     def test_targeted_flash_is_fail_closed(self):
-        with patch.object(sys, 'argv', ['flash', '--write', 'image', '/dev/fake']):
-            with self.assertRaisesRegex(flash.SafetyError, 'disabled'):
+        for args in (['image', '/dev/fake'], ['--write', 'image', '/dev/fake'],
+                     ['image', '/dev/fake', '--write']):
+            with self.subTest(args=args), contextlib.ExitStack() as stack:
+                stack.enter_context(patch.object(sys, 'argv', ['flash', *args]))
+                stat_mock = stack.enter_context(patch.object(flash.os.path, 'realpath'))
+                open_mock = stack.enter_context(patch.object(flash, 'open', create=True))
+                snapshot = stack.enter_context(patch.object(flash, 'snapshot'))
+                confirm = stack.enter_context(patch('builtins.input'))
+                write = stack.enter_context(patch.object(flash, 'copy_and_verify'))
+                with self.assertRaisesRegex(flash.SafetyError, 'disabled'):
+                    flash.main()
+                for call in (stat_mock, open_mock, snapshot, confirm, write):
+                    call.assert_not_called()
+
+    def test_no_args_shows_inventory(self):
+        with patch.object(sys, 'argv', ['flash']), patch.object(flash.subprocess, 'run') as run:
+            with contextlib.redirect_stdout(io.StringIO()):
                 flash.main()
+            run.assert_called_once()
+            self.assertEqual(run.call_args.args[0][0], 'lsblk')
