@@ -12,12 +12,20 @@ ROOT = Path(__file__).resolve().parents[2]
 EXTRA = Path('config/access/extra-keys.json')
 
 
+def display_comment(comment):
+    return ''.join(
+        char if char.isprintable() or char in '\u200c\u200d'
+        else char.encode('unicode_escape').decode('ascii')
+        for char in comment
+    )
+
+
 def public_key_info(key):
     parts = key.split(maxsplit=2)
     # Expect one bare public key. OpenSSH's fingerprint command also accepts
     # authorized_keys options and private files, so check the input first.
     if (len(parts) < 2 or not parts[0].startswith(('ssh-', 'ecdsa-', 'sk-'))
-            or not key.replace('\t', ' ').isprintable()):
+            or any(char in key for char in '\x00\n\r')):
         raise ValueError('Expected one bare public SSH key')
     result = subprocess.run(
         ['ssh-keygen', '-l', '-E', 'sha256', '-f', '-'],
@@ -26,7 +34,7 @@ def public_key_info(key):
     if result.returncode:
         raise ValueError('Invalid public SSH key')
     bits, fingerprint, *_, algorithm = result.stdout.split()
-    comment = parts[2] if len(parts) == 3 else 'no comment'
+    comment = display_comment(parts[2]) if len(parts) == 3 else 'no comment'
     return f'{bits} {fingerprint} {comment} {algorithm}'
 
 

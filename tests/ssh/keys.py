@@ -3,9 +3,11 @@ import json
 import os
 from pathlib import Path
 import pty
+import select
 import shutil
 import stat
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -76,7 +78,8 @@ class KeysTest(unittest.TestCase):
     def test_list_defaults_to_the_checkout_containing_the_tool(self):
         shutil.copytree(TOOLS.parent, self.root / 'tools/ssh', symlinks=True)
         command = self.root / 'tools/ssh/keys/list'
-        listed = subprocess.run([str(command)], cwd=self.workspace, text=True, capture_output=True)
+        env = dict(os.environ, PATH=os.pathsep.join([str(Path(sys.executable).parent), os.environ['PATH']]))
+        listed = subprocess.run([str(command)], cwd=self.workspace, text=True, capture_output=True, env=env)
         self.assertEqual(listed.returncode, 0, listed.stderr)
         self.assertIn(self.fingerprint, listed.stdout)
 
@@ -110,6 +113,47 @@ class KeysTest(unittest.TestCase):
         self.assertEqual(cancelled.returncode, 0, cancelled.stderr)
         self.assertIn('Cancelled', cancelled.stdout)
         self.assertEqual(self.extra.read_bytes(), before)
+
+    def test_remove_requires_exact_row_when_fingerprint_is_shared(self):
+        ca = self.workspace / 'ca'
+        subprocess.run(['ssh-keygen', '-q', '-t', 'ed25519', '-N', '', '-f', str(ca)], check=True)
+        subprocess.run(
+            ['ssh-keygen', '-q', '-s', str(ca), '-I', 'disposable', '-n', 'fixture',
+             str(self.workspace / 'fixture.pub')],
+            check=True,
+        )
+        cert = (self.workspace / 'fixture-cert.pub').read_text().strip()
+        self.extra.write_text(json.dumps({'host-a': {'ash': [self.key, cert]}}))
+        before = self.extra.read_bytes()
+        ambiguous = self.remove('--yes')
+        self.assertNotEqual(ambiguous.returncode, 0)
+        self.assertEqual(self.extra.read_bytes(), before)
+
+        master, slave = pty.openpty()
+        try:
+            os.write(master, b'2\ny\n')
+            removed = self.call('remove', stdin=slave, timeout=10)
+        finally:
+            os.close(slave)
+            os.close(master)
+        self.assertEqual(removed.returncode, 0, removed.stderr)
+        self.assertEqual(json.loads(self.extra.read_text()), {'host-a': {'ash': [self.key]}})
+
+    def test_add_key_accepts_a_unicode_comment(self):
+        key = ' '.join(self.key.split()[:2]) + ' fixture 👩‍💻'
+        machine = self.root / 'config/machines/host-c'
+        machine.mkdir(parents=True)
+        (machine / 'default.nix').touch()
+        saved = subprocess.run(
+            [sys.executable, str(TOOLS.parent / 'add-key'), '--root', str(self.root)],
+            input=f'{key}\n1\n0\ny\n', cwd=self.workspace, text=True, capture_output=True,
+        )
+        self.assertEqual(saved.returncode, 0, saved.stderr)
+        data = json.loads(self.extra.read_text())
+        self.assertEqual(data['host-c']['ash'], [key])
+        found = self.call('find', '👩‍💻')
+        self.assertEqual(found.returncode, 0, found.stderr)
+        self.assertIn('host-c/ash', found.stdout)
 
     def test_malformed_grants_fail_before_writing(self):
         for data in ('not JSON', '{"host-a":{"ash":"bad shape"}}',
@@ -146,17 +190,35 @@ class KeysTest(unittest.TestCase):
         self.assertEqual(output.read_bytes(), private_before)
         self.assertEqual(public.read_bytes(), public_before)
 
-    def test_generation_supports_an_interactive_passphrase(self):
-        output = self.workspace / 'encrypted'
-        passphrase = 'disposable fixture passphrase'
+    def generate_with_passphrase(self, output, passphrase, after_prompt=None):
         master, slave = pty.openpty()
         try:
-            os.write(master, (passphrase + '\n' + passphrase + '\n').encode())
-            created = self.call('generate', '--output', str(output), stdin=slave, timeout=20)
+            with subprocess.Popen(
+                [str(TOOLS / 'generate'), '--output', str(output)],
+                cwd=self.workspace, stdin=slave, stdout=slave, stderr=slave, start_new_session=True,
+            ) as process:
+                try:
+                    for prompt in (b'Enter passphrase', b'Enter same passphrase'):
+                        messages = b''
+                        while prompt not in messages:
+                            ready, _, _ = select.select([master], [], [], 10)
+                            self.assertTrue(ready, messages)
+                            messages += os.read(master, 4096)
+                        if prompt == b'Enter passphrase' and after_prompt is not None:
+                            after_prompt()
+                        os.write(master, (passphrase + '\n').encode())
+                    return process.wait(timeout=20)
+                finally:
+                    if process.poll() is None:
+                        process.kill()
         finally:
             os.close(slave)
             os.close(master)
-        self.assertEqual(created.returncode, 0, created.stderr)
+
+    def test_generation_supports_an_interactive_passphrase(self):
+        output = self.workspace / 'encrypted'
+        passphrase = 'disposable fixture passphrase'
+        self.assertEqual(self.generate_with_passphrase(output, passphrase), 0)
         wrong = subprocess.run(['ssh-keygen', '-y', '-P', '', '-f', str(output)], capture_output=True)
         self.assertNotEqual(wrong.returncode, 0)
         unlocked = subprocess.run(
@@ -164,6 +226,19 @@ class KeysTest(unittest.TestCase):
         )
         self.assertEqual(unlocked.returncode, 0, unlocked.stderr)
         self.assertTrue(unlocked.stdout.startswith('ssh-ed25519 '))
+
+    def test_generate_rechecks_destination_after_passphrase_prompt(self):
+        destination = self.workspace / 'destination'
+        destination.mkdir()
+        output = destination / 'new'
+
+        def init_checkout():
+            subprocess.run(['git', 'init', '-q', str(destination)], check=True)
+
+        result = self.generate_with_passphrase(output, 'fixture secret', after_prompt=init_checkout)
+        self.assertNotEqual(result, 0)
+        self.assertFalse(output.exists())
+        self.assertFalse(output.with_suffix('.pub').exists())
 
     def test_generate_refuses_checkout_and_implicit_empty_passphrase(self):
         subprocess.run(['git', 'init', '-q', str(self.root)], check=True)
