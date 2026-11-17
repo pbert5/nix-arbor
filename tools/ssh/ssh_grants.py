@@ -4,6 +4,7 @@ import fcntl
 import json
 import os
 from pathlib import Path
+import re
 import stat
 import subprocess
 import tempfile
@@ -20,11 +21,16 @@ def display_comment(comment):
     )
 
 
+def key_parts(key):
+    return re.split(r'[ \t]+', key.strip(' \t'), maxsplit=2)
+
+
 def public_key_info(key):
-    parts = key.split(maxsplit=2)
+    parts = key_parts(key)
     # Expect one bare public key. OpenSSH's fingerprint command also accepts
     # authorized_keys options and private files, so check the input first.
     if (len(parts) < 2 or not parts[0].startswith(('ssh-', 'ecdsa-', 'sk-'))
+            or any(not field.isascii() or not field.isprintable() for field in parts[:2])
             or any(char in key for char in '\x00\n\r')):
         raise ValueError('Expected one bare public SSH key')
     result = subprocess.run(

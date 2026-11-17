@@ -5,7 +5,9 @@ from pathlib import Path
 import sys
 
 sys.dont_write_bytecode = True
-from ssh_grants import ROOT, extra_path, lock_grants, parse_grants, public_key_info, read_snapshot, save_grants
+from ssh_grants import (
+    ROOT, extra_path, key_parts, lock_grants, parse_grants, public_key_info, read_snapshot, save_grants,
+)
 
 USERS = ['madeline', 'ash']
 
@@ -31,7 +33,7 @@ def main():
     parser.add_argument('--root', type=Path, default=ROOT, help=argparse.SUPPRESS)
     root = parser.parse_args().root
     key = input('Paste a public SSH key: ').strip()
-    parts = key.split()
+    fields = key_parts(key)[:2]
     print(public_key_info(key))
     users = select('Users', USERS)
     hosts = select('Machines', sorted(p.name for p in (root / 'config/machines').iterdir() if p.is_dir() and (p / 'default.nix').is_file()))
@@ -49,7 +51,7 @@ def main():
         for host in hosts:
             for user in users:
                 keys = data.setdefault(host, {}).setdefault(user, [])
-                if not any(existing.split()[:2] == parts[:2] for existing in keys):
+                if not any(key_parts(existing)[:2] == fields for existing in keys):
                     keys.append(key)
         save_grants(path, snapshot, data)
     print(f'Saved {path}. Review, commit, and deploy the Nix configuration to apply it.')

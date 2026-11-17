@@ -10,7 +10,7 @@ import tempfile
 
 sys.dont_write_bytecode = True
 from ssh_grants import (
-    EXTRA, ROOT, display_comment, extra_path, lock_grants, parse_grants,
+    EXTRA, ROOT, display_comment, extra_path, key_parts, lock_grants, parse_grants,
     public_key_info, read_snapshot, save_grants,
 )
 
@@ -25,7 +25,7 @@ def fingerprint(key, source):
 
 
 def describe(key, key_fingerprint):
-    algorithm, _, *comment = key.split(maxsplit=2)
+    algorithm, _, *comment = key_parts(key)
     return ' '.join([key_fingerprint, algorithm, *(display_comment(part) for part in comment)])
 
 

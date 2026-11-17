@@ -139,21 +139,38 @@ class KeysTest(unittest.TestCase):
         self.assertEqual(removed.returncode, 0, removed.stderr)
         self.assertEqual(json.loads(self.extra.read_text()), {'host-a': {'ash': [self.key]}})
 
-    def test_add_key_accepts_a_unicode_comment(self):
-        key = ' '.join(self.key.split()[:2]) + ' fixture 👩‍💻'
+    def add_key(self, key):
         machine = self.root / 'config/machines/host-c'
-        machine.mkdir(parents=True)
+        machine.mkdir(parents=True, exist_ok=True)
         (machine / 'default.nix').touch()
-        saved = subprocess.run(
+        return subprocess.run(
             [sys.executable, str(TOOLS.parent / 'add-key'), '--root', str(self.root)],
             input=f'{key}\n1\n0\ny\n', cwd=self.workspace, text=True, capture_output=True,
         )
+
+    def test_add_key_accepts_a_unicode_comment(self):
+        key = ' '.join(self.key.split()[:2]) + ' fixture 👩‍💻'
+        saved = self.add_key(key)
         self.assertEqual(saved.returncode, 0, saved.stderr)
         data = json.loads(self.extra.read_text())
         self.assertEqual(data['host-c']['ash'], [key])
         found = self.call('find', '👩‍💻')
         self.assertEqual(found.returncode, 0, found.stderr)
         self.assertIn('host-c/ash', found.stdout)
+
+    def test_key_fields_require_openssh_space_or_tab_separators(self):
+        algorithm, rest = self.key.split(maxsplit=1)
+        tabbed_key = algorithm + '\t' + rest
+        self.assertEqual(self.add_key(tabbed_key).returncode, 0)
+        before = self.extra.read_bytes()
+        for separator in ('\v', '\u00a0', '\u2028'):
+            with self.subTest(separator=separator):
+                malformed = algorithm + separator + rest
+                self.assertNotEqual(self.add_key(malformed).returncode, 0)
+                self.assertEqual(self.extra.read_bytes(), before)
+                self.extra.write_text(json.dumps({'host-c': {'ash': [malformed]}}))
+                self.assertNotEqual(self.call('list').returncode, 0)
+                self.extra.write_bytes(before)
 
     def test_malformed_grants_fail_before_writing(self):
         for data in ('not JSON', '{"host-a":{"ash":"bad shape"}}',
