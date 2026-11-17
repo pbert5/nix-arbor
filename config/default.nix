@@ -149,16 +149,29 @@ let
   arborParticipant = [
     inputs.arbor-registry.nixosModules.default
     inputs.arbor-registry.nixosModules.service-contract
-    {
-      cluster.registry.enable = true;
-      cluster.registry.runtime = {
-        enable = true;
-        transportRealmId = "nix-arbor-live-v1";
-        transportProtocolEpoch = 1;
-        transportListen = [ ];
-        transportBootstrapPeers = [ ];
-      };
-    }
+    (
+      { lib, ... }:
+      {
+        cluster.registry.enable = true;
+        cluster.registry.runtime = {
+          enable = true;
+          transportRealmId = "nix-arbor-live-v1";
+          transportProtocolEpoch = 1;
+          transportListen = [ ];
+          transportBootstrapPeers = [ ];
+        };
+
+        # The pinned status probe exposes the socket token in its process arguments.
+        systemd.services.arbor-runtime-status = {
+          enable = false;
+          wantedBy = lib.mkForce [ ];
+        };
+        systemd.timers.arbor-runtime-status = {
+          enable = false;
+          wantedBy = lib.mkForce [ ];
+        };
+      }
+    )
   ];
   privateYggParticipant = [
     inputs.yggdrasil-private.nixosModules.default
