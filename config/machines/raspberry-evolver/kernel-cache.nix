@@ -29,7 +29,15 @@ let
       kernel
       // {
         inherit out modules;
-        inherit (out) outPath;
+        inherit (out)
+          outPath
+          drvPath
+          drvAttrs
+          all
+          ;
+        # The two fixed-output fetchers are separate derivations. Modules
+        # remain available as kernel.modules and headers as upstream kernel.dev.
+        outputs = [ "out" ];
         # NixOS applies configured patches via kernel.override. Compare the
         # resulting upstream identity again before using any cached bytes.
         override = args: cachedKernel (kernel.override args);
