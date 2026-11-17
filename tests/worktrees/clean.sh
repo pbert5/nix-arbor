@@ -32,7 +32,8 @@ run() { ( cd "$scratch" && "$repo/$tool" "$@" ); }
 expect_refusal() {
   local path=$1 reason=$2 output code=0
   output=$(run --apply "$path" 2>&1) || code=$?
-  [[ $code == 1 && $output == *"$reason"* ]] || fail "apply $path returned $code: $output"
+  [[ $code == 1 && $output == *"worktrees clean: $reason: "* ]] ||
+    fail "apply $path returned $code: $output"
   [[ -d $path ]] || fail "apply removed $path"
 }
 
@@ -119,7 +120,7 @@ add_tree local-only
 
 before_trees=$(repo_git worktree list --porcelain)
 before_refs=$(repo_git for-each-ref)
-expect_refusal "$trees/reflog" reflog
+expect_refusal "$trees/reflog" 'worktree reflog contains commits with no recovery pointer elsewhere'
 preview=$(run)
 [[ ! -e $WORKTREE_FILTER_MARKER ]] || fail 'preview executed a Git clean filter'
 [[ $preview == "$(run --preview)" ]] || fail 'default mode differs from --preview'
@@ -131,13 +132,17 @@ preview=$(run)
 [[ $(repo_git for-each-ref) == "$before_refs" ]] || fail 'preview changed refs'
 [[ -d $trees/clean\ path ]] || fail 'preview removed eligible worktree'
 
-for spec in 'dirty:changes' 'untracked:changes' 'ignored:ignored' 'locked:locked' 'detached:detached' \
-    'non-agent:agent' 'local-only:origin/main' 'unmerged:local main' 'submodule:submodule' \
-    'populated-gitlink:submodule' 'hidden-change:index flags' 'local-ref:worktree-local refs' \
-    'filtered:external Git filter'; do
+for spec in 'dirty:has local changes, untracked files, or ignored data' \
+    'untracked:has local changes, untracked files, or ignored data' \
+    'ignored:has local changes, untracked files, or ignored data' 'locked:locked worktree' \
+    'detached:detached HEAD' 'non-agent:branch is outside agent/<role>/<task>' \
+    'local-only:publication to origin/main is unverified' 'unmerged:merge into local main is unverified' \
+    'submodule:initialized submodule data' 'populated-gitlink:submodule directory contains local data' \
+    'hidden-change:index flags can hide local changes' 'local-ref:worktree-local refs' \
+    'filtered:external Git filter is configured for a tracked file'; do
   expect_refusal "$trees/${spec%%:*}" "${spec#*:}"
 done
-expect_refusal "$repo" primary
+expect_refusal "$repo" 'primary checkout'
 
 mkdir "$trees/current/nested"
 if ( cd "$trees/current/nested" && "$repo/$tool" --apply .. ); then fail 'removed the current worktree'; fi
@@ -147,13 +152,13 @@ if ( cd "$scratch" && "$trees/self/$tool" --apply "$trees/self" ); then fail 're
 if run --apply; then fail 'apply accepted no explicit path'; fi
 if run --apply "$trees/clean path" "$trees/empty-submodule"; then fail 'apply accepted multiple paths'; fi
 mkdir "$scratch/unregistered"
-expect_refusal "$scratch/unregistered" 'registered worktree'
+expect_refusal "$scratch/unregistered" 'path is not a registered worktree'
 [[ $(repo_git worktree list --porcelain) == "$before_trees" ]] || fail 'refused apply changed worktrees'
 [[ $(repo_git for-each-ref) == "$before_refs" ]] || fail 'refused apply changed refs'
 [[ ! -e $WORKTREE_FILTER_MARKER ]] || fail 'apply executed a Git clean filter'
 
 touch "$trees/clean path/new.ignored"
-expect_refusal "$trees/clean path" ignored
+expect_refusal "$trees/clean path" 'has local changes, untracked files, or ignored data'
 rm "$trees/clean path/new.ignored"
 run --apply 'worktrees/clean path'
 run --apply "$trees/empty-submodule"
