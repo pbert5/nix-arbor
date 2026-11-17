@@ -62,9 +62,11 @@ def check_windows_state(directory):
         if ($allowed -notcontains $acl.GetOwner($sid).Value) { exit 1 }
         $raw = [System.Security.AccessControl.RawSecurityDescriptor]::new($acl.Sddl)
         if ($null -eq $raw.DiscretionaryAcl) { exit 1 }
+        # Python 3.13 grants OWNER RIGHTS to the owner verified above.
         foreach ($rule in $acl.GetAccessRules($true, $true, $sid)) {
             if ($rule.AccessControlType -eq 'Allow' -and
-                $allowed -notcontains $rule.IdentityReference.Value) { exit 1 }
+                $allowed -notcontains $rule.IdentityReference.Value -and
+                $rule.IdentityReference.Value -ne 'S-1-3-4') { exit 1 }
         }
     }
     """
@@ -73,7 +75,7 @@ def check_windows_state(directory):
                             env={**os.environ, "ARBOR_CHECK_STATE": str(directory.resolve())},
                             capture_output=True, timeout=15)
     if result.returncode:
-        raise ValueError("enrollment state must be accessible only to this user, SYSTEM and Administrators")
+        raise ValueError("private state must be accessible only to this user, SYSTEM and Administrators")
 
 
 @contextmanager

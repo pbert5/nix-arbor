@@ -10,6 +10,11 @@ In VS Code, open that checkout and choose **Tasks: Run Task**. Look for
 Switches and deletions have their own tasks. VS Code needs the same tools on
 its `PATH` as the command-line entry points.
 
+## Portable guest connection
+
+[Arbor Connect](yggdrasil/README.md) sets up the two Yggdrasil identities and
+Arbor Registry pairing on Windows or Linux without Nix.
+
 ## Environment and tests
 
 | Command | Effect |
