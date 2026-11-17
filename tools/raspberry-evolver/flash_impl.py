@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Inspect or explicitly write an image to a whole, unused block device."""
 import argparse
+import contextlib
 import fcntl
 import hashlib
 import json
@@ -61,8 +62,8 @@ def validate_graph(graph, selected, mounted, swaps, source_dev, image_size):
         raise SafetyError('device has no stable serial or WWID')
     if disk['size'] < MIN_CARD_BYTES or disk['size'] < image_size:
         raise SafetyError('device is too small: use a 32 GB or larger card that fits the image')
-    if source_dev not in graph:
-        raise SafetyError('cannot resolve the image filesystem to a block device')
+    if source_dev not in graph or graph[source_dev]['type'] == 'virtual':
+        raise SafetyError('cannot resolve a supported image filesystem backing device; move the image to a directly backed filesystem')
     seen = set()
     def visit(dev):
         if dev in seen or dev not in graph:
@@ -148,63 +149,17 @@ def zfs_devices(graph):
     return devices
 
 
-def mounted_devices(proc=pathlib.Path('/proc')):
-    """Collect visible process mount namespaces; inaccessible processes fail closed."""
+def mounted_devices(path=pathlib.Path('/proc/self/mountinfo')):
+    """Inspect mounts visible to this process; do not claim all namespaces."""
     mounted = set()
-    pids = [entry for entry in proc.iterdir() if entry.name.isdigit()]
-    if not pids:
-        raise SafetyError('cannot enumerate process mount namespaces')
-    for pid in pids:
-        try:
-            lines = (pid / 'mountinfo').read_text().splitlines()
-        except FileNotFoundError:
-            if not pid.exists():
-                continue
-            raise SafetyError('cannot inspect a mount namespace') from None
-        except OSError:
-            raise SafetyError('cannot inspect a mount namespace') from None
-        if not lines:
-            try:
-                status = (pid / 'status').read_text().splitlines()
-            except FileNotFoundError:
-                if not pid.exists():
-                    continue
-                raise SafetyError('cannot inspect process state') from None
-            except OSError:
-                raise SafetyError('cannot inspect process state') from None
-            states = [line for line in status if line.startswith('State:')]
-            if len(states) == 1 and states[0].split()[1:2] in (['Z'], ['X']):
-                continue
-            raise SafetyError('empty mount namespace information')
-        try:
-            fds = list((pid / 'fd').iterdir())
-            for fd in fds:
-                try:
-                    target = os.readlink(fd)
-                except FileNotFoundError:
-                    continue  # Descriptor was closed during enumeration.
-                if target.startswith('mnt:['):
-                    raise SafetyError('open mount namespace descriptor cannot be inspected safely')
-        except FileNotFoundError:
-            if not pid.exists():
-                continue
-            raise SafetyError('cannot inspect process descriptors') from None
-        except OSError:
-            raise SafetyError('cannot inspect process descriptors') from None
-        for line in lines:
-            fields = line.split()
-            if len(fields) < 10 or '-' not in fields:
-                raise SafetyError('cannot parse mount information')
-            separator = fields.index('-')
-            if len(fields) < separator + 4:
-                raise SafetyError('cannot parse mount information')
-            fs_type = fields[separator + 1]
-            if fs_type == 'nsfs' and fields[3].startswith('mnt:['):
-                raise SafetyError('pinned mount namespace cannot be inspected safely')
-            if fs_type == 'proc' and any(option.startswith('hidepid=') and option != 'hidepid=0'
-                                         for option in fields[separator + 3].split(',')):
-                raise SafetyError('procfs hides processes; mount inspection is incomplete')
-            mounted.add(fields[2])
+    lines = path.read_text().splitlines()
+    if not lines:
+        raise SafetyError('cannot read visible mounts')
+    for line in lines:
+        fields = line.split()
+        if len(fields) < 10 or '-' not in fields:
+            raise SafetyError('cannot parse mount information')
+        mounted.add(fields[2])
     return mounted
 
 
@@ -245,8 +200,6 @@ def snapshot():
             graph[parents[0]]['children'].append(child)
     for node in graph.values():
         node['children'].sort()
-    if os.readlink('/proc/self/ns/pid') != 'pid:[4026531836]':
-        raise SafetyError('not in the initial PID namespace; mount inspection is incomplete')
     mounted = mounted_devices()
     swaps = set()
     for line in pathlib.Path('/proc/swaps').read_text().splitlines()[1:]:
@@ -260,9 +213,29 @@ def snapshot():
     return graph, mounted, swaps
 
 
-def graph_proof_available():
-    # R63-04: concurrent and per-thread mount namespaces are not yet proven safe.
-    return False
+@contextlib.contextmanager
+def instance_lock(selected):
+    """Serialize cooperating tool instances on this host."""
+    path = '/run/lock/raspberry-evolver-' + selected.replace(':', '-') + '.lock'
+    fd = os.open(path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_nlink != 1:
+            raise SafetyError('unsafe local lock; inspect /run/lock before retrying')
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise SafetyError('another flash operation holds the local device lock') from None
+        yield
+    finally:
+        os.close(fd)
+
+
+def elevate(args):
+    result = subprocess.run(['sudo', '--', sys.executable, str(pathlib.Path(__file__).resolve()),
+                             '--write', args.image, args.device], check=False)
+    if result.returncode:
+        raise SafetyError('privileged inspection or write did not complete; no retry was attempted')
 
 
 def main():
@@ -278,8 +251,6 @@ def main():
         return
     if not args.image or not args.device:
         parser.error('provide both IMAGE and DEVICE')
-    if not graph_proof_available():
-        raise SafetyError('target inspection and writing are disabled until mount-namespace safety can be proven')
     path = os.path.realpath(args.device, strict=True)
     info = os.stat(path)
     if not stat.S_ISBLK(info.st_mode):
@@ -298,10 +269,16 @@ def main():
         print(f'Image: {os.path.realpath(args.image)}\nBytes: {image_info.st_size}\nSHA-256: {sha}')
         print(f'Device: {path} ({selected})\nModel: {disk["model"] or "unknown"}\nStable identity: {disk["identity"]}\nCapacity: {disk["size"]} bytes')
         print('Partitions: ' + (', '.join(graph[d]['name'] for d in sorted(members - {selected})) or 'none'))
-        print('Mountpoints: none on target or partitions')
+        print('Visible mountpoints on target or partitions: none')
+        print('Inspection scope: visible mounts, swap, source filesystem, holders and supported block topology.')
+        print('Assumes a controlled host with cooperating administrators and no concurrent raw writer.')
         print(f'Action: overwrite the first {image_info.st_size} bytes, sync and verify that byte range.')
         if not args.write:
             print('Dry run only. Add --write for an interactive confirmation.')
+            return
+        if os.geteuid() != 0:
+            print('Privileged read-only inspection is required before final consent; sudo will be requested.', flush=True)
+            elevate(args)
             return
         phrase = f'{path} {disk["identity"]} {disk["size"]}'
         if input(f'Type exactly "{phrase}" to write: ') != phrase:
@@ -310,27 +287,28 @@ def main():
         validate_graph(current_graph, selected, current_mounts, current_swaps, source_dev, image_info.st_size)
         same_device({d: graph[d] for d in members}, {d: current_graph[d] for d in members})
         flags = os.O_RDWR | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC
-        fd = os.open(path, flags)
-        with os.fdopen(fd, 'r+b', buffering=0) as target:
-            opened = os.fstat(target.fileno())
-            if not stat.S_ISBLK(opened.st_mode) or opened.st_rdev != info.st_rdev:
-                raise SafetyError('opened device changed; no write performed')
-            capacity = struct.unpack('Q', fcntl.ioctl(target.fileno(), 0x80081272, b'\0' * 8))[0]
-            if capacity != disk['size']:
-                raise SafetyError('opened device capacity changed; no write performed')
-            final_graph, final_mounts, final_swaps = snapshot()
-            validate_graph(final_graph, selected, final_mounts, final_swaps, source_dev, image_info.st_size)
-            same_device({d: graph[d] for d in members}, {d: final_graph[d] for d in members})
-            current_image = os.fstat(source.fileno())
-            if any(getattr(current_image, field) != getattr(image_info, field)
-                   for field in ('st_dev', 'st_ino', 'st_size', 'st_mtime_ns', 'st_ctime_ns')):
-                raise SafetyError('image changed; no write performed')
-            source.seek(0)
-            try:
-                copy_and_verify(source, target, image_info.st_size, sha)
-            except (OSError, KeyboardInterrupt, SafetyError) as error:
-                raise SafetyError(f'write or verification failed; media may be partially written: {error}') from error
-        print('Write and byte-range verification succeeded. Pi boot and enrollment are not verified.')
+        with instance_lock(selected):
+            fd = os.open(path, flags)
+            with os.fdopen(fd, 'r+b', buffering=0) as target:
+                opened = os.fstat(target.fileno())
+                if not stat.S_ISBLK(opened.st_mode) or opened.st_rdev != info.st_rdev:
+                    raise SafetyError('opened device changed; no write performed')
+                capacity = struct.unpack('Q', fcntl.ioctl(target.fileno(), 0x80081272, b'\0' * 8))[0]
+                if capacity != disk['size']:
+                    raise SafetyError('opened device capacity changed; no write performed')
+                final_graph, final_mounts, final_swaps = snapshot()
+                validate_graph(final_graph, selected, final_mounts, final_swaps, source_dev, image_info.st_size)
+                same_device({d: graph[d] for d in members}, {d: final_graph[d] for d in members})
+                current_image = os.fstat(source.fileno())
+                if any(getattr(current_image, field) != getattr(image_info, field)
+                       for field in ('st_dev', 'st_ino', 'st_size', 'st_mtime_ns', 'st_ctime_ns')):
+                    raise SafetyError('image changed; no write performed')
+                source.seek(0)
+                try:
+                    copy_and_verify(source, target, image_info.st_size, sha)
+                except (OSError, KeyboardInterrupt, SafetyError) as error:
+                    raise SafetyError(f'write or verification failed; media may be partially written: {error}') from error
+        print('Write and byte-range verification succeeded. Pi boot, enrollment and power-loss durability are not verified.')
 
 
 if __name__ == '__main__':

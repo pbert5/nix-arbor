@@ -9,7 +9,7 @@ import sys
 
 import artifact
 
-STATES = {'missing-key', 'waiting', 'retrying', 'pending-approval', 'enrolled', 'indeterminate'}
+STATES = {'missing-key', 'waiting', 'retrying', 'pending-approval', 'needs-new-key', 'enrolled', 'indeterminate'}
 
 
 def safe_state(value):

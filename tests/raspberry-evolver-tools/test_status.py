@@ -37,6 +37,7 @@ class Inspection(unittest.TestCase):
         for target in ('-oProxyCommand=bad', 'host;bad', 'host name', ''):
             self.assertFalse(inspect.valid_remote(target))
         self.assertEqual(inspect.safe_state('enrolled\n'), 'enrolled')
+        self.assertEqual(inspect.safe_state('needs-new-key\n'), 'needs-new-key')
         self.assertEqual(inspect.safe_state('secret text'), 'indeterminate')
 
 if __name__ == '__main__':

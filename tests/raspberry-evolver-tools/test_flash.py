@@ -88,6 +88,9 @@ class FlashTests(unittest.TestCase):
                 flash.validate_graph(broken, '8:0', set(), set(), '9:0', 10)
         with self.assertRaises(flash.SafetyError):
             flash.validate_graph(graph, '8:1', set(), set(), '9:0', 10)
+        graph['9:0']['type'] = 'virtual'
+        with self.assertRaises(flash.SafetyError):
+            flash.validate_graph(graph, '8:0', set(), set(), '9:0', 10)
 
     def test_zpool_requires_resolvable_leaves(self):
         output = """  pool: tank
@@ -136,7 +139,7 @@ class FlashConfirmationTests(unittest.TestCase):
     def test_post_confirmation_safety_gates(self):
         # These scenarios execute main's actual ordering; the fake descriptor can
         # never address a real device, even if a guard under test regresses.
-        scenarios = ('safe', 'identity', 'mounted', 'swap', 'holder', 'disappeared',
+        scenarios = ('safe', 'dry_run', 'elevate', 'declined', 'identity', 'mounted', 'swap', 'holder', 'disappeared',
                      'open_disappeared', 'opened_replacement', 'capacity',
                      'final_identity', 'final_mounted', 'final_swap', 'final_holder',
                      'final_disappeared')
@@ -191,9 +194,11 @@ class FlashConfirmationTests(unittest.TestCase):
                 context.__enter__.return_value = target
                 capacity = 31000000000 if scenario == 'capacity' else 32000000000
                 with contextlib.ExitStack() as stack:
-                    stack.enter_context(patch.object(sys, 'argv', ['flash', '--write', str(image), '/dev/fake']))
-                    stack.enter_context(patch.object(flash, 'graph_proof_available', return_value=True))
-                    stack.enter_context(patch('builtins.input', return_value='/dev/fake serial 32000000000'))
+                    stack.enter_context(patch.object(sys, 'argv', ['flash', *([] if scenario == 'dry_run' else ['--write']), str(image), '/dev/fake']))
+                    stack.enter_context(patch.object(flash.os, 'geteuid', return_value=1000 if scenario in ('dry_run', 'elevate') else 0))
+                    elevated = stack.enter_context(patch.object(flash, 'elevate'))
+                    stack.enter_context(patch.object(flash, 'instance_lock', return_value=contextlib.nullcontext()))
+                    confirm = stack.enter_context(patch('builtins.input', return_value='no' if scenario == 'declined' else '/dev/fake serial 32000000000'))
                     stack.enter_context(patch.object(flash.os.path, 'realpath', side_effect=fake_realpath))
                     stack.enter_context(patch.object(flash.os, 'stat', side_effect=fake_stat))
                     stack.enter_context(patch.object(flash.os, 'fstat', side_effect=fake_fstat))
@@ -211,66 +216,54 @@ class FlashConfirmationTests(unittest.TestCase):
                         self.assertEqual(snapshot.call_count, 3)
                         self.assertEqual(open_device.call_args.args,
                                          ('/dev/fake', os.O_RDWR | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC))
+                    elif scenario in ('dry_run', 'elevate'):
+                        flash.main()
+                        write.assert_not_called()
+                        open_device.assert_not_called()
+                        confirm.assert_not_called()
+                        self.assertEqual(elevated.call_count, int(scenario == 'elevate'))
                     else:
                         with self.assertRaises((flash.SafetyError, OSError)):
                             flash.main()
                         write.assert_not_called()
                         target.write.assert_not_called()
-                        if scenario in ('identity', 'mounted', 'swap', 'holder', 'disappeared'):
+                        if scenario == 'declined':
+                            self.assertEqual(snapshot.call_count, 1)
+                            confirm.assert_called_once()
+                        if scenario in ('declined', 'identity', 'mounted', 'swap', 'holder', 'disappeared'):
                             open_device.assert_not_called()
 
-class MountNamespaceTests(unittest.TestCase):
-    def test_collects_mounts_from_all_processes_and_rejects_unreadable(self):
+class LocalLockTests(unittest.TestCase):
+    def test_competing_instances_are_refused(self):
         with tempfile.TemporaryDirectory() as directory:
-            proc = pathlib.Path(directory)
-            for pid, dev in [('101', '8:1'), ('102', '8:2')]:
-                (proc / pid).mkdir()
-                (proc / pid / 'fd').mkdir()
-                (proc / pid / 'mountinfo').write_text(f'1 0 {dev} / / rw - ext4 /dev/test rw\n')
-            self.assertEqual(flash.mounted_devices(proc), {'8:1', '8:2'})
-            (proc / '102' / 'mountinfo').write_text('2 1 0:4 mnt:[1234] /mnt/ns rw - nsfs nsfs rw\n')
-            with self.assertRaises(flash.SafetyError):
-                flash.mounted_devices(proc)
-            (proc / '102' / 'mountinfo').write_text('1 0 8:2 / / rw - ext4 /dev/test rw\n')
-            (proc / '101' / 'mountinfo').write_text('1 0 0:3 / /proc rw - proc proc rw,hidepid=2\n')
-            with self.assertRaises(flash.SafetyError):
-                flash.mounted_devices(proc)
-            (proc / '101' / 'mountinfo').write_text('1 0 8:1 / / rw - ext4 /dev/test rw\n')
-            (proc / '101' / 'fd' / '5').symlink_to('mnt:[1234]')
-            with self.assertRaises(flash.SafetyError):
-                flash.mounted_devices(proc)
-            (proc / '101' / 'fd' / '5').unlink()
-            (proc / '104').mkdir()
-            (proc / '104' / 'mountinfo').write_text('')
-            (proc / '104' / 'status').write_text('State:\tZ (zombie)\n')
-            self.assertEqual(flash.mounted_devices(proc), {'8:1', '8:2'})
-            (proc / '104' / 'status').write_text('State:\tS (sleeping)\n')
-            with self.assertRaises(flash.SafetyError):
-                flash.mounted_devices(proc)
-            (proc / '104' / 'mountinfo').unlink()
-            (proc / '104' / 'status').unlink()
-            (proc / '104').rmdir()
-            (proc / '103').mkdir()
-            (proc / '103' / 'mountinfo').mkdir()
-            with self.assertRaises(flash.SafetyError):
-                flash.mounted_devices(proc)
+            path = os.path.join(directory, 'lock')
+            real_open = os.open
+            real_fstat = os.fstat
+            def open_fixture(_path, flags, mode):
+                return real_open(path, flags, mode)
+            def owner_fixture(fd):
+                info = real_fstat(fd)
+                return SimpleNamespace(st_mode=info.st_mode, st_uid=0, st_nlink=info.st_nlink)
+            with patch.object(flash.os, 'open', side_effect=open_fixture), \
+                 patch.object(flash.os, 'fstat', side_effect=owner_fixture):
+                with flash.instance_lock('240:0'):
+                    with self.assertRaisesRegex(flash.SafetyError, 'another flash'):
+                        with flash.instance_lock('240:0'):
+                            pass
+                with flash.instance_lock('240:0'):
+                    pass
 
-class DisabledWriteTests(unittest.TestCase):
-    def test_targeted_flash_is_fail_closed(self):
-        for args in (['image', '/dev/fake'], ['--write', 'image', '/dev/fake'],
-                     ['image', '/dev/fake', '--write']):
-            with self.subTest(args=args), contextlib.ExitStack() as stack:
-                stack.enter_context(patch.object(sys, 'argv', ['flash', *args]))
-                stat_mock = stack.enter_context(patch.object(flash.os.path, 'realpath'))
-                open_mock = stack.enter_context(patch.object(flash, 'open', create=True))
-                snapshot = stack.enter_context(patch.object(flash, 'snapshot'))
-                confirm = stack.enter_context(patch('builtins.input'))
-                write = stack.enter_context(patch.object(flash, 'copy_and_verify'))
-                with self.assertRaisesRegex(flash.SafetyError, 'disabled'):
-                    flash.main()
-                for call in (stat_mock, open_mock, snapshot, confirm, write):
-                    call.assert_not_called()
+class MountNamespaceTests(unittest.TestCase):
+    def test_visible_mounts_and_invalid_data(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / 'mountinfo'
+            path.write_text('1 0 8:1 / / rw - ext4 /dev/test rw\n')
+            self.assertEqual(flash.mounted_devices(path), {'8:1'})
+            path.write_text('invalid\n')
+            with self.assertRaises(flash.SafetyError):
+                flash.mounted_devices(path)
 
+class EntryPointTests(unittest.TestCase):
     def test_no_args_shows_inventory(self):
         with patch.object(sys, 'argv', ['flash']), patch.object(flash.subprocess, 'run') as run:
             with contextlib.redirect_stdout(io.StringIO()):
