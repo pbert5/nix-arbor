@@ -26,15 +26,17 @@ handle it accordingly. These commands do not deploy or modify hosts.
 
 ## Local Registry
 
-From the r640 checkout, check each host separately. These commands use Bash,
-jq, systemd, sudo and the Manager adapter from the running Registry service's
-Nix store package. A build or a checkout on eVolver is unnecessary. The
-r640-0 target runs locally and checks the hostname. The eVolver target uses
-the configured `root-evolver` SSH alias with strict host-key checking, public
-key authentication and no remote terminal. In VS Code, choose **Tasks: Run Task** and select **Arbor: Registry**.
-Run local identity commands in a
-terminal if sudo needs your password. Only the adapter runs as `arbor-registry`;
-it reads the token itself.
+Run the commands for your host from its checkout. On eVolver, for example,
+run `tools/arbor/registry status eVolver` in `~/nix-arbor`. The exact local
+hostname selects local execution on either host. From r640-0, selecting eVolver
+uses the configured `root-evolver` SSH alias with strict host-key checking,
+public key authentication, and noninteractive sudo. The SSH route streams the
+helper from the invoking checkout. The r640-0 target requires running on r640-0.
+
+The commands use Bash, jq, systemd, sudo and the adapter from the running
+Registry service’s Nix store package. Run local identity commands in a terminal
+if sudo needs your password. The adapter runs as `arbor-registry` and reads the
+token itself. In VS Code, choose **Tasks: Run Task** and select **Arbor: Registry**.
 
 ```sh
 tools/arbor/registry status r640-0
