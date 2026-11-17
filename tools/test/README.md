@@ -11,9 +11,9 @@ another directory.
 The fast checks use Bash, OpenSSH's `ssh-keygen`, and Linux shell utilities
 including util-linux's `script`. The GitHub runner contract uses stubs for
 Docker and GitHub. The SSH test uses Python 3 from `PATH` when available.
-Otherwise, it uses `nix shell --offline` with the checkout's locked nixpkgs
-input. This fallback requires Nix and a locally available Python package and
-locked inputs.
+Otherwise, it uses `nix shell --offline` with the nixpkgs source that matches
+the lock file's content hash. Both the source and the Python package must be
+available in the local Nix store.
 
 The flake check needs Nix with flakes enabled and access to cached or fetchable
 locked inputs. Pass Nix options directly, for example `tools/test/flake -L` or

@@ -31,7 +31,22 @@ if command -v python3 >/dev/null; then
 fi
 
 printf 'Looking for the checkout-locked Python 3 in the Nix cache.\n'
+# Address the cached source by the lock file hash, without opening its flake URL.
+nar_hash=$(nix --extra-experimental-features nix-command eval --impure --raw --expr '
+  let
+    lock = builtins.fromJSON (builtins.readFile ./flake.lock);
+    root = builtins.getAttr lock.root lock.nodes;
+    nixpkgs = builtins.getAttr root.inputs.nixpkgs lock.nodes;
+  in nixpkgs.locked.narHash
+')
+nixpkgs=$(nix-store --print-fixed-path --recursive sha256 "$nar_hash" source)
+if ! nix-store --check-validity "$nixpkgs"; then
+  printf '%s\n' 'The locked nixpkgs source is unavailable locally.' \
+    'Put Python 3 on PATH or cache the locked Python package.' >&2
+  exit 1
+fi
+
 exec nix --extra-experimental-features 'nix-command flakes' shell \
-  --offline --max-jobs 0 --builders '' \
-  --no-update-lock-file --no-write-lock-file --inputs-from . nixpkgs#python3 \
+  --offline --option substitute false --max-jobs 0 --builders '' \
+  --no-use-registries --no-update-lock-file --no-write-lock-file "path:$nixpkgs#python3" \
   --command python3 tests/ssh/add-key.py
