@@ -41,6 +41,8 @@
   };
   boot.tmp.cleanOnBoot = true;
   systemd.services.raspberry-evolver-maintenance = {
+    # Do not permit manual execution while the retention race remains open.
+    enable = false;
     description = "Collect old Raspberry Pi system generations";
     path = with pkgs; [
       coreutils
@@ -61,6 +63,8 @@
     };
   };
   systemd.services.raspberry-evolver-bootstrap = {
+    # Do not permit manual execution while crash-safe enrollment is unresolved.
+    enable = false;
     description = "Enroll raspberry-evolver when its bootstrap key is available";
     after = [ "tailscaled.service" ];
     wants = [ "tailscaled.service" ];
