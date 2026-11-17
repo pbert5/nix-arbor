@@ -44,6 +44,11 @@ The eVolver remote command uses `root-evolver` and the invoking checkout's
 flake. Its dry run builds the closure locally. Both remote commands rely on
 the normal OpenSSH host-key checks when connecting.
 
+## Windows private Yggdrasil guest
+
+See the [Windows guest guide](yggdrasil/README.md) for identity, pinned peer,
+peer status, SSH, and host authorization steps.
+
 ## SSH public grants and keypairs
 
 ```sh
