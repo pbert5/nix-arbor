@@ -131,7 +131,7 @@ def verify_clean_artifact(path):
                  and all(isinstance(manifest.get(k), str) and re.fullmatch(r'[0-9a-f]{64}', manifest[k])
                          for k in ('lock_sha256', 'clean_sha256', 'result_sha256'))
                  and isinstance(manifest.get('source_revision'), str)
-                 and re.fullmatch(r'[0-9a-f]{40,64}', manifest['source_revision'])
+                 and re.fullmatch(r'(?:[0-9a-f]{40}|[0-9a-f]{64})', manifest['source_revision'])
                  and manifest['clean_sha256'] == manifest['result_sha256'])
     except (ValueError, UnicodeError):
         valid = False
@@ -233,7 +233,7 @@ def reject_source_identity(partition, cwd):
         if optional_stat(partition, path, cwd) is not None:
             raise ValueError('Source image contains existing device state')
     machine_id = optional_stat(partition, '/etc/machine-id', cwd)
-    if machine_id is not None and ('Type: regular' not in machine_id or not re.search(r'\bSize: 0\b', machine_id)):
+    if machine_id is not None and ('Type: regular' not in machine_id or not re.search(r'(?m)^User:\s+0\s+Group:\s+0\s+Project:\s+\d+\s+Size:\s+0\s*$', machine_id)):
         raise ValueError('Source image contains an existing machine identity')
     ssh = optional_stat(partition, '/etc/ssh', cwd)
     if ssh is not None:
@@ -342,7 +342,10 @@ def personalize(source, destination, key, wifi=None):
         raise
 
 def private_directory():
-    base = Path.home() / '.local' / 'state' / 'raspberry-evolver'
+    state = os.environ.get('XDG_STATE_HOME')
+    if state and not Path(state).is_absolute():
+        raise ValueError('XDG_STATE_HOME must be an absolute path')
+    base = (Path(state) if state else Path.home() / '.local' / 'state') / 'raspberry-evolver'
     for path in reversed(base.parents):
         if path.is_symlink():
             raise OSError('State directory has a symlink in its path')

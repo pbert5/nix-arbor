@@ -106,6 +106,18 @@ class ImageTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 image.personalize(suspect, root / 'rejected.img', 'tskey-auth-FAKE123-example')
             self.assertFalse((root / 'rejected.img').exists())
+            with clean.open('rb') as f, part.open('wb') as dst:
+                f.seek(2048 * 512)
+                dst.write(f.read(24 * 1024 * 1024))
+            (root / 'machine').write_text('fixture-machine-identity')
+            subprocess.run(['debugfs', '-w', '-R', 'write machine /etc/machine-id', str(part)], cwd=root, capture_output=True, check=True)
+            with source.open('r+b') as f, part.open('rb') as src:
+                f.seek(2048 * 512)
+                f.write(src.read())
+            suspect_machine = root / 'suspect-machine.img'
+            image.write_clean_artifact(source, suspect_machine, 'a' * 40, 'b' * 64)
+            with self.assertRaises(ValueError):
+                image.personalize(suspect_machine, root / 'rejected-machine.img', 'tskey-auth-FAKE123-example')
             cli_directory = root / 'cli'
             cli_directory.mkdir(mode=0o700)
             captured = io.StringIO()
@@ -162,6 +174,34 @@ method=disabled
         self.assertNotIn('11111111-', result)
         with self.assertRaises(ValueError):
             image.portable_wifi(source.replace('key-mgmt=wpa-psk', 'key-mgmt=wpa-eap'))
+
+    def test_xdg_state_home_and_source_revision_validation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with mock.patch.dict(os.environ, {'XDG_STATE_HOME': str(root / 'state')}):
+                result = image.private_directory()
+                self.assertEqual(result.parent, root / 'state' / 'raspberry-evolver')
+                self.assertEqual(result.stat().st_mode & 0o777, 0o700)
+            with mock.patch.dict(os.environ, {'XDG_STATE_HOME': 'relative'}):
+                with self.assertRaises(ValueError):
+                    image.private_directory()
+            link = root / 'state-link'
+            link.symlink_to(root / 'state', target_is_directory=True)
+            with mock.patch.dict(os.environ, {'XDG_STATE_HOME': str(link)}):
+                with self.assertRaises(OSError):
+                    image.private_directory()
+            checkout = root / 'checkout'
+            checkout.mkdir()
+            subprocess.run(['git', 'init', '-q', str(checkout)], check=True)
+            with mock.patch.dict(os.environ, {'XDG_STATE_HOME': str(checkout)}):
+                with self.assertRaises(OSError):
+                    image.private_directory()
+            source = root / 'source.img'
+            source.write_bytes(b'fixture')
+            output = root / 'clean.img'
+            image.write_clean_artifact(source, output, 'a' * 41, 'b' * 64)
+            with self.assertRaises(ValueError):
+                image.verify_clean_artifact(output)
 
     def test_prompt_accepts_continuations_without_echoing(self):
         with mock.patch.object(image.getpass, 'getpass', side_effect=[
