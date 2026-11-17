@@ -36,13 +36,5 @@ fi
 remote_root=/home/ash/documents/nix-arbor
 printf 'Remote checkout: r640-0:%s (required HEAD %s)\n' "$remote_root" "$head"
 # The validated hash and the parsed option are safe to embed in the SSH command.
-exec ssh "${tty_options[@]}" r640-0 "
-  set -eu
-  cd $remote_root
-  remote_head=\$(git rev-parse --verify HEAD)
-  if [ \"\$remote_head\" != '$head' ]; then
-    printf 'r640 remote-switch: expected remote HEAD %s, found %s\n' '$head' \"\$remote_head\" >&2
-    exit 1
-  fi
-  exec ./tools/r640/switch ${1-}
-"
+exec ssh "${tty_options[@]}" r640-0 \
+  "cd $remote_root && exec ./tools/r640/switch --expected-head '$head' ${1-}"

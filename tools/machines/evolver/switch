@@ -46,6 +46,8 @@ printf 'Host verified: %s\n' "$host"
 [[ ${1-} != --check ]] || exit 0
 
 if [[ $command_name == remote-switch ]]; then
+  # Use the same SSH configuration as the hostname check.
+  unset NIX_SSHOPTS NIXOS_REBUILD_SSH_DEFAULT_OPTS
   exec nixos-rebuild switch --flake "$flake_ref" --target-host root-evolver
 fi
 exec sudo nixos-rebuild switch --flake "$flake_ref"

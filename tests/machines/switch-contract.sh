@@ -67,11 +67,19 @@ case $command in
       shift 2
     fi
     head=$MOCK_HEAD
-    [[ $repo != "$MOCK_PRIMARY" ]] || head=${MOCK_REMOTE_HEAD:-$MOCK_HEAD}
+    if [[ $repo == "$MOCK_PRIMARY" ]]; then
+      head=${MOCK_REMOTE_HEAD:-$MOCK_HEAD}
+      if [[ -n ${MOCK_MOVED_HEAD-} ]] && grep -q '^nix<eval>' "$MOCK_CALLS"; then
+        head=$MOCK_MOVED_HEAD
+      fi
+    fi
     case "$*" in
       'rev-parse --show-toplevel') printf '%s\n' "$repo" ;;
       'branch --show-current') printf '%s\n' "${MOCK_BRANCH-main}" ;;
-      'status --porcelain') printf '%s' "${MOCK_DIRTY-}" ;;
+      'status --porcelain')
+        [[ ! ${MOCK_GIT_STATUS_FAILURE-} ]] || exit 98
+        printf '%s' "${MOCK_DIRTY-}"
+        ;;
       'rev-parse --short HEAD') printf '%s\n' "${head:0:7}" ;;
       'rev-parse --verify HEAD'|'rev-parse HEAD') printf '%s\n' "$head" ;;
       *) exit 90 ;;
@@ -106,7 +114,9 @@ case $command in
       *) exit 92 ;;
     esac
     ;;
-  nixos-rebuild) ;;
+  nixos-rebuild)
+    [[ ! ${NIX_SSHOPTS+x} && ! ${NIXOS_REBUILD_SSH_DEFAULT_OPTS+x} ]]
+    ;;
   ssh)
     [[ $1 != -t ]] || shift
     case $1 in
@@ -192,7 +202,7 @@ output 'host must be eVolver'
 no_activation
 run 255 env MOCK_SSH_FAILURE=1 "$evolver_remote"
 no_activation
-run 0 "$evolver_remote"
+run 0 env NIX_SSHOPTS='-o HostName=wrong' NIXOS_REBUILD_SSH_DEFAULT_OPTS='-o StrictHostKeyChecking=no' "$evolver_remote"
 called 'ssh<root-evolver>'
 called "nixos-rebuild<switch><--flake><$checkout#eVolver><--target-host><root-evolver>"
 for command in "$evolver" "$evolver_remote"; do
@@ -219,6 +229,8 @@ no_activation
 run 1 env MOCK_DIRTY=' M flake.nix' "$r640_remote"
 output 'checkout is dirty'
 no_activation
+run 98 env MOCK_GIT_STATUS_FAILURE=1 "$r640_remote"
+no_activation
 run 1 env MOCK_REMOTE_HOST=wrong "$r640_remote"
 output 'host must be r640-0'
 no_activation
@@ -237,19 +249,23 @@ output 'are not present'
 no_activation
 mkdir "$MOCK_PRIMARY/mypool/docker_data"
 
+r640_pin="git+file://$MOCK_PRIMARY?rev=$MOCK_HEAD"
 run 0 "$r640_remote" --check
 called 'ssh<r640-0>'
+called "nix<eval><--raw><$r640_pin#nixosConfigurations.r640-0.config.networking.hostName>"
+grep -Fq "nix<eval><--json><$r640_pin#nixosConfigurations.r640-0.config.environment.systemPackages>" "$MOCK_CALLS"
 output "$MOCK_HEAD"
 no_activation
 run 0 "$r640_remote" --dry-run
 called 'ssh<r640-0>'
-called "nix<build><--no-link><$MOCK_PRIMARY#nixosConfigurations.r640-0.config.system.build.toplevel>"
+called "nix<build><--no-link><$r640_pin#nixosConfigurations.r640-0.config.system.build.toplevel>"
 no_activation
-run 0 "$r640_remote"
+run 0 env MOCK_MOVED_HEAD=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa "$r640_remote"
 called 'ssh<-t><r640-0>'
 called 'sudo<-v>'
-called "sudo<nixos-rebuild><switch><--flake><$MOCK_PRIMARY#r640-0>"
+called "sudo<nixos-rebuild><switch><--flake><$r640_pin#r640-0>"
 grep -Fxq "head=$MOCK_HEAD" "$MOCK_ROLLBACK"
+grep -Fxq "flake=$r640_pin#r640-0" "$MOCK_ROLLBACK"
 grep -Fxq "rollback_command=sudo nixos-rebuild switch --rollback --flake $MOCK_PRIMARY#r640-0" "$MOCK_ROLLBACK"
 output 'Switch completed'
 run 1 env MOCK_CODEX_VERSION=0.0.0 "$r640_remote"
