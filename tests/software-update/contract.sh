@@ -11,6 +11,7 @@ export old_codex=1111111111111111111111111111111111111111
 export old_host=2222222222222222222222222222222222222222
 export old_editor=3333333333333333333333333333333333333333
 export revision=4444444444444444444444444444444444444444
+export discovered_revision=$revision
 
 fail() { printf 'software-update fixture: %s\n' "$*" >&2; exit 1; }
 require() { rg -q -- "$1" "$2" || fail "missing '$1' in $2"; }
@@ -55,6 +56,12 @@ set -eu
 [[ $1 == -s ]]
 printf '%s\n' "${running_host:-r640-0}"
 HOSTNAME
+cat >"$scratch/bin/curl" <<'CURL'
+#!/usr/bin/env bash
+set -eu
+[[ ${!#} == 'https://api.github.com/repos/NixOS/nixpkgs/commits?sha=master&path=pkgs/by-name/co/codex/package.nix&per_page=1' ]]
+jq -n --arg rev "$discovered_revision" '[{sha: $rev}]'
+CURL
 export fixture_real_mv
 fixture_real_mv=$(command -v mv)
 cat >"$scratch/bin/mv" <<'MV'
@@ -111,6 +118,9 @@ case "$1 $2" in
       if [[ $* == *nixosConfigurations.r640-0* ]]; then
         rg -q "codex-nixpkgs\.url.*$revision" "$location/flake.nix"
       fi
+    elif [[ -n ${current_codex_versions:-} ]]; then
+      printf '%s\n' "$current_codex_versions"
+      exit 0
     fi
     printf '%s\n' "${codex_versions:-[\"0.199.0\"]}"
     ;;
@@ -224,6 +234,15 @@ restore() {
   cp "$scratch/original.lock" "$checkout/flake.lock"
   cp "$scratch/original.nix" "$checkout/flake.nix"
 }
+
+running_host=eVolver reject "$codex"
+current_codex_versions='["0.200.0"]' "$codex" >"$scratch/output"
+require 'already at' "$scratch/output"
+clean
+current_codex_versions='["0.198.0"]' "$codex" >"$scratch/output"
+assert_scoped_lock codex-nixpkgs
+if rg -q '^machine ' "$log"; then fail 'automatic update reached the machine wrapper'; fi
+restore
 
 printf 'preserve staged edit\n' >>"$checkout/keep"
 git -C "$checkout" add keep

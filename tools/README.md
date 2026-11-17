@@ -101,7 +101,9 @@ before updating the checkout. Review and commit the flake diff before any
 separate switch. The eVolver Codex update also requires `--allow-host-nixpkgs`
 because it can change other packages and configurations that use the shared pin.
 
-The `r640-0` Codex update changes the dedicated `codex-nixpkgs` pin. After
+On `r640-0`, run `./tools/software/update/codex` to find the latest Codex
+package revision on Nixpkgs master and update the dedicated pin if the
+package version is newer. After
 review and commit, run `tools/software/update/codex switch --host r640-0`
 separately on `r640-0` from the canonical clean `main` checkout. For eVolver,
 the same `switch --host eVolver` action invokes the local guarded system switch.

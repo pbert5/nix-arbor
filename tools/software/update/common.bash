@@ -16,6 +16,8 @@ USAGE
     cat <<'USAGE'
 
 Hosts: r640-0, eVolver
+  On r640-0, run codex with no arguments to discover and pin a newer
+  Codex package from Nixpkgs master.
   r640-0 updates the exact codex-nixpkgs declaration and lock. After review and
   commit, run switch separately from the canonical clean main checkout.
   eVolver uses the shared host nixpkgs pin. Update requires --allow-host-nixpkgs
@@ -72,6 +74,12 @@ cleanup_update() {
 }
 
 action=${1:-}
+automatic=false
+if [[ $tool == codex && $# == 0 ]]; then
+  automatic=true
+  set -- update --host "$(hostname -s)"
+  action=update
+fi
 case "$action" in
   -h|--help|'') usage; exit 0 ;;
   preview|update|switch) shift ;;
@@ -111,7 +119,11 @@ case "$tool:$host" in
 esac
 
 if [[ $action == update ]]; then
-  [[ $revision =~ ^[0-9a-fA-F]{40}$ ]] || fail 'update requires a full 40-digit hexadecimal --revision'
+  if "$automatic"; then
+    [[ $input == codex-nixpkgs ]] || fail 'automatic updates require the dedicated r640-0 Codex pin'
+  else
+    [[ $revision =~ ^[0-9a-fA-F]{40}$ ]] || fail 'update requires a full 40-digit hexadecimal --revision'
+  fi
   revision=${revision,,}
   if [[ $input == nixpkgs ]]; then
     "$allow_host" || fail "$scope"
@@ -197,6 +209,18 @@ eval_version() {
 }
 
 if [[ $action == update ]]; then
+  if "$automatic"; then
+    revision=$(curl -fsS --max-time 30 \
+      'https://api.github.com/repos/NixOS/nixpkgs/commits?sha=master&path=pkgs/by-name/co/codex/package.nix&per_page=1' |
+      jq -er '.[0].sha | select(test("^[0-9a-f]{40}$"))') ||
+      fail 'unable to discover the latest Codex package revision from Nixpkgs master'
+    if [[ $revision == "$old_revision" ]]; then
+      printf '%s is already locked to %s.\n' "$input" "$revision"
+      exit 0
+    fi
+    eval_version "$repo_root" "$lock"
+    current_version=$version
+  fi
   scratch=$(mktemp -d)
   stage=
   publishing=false
@@ -233,6 +257,11 @@ if [[ $action == update ]]; then
     sed -i "/^[[:space:]]*codex-nixpkgs\.url = / s|$old_revision|$revision|" "$candidate/flake.nix"
   fi
   eval_version "path:$candidate" "$candidate/flake.lock"
+  if "$automatic" && { [[ $version == "$current_version" ]] ||
+    ! printf '%s\n' "$current_version" "$version" | LC_ALL=C sort -V -C; }; then
+    printf 'Codex pin is already at %s. Nixpkgs candidate: %s.\n' "$current_version" "$version"
+    exit 0
+  fi
 
   for file in flake.nix flake.lock; do
     cmp -s "$before/$file" "$candidate/$file" || files+=("$file")
