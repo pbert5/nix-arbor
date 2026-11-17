@@ -55,6 +55,19 @@ set -eu
 [[ $1 == -s ]]
 printf '%s\n' "${running_host:-r640-0}"
 HOSTNAME
+export fixture_real_mv
+fixture_real_mv=$(command -v mv)
+cat >"$scratch/bin/mv" <<'MV'
+#!/usr/bin/env bash
+set -eu
+if [[ ${replace_failure:-} == yes && $3 == */after/flake.lock ]]; then
+  if [[ ${edit_after_first_replace:-} == yes ]]; then
+    printf '\n# edit during publication\n' >>"$checkout/flake.nix"
+  fi
+  exit 12
+fi
+exec "$fixture_real_mv" "$@"
+MV
 cat >"$scratch/bin/nix" <<'NIX'
 #!/usr/bin/env bash
 set -eu
@@ -170,10 +183,36 @@ reject "$codex" update --host r640-0 --revision "$revision"
 cmp "$checkout/flake.nix" "$scratch/edited.nix"
 cmp "$checkout/flake.lock" "$scratch/original.lock"
 cp "$scratch/original.nix" "$checkout/flake.nix"
+for flag in assume-unchanged skip-worktree; do
+  git -C "$checkout" update-index "--$flag" -- flake.nix
+  printf '\n# edit hidden by %s\n' "$flag" >>"$checkout/flake.nix"
+  cp "$checkout/flake.nix" "$scratch/edited.nix"
+  clean
+  reject "$codex" update --host r640-0 --revision "$revision"
+  cmp "$checkout/flake.nix" "$scratch/edited.nix"
+  cmp "$checkout/flake.lock" "$scratch/original.lock"
+  cp "$scratch/original.nix" "$checkout/flake.nix"
+  git -C "$checkout" update-index "--no-$flag" -- flake.nix
+done
 concurrent_edit=yes reject "$codex" update --host r640-0 --revision "$revision"
 require '^# concurrent edit' "$checkout/flake.lock"
 cmp "$checkout/flake.nix" "$scratch/original.nix"
 cp "$scratch/original.lock" "$checkout/flake.lock"
+clean
+replace_failure=yes reject "$codex" update --host r640-0 --revision "$revision"
+require 'could not replace flake.lock' "$scratch/output"
+cmp "$checkout/flake.nix" "$scratch/original.nix"
+cmp "$checkout/flake.lock" "$scratch/original.lock"
+clean
+replace_failure=yes edit_after_first_replace=yes reject "$codex" update --host r640-0 --revision "$revision"
+require '^# edit during publication' "$checkout/flake.nix"
+require 'recovery copies' "$scratch/output"
+cmp "$checkout/flake.lock" "$scratch/original.lock"
+for recovery in "$checkout"/.software-update.*; do
+  cmp "$recovery/before/flake.nix" "$scratch/original.nix"
+  find "$recovery" -depth -delete
+done
+cp "$scratch/original.nix" "$checkout/flake.nix"
 clean
 
 assert_scoped_lock() {

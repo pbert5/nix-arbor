@@ -35,6 +35,42 @@ USAGE
   fi
 }
 
+flake_files_clean() {
+  local status tracked
+  status=$(git --no-optional-locks -C "$repo_root" -c core.fsmonitor=false -c core.filemode=true \
+    status --porcelain -- flake.nix flake.lock) || return
+  tracked=$(git -C "$repo_root" ls-files -v -- flake.nix flake.lock) || return
+  # H marks an ordinary tracked file. Lowercase tags and S can hide edits.
+  [[ -z $status && $tracked == $'H flake.lock\nH flake.nix' ]]
+}
+
+flake_file_matches() {
+  [[ -f $repo_root/$1 && ! -L $repo_root/$1 ]] && cmp -s "$repo_root/$1" "$2/$1"
+}
+
+cleanup_update() {
+  local file keep_stage=false
+  if [[ -n $stage ]]; then
+    if "$publishing"; then
+      for file in "${files[@]}"; do
+        # A replacement that is still staged never reached the checkout.
+        [[ ! -e $stage/after/$file ]] || continue
+        if flake_file_matches "$file" "$candidate" &&
+          mv -T -- "$stage/before/$file" "$repo_root/$file"; then
+          continue
+        fi
+        keep_stage=true
+      done
+    fi
+    if "$keep_stage"; then
+      printf '%s update: recovery copies are in %s/before. Inspect the checkout before restoring them.\n' "$tool" "$stage" >&2
+    else
+      find "$stage" -depth -delete
+    fi
+  fi
+  find "$scratch" -depth -delete
+}
+
 action=${1:-}
 case "$action" in
   -h|--help|'') usage; exit 0 ;;
@@ -99,6 +135,9 @@ if [[ $action != preview ]]; then
 fi
 lock="$repo_root/flake.lock"
 [[ -f $lock && ! -L $lock && -f $repo_root/flake.nix && ! -L $repo_root/flake.nix ]] || fail 'expected regular flake.nix and flake.lock files'
+if [[ $action == update ]]; then
+  flake_files_clean || fail 'preserve existing flake edits and clear any assume-unchanged or skip-worktree flags before updating'
+fi
 node=$(jq -er --arg input "$input" '
   .nodes as $nodes
   | (reduce ($input | split("/")[]) as $part (.root; $nodes[.].inputs[$part])) as $node
@@ -158,19 +197,22 @@ eval_version() {
 }
 
 if [[ $action == update ]]; then
-  changes=$(git -C "$repo_root" status --porcelain -- flake.nix flake.lock)
-  [[ -z $changes ]] || fail 'preserve the existing changes to flake.nix or flake.lock before updating'
-
   scratch=$(mktemp -d)
-  trap 'find "$scratch" -depth -delete' EXIT
+  stage=
+  publishing=false
+  files=()
+  trap cleanup_update EXIT
+  trap 'exit 129' HUP
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
   mkdir "$scratch/before" "$scratch/candidate"
   before="$scratch/before"
   candidate="$scratch/candidate"
-  cp -- "$repo_root/flake.nix" "$lock" "$before/"
+  cp -p -- "$repo_root/flake.nix" "$lock" "$before/"
   git -C "$repo_root" ls-files --cached -z |
     tar -C "$repo_root" --no-recursion --null -T - -cf - |
     tar -C "$candidate" -xf -
-  cp -- "$before/flake.nix" "$before/flake.lock" "$candidate/"
+  cp -p -- "$before/flake.nix" "$before/flake.lock" "$candidate/"
 
   # Resolve only the requested immutable Nixpkgs leaf with Nix. Keep the
   # original branch selectors and every unrelated node in Arbor's graph.
@@ -192,20 +234,36 @@ if [[ $action == update ]]; then
   fi
   eval_version "path:$candidate" "$candidate/flake.lock"
 
-  # Manual edits can still occur while Nix evaluates the candidate.
-  changes=$(git -C "$repo_root" status --porcelain -- flake.nix flake.lock)
-  [[ -z $changes ]] && cmp -s "$repo_root/flake.nix" "$before/flake.nix" && cmp -s "$lock" "$before/flake.lock" ||
-    fail 'flake files changed during evaluation; preserve those changes and try again'
-  # git apply checks every path before applying the patch to the worktree.
   for file in flake.nix flake.lock; do
-    diff -u --label "a/$file" --label "b/$file" "$before/$file" "$candidate/$file" || [[ $? == 1 ]]
-  done >"$scratch/flakes.patch"
-  if [[ -s $scratch/flakes.patch ]]; then
-    git -C "$repo_root" apply --whitespace=nowarn "$scratch/flakes.patch" || fail 'unable to apply the verified flake update'
+    cmp -s "$before/$file" "$candidate/$file" || files+=("$file")
+  done
+  if (( ${#files[@]} )); then
+    # Stage complete files and backups on the checkout filesystem so each
+    # replacement is an atomic rename. A failed second rename rolls back
+    # the first unless an outside edit needs to be preserved.
+    stage=$(mktemp -d -- "$repo_root/.software-update.XXXXXXXX")
+    mkdir "$stage/before" "$stage/after"
+    for file in "${files[@]}"; do
+      cp -p -- "$before/$file" "$stage/before/"
+      cp -p -- "$candidate/$file" "$stage/after/"
+    done
+  fi
+  # Manual edits can still occur while Nix evaluates the candidate.
+  flake_files_clean && flake_file_matches flake.nix "$before" && flake_file_matches flake.lock "$before" ||
+    fail 'flake files changed during evaluation; preserve those changes and try again'
+  if (( ${#files[@]} )); then
+    publishing=true
+    for file in "${files[@]}"; do
+      flake_file_matches "$file" "$before" || fail "$file changed before replacement"
+      mv -T -- "$stage/after/$file" "$repo_root/$file" || fail "could not replace $file"
+    done
+    publishing=false
     printf 'Updated %s to %s. Review with git diff -- flake.nix flake.lock.\n' "$input" "$revision"
   else
     printf '%s is already locked to %s.\n' "$input" "$revision"
   fi
+  cleanup_update
+  trap - EXIT HUP INT TERM
 else
   eval_version "$repo_root" "$lock"
 fi
