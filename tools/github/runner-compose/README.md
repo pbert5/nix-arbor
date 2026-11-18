@@ -152,3 +152,18 @@ Do not expose the physical Docker socket, use global `docker system prune`,
 change the existing ZFS dataset, or claim the full CI/OCI platform is accepted
 based on these basic workflows. Keep `R640_CI_READY` unset until its broader
 original acceptance criteria have passed.
+
+## Browser-only CI screenshots on R640
+
+The runner image now includes the **system libraries** required by Playwright's headless Chromium on Ubuntu 24.04. It still runs as UID 1001, without sudo, host Docker access, privileged mode, or any attached lab hardware. The Playwright browser binary is downloaded into the runner user's cache by the consumer workflow, not baked into the image.
+
+After this Dockerfile change is merged, refresh the actual Simple Evolver repository-scoped runner image on `r640-0`:
+
+```sh
+cd ~/documents/nix-arbor
+git pull --ff-only
+./tools/github/runners rebuild --repo pbert5/simple-evolver
+./tools/github/runners status --repo pbert5/simple-evolver
+```
+
+Then rerun the `Blockly README previews` workflow on `code-block-refinements` and `refine_webui`, or push a new change to either branch's authoring WebUI. The workflow uses fixture-backed Blockly in headless Chromium and commits PNG snapshots to the same branch. A runner rebuild is required because an existing runner container does not gain newly declared OS packages until its image/container is recreated.
