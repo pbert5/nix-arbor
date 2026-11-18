@@ -30,7 +30,7 @@ case "$1:$3" in
   show:--property=ActiveState)
     if [[ -e $fixture/restarted && ${failed_after:-} == "$2" ]]; then echo failed; else echo "${active:-active}"; fi ;;
   show:--property=UnitFileState) echo enabled ;;
-  show:--property=User) echo arbor-registry ;;
+  show:--property=User) if [[ $2 == arbor-registry-transport.service ]]; then echo "${transport_user:-arbor-registry-transport}"; else echo arbor-registry; fi ;;
   show:--property=StateDirectory) echo "${state_dir:-${2%.service}-canary-v1}" ;;
   show:--property=LoadState) echo masked ;;
   show:--property=ExecStart)
@@ -93,8 +93,8 @@ if [[ $op == identity/init-self ]]; then touch "$fixture/initialized"; fi
 fingerprint=$(printf '%064d' 0)
 if [[ -e $fixture/restarted && -n ${rotate:-} ]]; then fingerprint=$(printf '%064d' 1); fi
 if [[ -e $fixture/initialized ]]; then
-  data=$(jq -nc --arg node "${foreign:-$node}" --arg fp "$fingerprint" '{nodeId:$node,initialized:true,generation:1,
-    publicFingerprint:$fp,localGenesis:true,selfRooted:true,parents:0,peers:0,records:{accepted:1,total:1,quarantined:0},projection:{total:1}}')
+  data=$(jq -nc --arg node "${foreign:-$node}" --arg fp "$fingerprint" --argjson parents "${parents:-0}" '{nodeId:$node,initialized:true,generation:1,
+    publicFingerprint:$fp,localGenesis:true,selfRooted:true,parents:$parents,peers:0,records:{accepted:1,total:1,quarantined:0},projection:{total:1}}')
 elif [[ $op == identity/inspect ]]; then
   data='{"nodeId":null,"initialized":false,"localGenesis":false}'
 else
@@ -104,6 +104,7 @@ fi
 if [[ ${extra_op:-} == "$op" ]]; then data=$(jq '.extra="do-not-emit"' <<<"$data"); fi
 jq -nc --arg op "$op" --argjson data "$data" '{format:"arbor-manager/runtime-response",version:1,status:"accepted",operation:$op}+$data'
 MOCK
+sed -i "1c#!$BASH" bin/*
 chmod +x bin/*
 expect_failure() {
   if "$@" >out 2>err; then echo "unexpected success: $*" >&2; exit 1; fi
@@ -116,6 +117,7 @@ expect_failure "$cli" init-self unknown
 expect_failure "$cli" invalid r640-0
 actual_host=other expect_failure "$cli" init-self r640-0
 active=failed expect_failure "$cli" init-self r640-0
+transport_user=arbor-registry expect_failure "$cli" init-self r640-0
 state_dir=historical expect_failure "$cli" init-self r640-0
 environment_file=/test-override expect_failure "$cli" init-self r640-0
 no_adapter=1 expect_failure "$cli" init-self r640-0
@@ -144,6 +146,10 @@ no_mutation
 actual_host=eVolver "$cli" init-self eVolver >/dev/null
 [[ ! -s routes ]]
 "$cli" summary eVolver | jq -e '.records.accepted == 1' >/dev/null
+parents=1 "$cli" inspect eVolver | jq -e '.selfRooted and .parents == 1' >/dev/null
+parents=1 "$cli" summary eVolver | jq -e '.parents == 1' >/dev/null
+parents=1 expect_failure "$cli" inspect r640-0
+parents=2 expect_failure "$cli" summary eVolver
 : > log
 foreign=other expect_failure "$cli" init-self r640-0
 no_mutation
