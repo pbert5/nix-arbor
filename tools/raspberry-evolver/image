@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set +x
+set -eu
+if [[ ${1-} == --help || ${1-} == -h ]]; then
+  printf '%s\n' \
+    'Usage: image [--build-only | --from CLEAN_IMAGE] [--wifi-file PROFILE]' \
+    'Build a clean Pi image and personalize a private copy.' \
+    '--build-only          Build without requesting credentials.' \
+    '--from CLEAN_IMAGE    Personalize an existing image with its adjacent manifest.' \
+    '--wifi-file PROFILE   Import one owner-only WPA-PSK NetworkManager profile.'
+  exit 0
+fi
+here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+if command -v python3 >/dev/null 2>&1; then
+  exec python3 "$here/image_impl.py" "$@"
+fi
+if command -v nix >/dev/null 2>&1; then
+  exec nix shell --inputs-from "$here/../.." nixpkgs#python3 --command python3 "$here/image_impl.py" "$@"
+fi
+printf '%s\n' 'python3 is required; run in a Nix shell with python3 available.' >&2
+exit 1

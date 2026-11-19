@@ -29,6 +29,7 @@
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.home-manager.follows = "home-manager";
     };
+    nixos-raspberrypi.url = "github:nvmd/nixos-raspberrypi/v1.20261108.0";
     arbor-manager.url = "github:pbert5/arbor-manager";
     arbor-registry.url = "github:pbert5/arbor-registry/6147dd3a40c1787d1385d23617884499aeb5302d";
     arbor-network-manager.url = "github:pbert5/arbor-network-manager";

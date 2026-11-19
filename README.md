@@ -218,6 +218,9 @@ nix build .#nixosConfigurations.desktoptoodle.config.system.build.toplevel
 nix build .#nixosConfigurations.r640-0.config.system.build.toplevel
 ```
 
+For the headless Raspberry Pi 4, image preparation and SD-card tooling, see
+[raspberry-evolver](docs/raspberry-evolver.md).
+
 Deployment remains standard NixOS tooling; switching is an operator action:
 
 ```sh

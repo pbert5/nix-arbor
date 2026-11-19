@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -eu
+if [[ ${1-} == --help || ${1-} == -h ]]; then
+  printf '%s\n' 'Usage: status (--image IMAGE | --remote [USER@]HOST)' 'Inspect a local image and manifest, or query the selected Pi over SSH.'
+  exit 0
+fi
+here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+if command -v python3 >/dev/null 2>&1; then
+  exec python3 "$here/status_impl.py" "$@"
+fi
+if command -v nix >/dev/null 2>&1; then
+  exec nix shell --inputs-from "$here/../.." nixpkgs#python3 --command python3 "$here/status_impl.py" "$@"
+fi
+printf '%s\n' 'python3 is required; run in a Nix shell with python3 available.' >&2
+exit 1
