@@ -1,0 +1,265 @@
+"""Checkout-local public SSH grant and keypair commands."""
+import argparse
+from dataclasses import dataclass
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+
+sys.dont_write_bytecode = True
+from ssh_grants import (
+    EXTRA, ROOT, display_comment, extra_path, key_parts, lock_grants, parse_grants,
+    public_key_info, read_snapshot, save_grants,
+)
+
+NAMED = Path('config/access/default.nix')
+
+
+def fingerprint(key, source):
+    try:
+        return public_key_info(key).split()[1]
+    except ValueError as error:
+        raise ValueError(f'{source}: {error}') from None
+
+
+def describe(key, key_fingerprint):
+    algorithm, _, *comment = key_parts(key)
+    return ' '.join([key_fingerprint, algorithm, *(display_comment(part) for part in comment)])
+
+
+def named_keys(root):
+    path = (root.resolve() / NAMED)
+    if path.resolve(strict=True) != path or not path.is_file():
+        raise ValueError(f'{NAMED} must be a regular checkout file')
+    result = subprocess.run(
+        ['nix', 'eval', '--extra-experimental-features', 'nix-command', '--offline',
+         '--option', 'restrict-eval', 'true', '--option', 'nix-path', '',
+         '-I', str(path), '--json', '--file', str(path)],
+        capture_output=True, text=True,
+    )
+    if result.returncode:
+        raise ValueError(f'Nix could not evaluate the named key sets in {NAMED}')
+    data = json.loads(result.stdout)
+    if not isinstance(data, dict):
+        raise ValueError(f'{NAMED} must define named key sets')
+    for name, keys in sorted(data.items()):
+        if (not name.isprintable() or not isinstance(keys, list)
+                or not all(isinstance(key, str) for key in keys)):
+            raise ValueError(f'{NAMED} must define named lists of public keys')
+        source = f'{NAMED}#{name}'
+        for key in keys:
+            yield f'[named] {source}  {describe(key, fingerprint(key, source))}'
+
+
+@dataclass(frozen=True)
+class Grant:
+    host: str
+    user: str
+    index: int
+    key: str
+    fingerprint: str
+
+    def describe(self):
+        return f'{self.host}/{self.user}  {describe(self.key, self.fingerprint)}'
+
+
+def extra_grants(data):
+    for host, users in sorted(data.items()):
+        for user, keys in sorted(users.items()):
+            for index, key in enumerate(keys):
+                source = f'{EXTRA} ({host}/{user})'
+                yield Grant(host, user, index, key, fingerprint(key, source))
+
+
+def require_terminal(reason):
+    if not sys.stdin.isatty():
+        raise ValueError(reason)
+
+
+def inventory(args):
+    query = getattr(args, 'query', '')
+    if query is None:
+        require_terminal('Supply a search query when running without a terminal')
+        query = input('Find public keys: ')
+    if hasattr(args, 'query') and not query.strip():
+        raise ValueError('Supply a nonempty search query')
+    data = parse_grants(read_snapshot(extra_path(args.root)))
+    rows = list(named_keys(args.root))
+    rows.extend(f'[extra] {EXTRA}  {grant.describe()}' for grant in extra_grants(data))
+    matches = [row for row in rows if query.strip().casefold() in row.casefold()]
+    if matches:
+        print('\n'.join(matches))
+    elif query:
+        raise ValueError('No matching public keys')
+    else:
+        print('No public keys found.')
+
+
+def select_grant(grants):
+    for number, grant in enumerate(grants, 1):
+        print(f'  {number}. {grant.describe()}')
+    choice = input('Select an extra grant by number (Enter to cancel): ').strip()
+    if not choice:
+        return None
+    try:
+        index = int(choice) - 1
+    except ValueError:
+        raise ValueError('Invalid grant selection') from None
+    if not 0 <= index < len(grants):
+        raise ValueError('Invalid grant selection')
+    return grants[index]
+
+
+def remove(args):
+    selection = (args.host, args.user, args.fingerprint)
+    if not all(selection):
+        if any(value is not None for value in selection) or args.yes or args.dry_run:
+            raise ValueError('Supply --host, --user, and the full --fingerprint together')
+        require_terminal('Supply --host, --user, and the full --fingerprint without a terminal')
+    path = extra_path(args.root)
+    snapshot = read_snapshot(path)
+    data = parse_grants(snapshot)
+    grants = list(extra_grants(data))
+    if not grants:
+        raise ValueError(f'No public keys found in {EXTRA}')
+    if all(selection):
+        matches = [
+            grant for grant in grants
+            if (grant.host, grant.user, grant.fingerprint) == selection
+        ]
+        if not matches:
+            raise ValueError(f'No extra grant matches that host, user, and full fingerprint in {EXTRA}')
+        if len(matches) > 1:
+            raise ValueError('Multiple extra grants match. Run remove without arguments and select one row.')
+        grant = matches[0]
+    else:
+        grant = select_grant(grants)
+        if grant is None:
+            print('Cancelled.')
+            return
+    print(f'Remove from {EXTRA}:')
+    print(f'  {grant.describe()}')
+    if args.dry_run:
+        return
+    if not args.yes:
+        require_terminal('Use --yes to confirm removal or --dry-run to preview without a terminal')
+        if input('Save this removal? [y/N] ').strip().lower() != 'y':
+            print('Cancelled.')
+            return
+
+    users = data[grant.host]
+    keys = users[grant.user]
+    del keys[grant.index]
+    if not keys:
+        del users[grant.user]
+        if not users:
+            del data[grant.host]
+    with lock_grants(path):
+        save_grants(path, snapshot, data)
+    print(f'Saved {path}. Review and commit the change before applying it.')
+
+
+def check_output_parent(parent):
+    if parent.is_relative_to(ROOT):
+        raise ValueError('Choose an output path outside Git checkouts')
+    env = dict(os.environ, LC_ALL='C', GIT_DISCOVERY_ACROSS_FILESYSTEM='1')
+    for name in ('GIT_DIR', 'GIT_WORK_TREE', 'GIT_COMMON_DIR', 'GIT_CEILING_DIRECTORIES'):
+        env.pop(name, None)
+    result = subprocess.run(
+        ['git', '-C', str(parent), 'rev-parse', '--git-dir'],
+        env=env, capture_output=True, text=True,
+    )
+    if result.returncode == 0:
+        raise ValueError('Choose an output path outside Git checkouts')
+    if not result.stderr.startswith('fatal: not a git repository'):
+        raise ValueError('Git could not check the output directory')
+
+
+def generate(args):
+    output = args.output
+    if not output:
+        require_terminal('Supply --output when running without a terminal')
+        output = input('Path for the new private key (Enter to cancel): ').strip()
+        if not output:
+            print('Cancelled.')
+            return
+    if not args.no_passphrase:
+        require_terminal('Use a terminal to enter a passphrase or explicitly use --no-passphrase')
+    if not output.isprintable() or any(char in (args.comment or '') for char in '\x00\n\r'):
+        raise ValueError('Use a single-line output path and comment')
+    path = Path(output).expanduser()
+    parent = path.parent.resolve(strict=True)
+    check_output_parent(parent)
+    private = parent / path.name
+    public = private.with_name(private.name + '.pub')
+    for destination in (private, public):
+        if os.path.lexists(destination):
+            raise FileExistsError(f'Refusing to overwrite {destination}')
+
+    # Generate privately, then hard-link into place. Linking fails if a file
+    # appeared after the initial checks, whereas ssh-keygen can overwrite it.
+    with tempfile.TemporaryDirectory(dir=parent, prefix='.arbor-key-') as temp:
+        source = Path(temp) / 'key'
+        command = ['ssh-keygen', '-q', '-t', 'ed25519', '-f', str(source)]
+        if args.comment is not None:
+            command += ['-C', args.comment]
+        if args.no_passphrase:
+            command += ['-N', '']
+        subprocess.run(command, check=True, umask=0o077)
+        check_output_parent(parent)
+        os.link(source, private)
+        try:
+            os.link(source.with_suffix('.pub'), public)
+        except BaseException:
+            # Leave a concurrent replacement alone if the caller's path
+            # no longer refers to the link we installed.
+            try:
+                if os.path.samestat(private.lstat(), source.stat()):
+                    private.unlink()
+            except FileNotFoundError:
+                pass
+            raise
+    print(f'Private key: {private}\nPublic key:  {public}')
+
+
+def main():
+    command = sys.argv[1] if len(sys.argv) > 1 else ''
+    descriptions = {
+        'list': ('List public SSH grants by named set and editable host/user.', inventory),
+        'find': ('Find public SSH grants by fingerprint, comment, or source.', inventory),
+        'remove': ('Remove an exact public SSH grant from extra-keys.json.', remove),
+        'generate': ('Generate a local Ed25519 keypair outside Git checkouts.', generate),
+    }
+    if command not in descriptions:
+        raise ValueError('Run tools/ssh/keys/list, find, remove, or generate')
+    description, run = descriptions[command]
+    parser = argparse.ArgumentParser(prog=f'tools/ssh/keys/{command}', description=description)
+    if command != 'generate':
+        parser.add_argument('--root', type=Path, default=ROOT, help=argparse.SUPPRESS)
+    if command == 'find':
+        parser.add_argument('query', nargs='?', help='case-insensitive search text')
+    if command == 'remove':
+        parser.add_argument('--host', help='exact destination host')
+        parser.add_argument('--user', help='exact destination user')
+        parser.add_argument('--fingerprint', help='full SHA256 fingerprint shown by list or find')
+        mode = parser.add_mutually_exclusive_group()
+        mode.add_argument('--yes', action='store_true', help='confirm the selected removal')
+        mode.add_argument('--dry-run', action='store_true', help='show the selection without saving')
+    if command == 'generate':
+        parser.add_argument('--output', help='path for the private key in an existing directory')
+        parser.add_argument('--comment', help='comment for the generated public key')
+        parser.add_argument('--no-passphrase', action='store_true', help='explicitly use an empty passphrase')
+    run(parser.parse_args(sys.argv[2:]))
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except subprocess.CalledProcessError:
+        sys.exit('Error: ssh-keygen could not generate the keypair')
+    except (EOFError, KeyboardInterrupt):
+        sys.exit('Cancelled.')
+    except (ValueError, OSError) as error:
+        sys.exit(f'Error: {error}')

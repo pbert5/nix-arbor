@@ -31,7 +31,7 @@
     };
     nixos-raspberrypi.url = "github:nvmd/nixos-raspberrypi/v1.20261108.0";
     arbor-manager.url = "github:pbert5/arbor-manager";
-    arbor-registry.url = "github:pbert5/arbor-registry/e070aadb479b6a8ab9b38a49bc05df1f9b6fcd49";
+    arbor-registry.url = "github:pbert5/arbor-registry/6147dd3a40c1787d1385d23617884499aeb5302d";
     arbor-network-manager.url = "github:pbert5/arbor-network-manager";
     yggdrasil-private.url = "git+https://github.com/pbert5/yggdrasil-private.git?ref=main";
   };

@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage: tools/test/fast [-h | --help]
+
+Run the checkout test tool, GitHub runner CLI, Registry lifecycle, and SSH public-key contracts.
+Requires Bash, jq, ssh-keygen, and Linux utilities including script.
+Uses Python 3 from PATH or the checkout's cached Nix inputs.
+For Docker, VM, and Nix-dependent tests, see tools/test/README.md.
+USAGE
+}
+
+case $#:${1-} in
+  0:) ;;
+  1:-h|1:--help) usage; exit 0 ;;
+  *) usage >&2; exit 2 ;;
+esac
+
+root=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd -P)
+cd -- "$root"
+
+printf 'Running test entry point contract...\n'
+tests/tool-test/contract.sh
+printf 'Running GitHub runner CLI contract (mock Docker and GitHub)...\n'
+tests/github/runners-contract.sh
+printf 'Running Registry lifecycle contract (mock services and SSH)...\n'
+tests/arbor-registry/lifecycle.sh
+printf 'Running SSH public-key contract...\n'
+if command -v python3 >/dev/null; then
+  exec python3 tests/ssh/add-key.py
+fi
+
+printf 'Looking for the checkout-locked Python 3 in the Nix cache.\n'
+# Address the cached source by the lock file hash, without opening its flake URL.
+nar_hash=$(nix --extra-experimental-features nix-command eval --impure --raw --expr '
+  let
+    lock = builtins.fromJSON (builtins.readFile ./flake.lock);
+    root = builtins.getAttr lock.root lock.nodes;
+    nixpkgs = builtins.getAttr root.inputs.nixpkgs lock.nodes;
+  in nixpkgs.locked.narHash
+')
+nixpkgs=$(nix-store --print-fixed-path --recursive sha256 "$nar_hash" source)
+if ! nix-store --check-validity "$nixpkgs"; then
+  printf '%s\n' 'The locked nixpkgs source is unavailable locally.' \
+    'Put Python 3 on PATH or cache the locked Python package.' >&2
+  exit 1
+fi
+
+exec nix --extra-experimental-features 'nix-command flakes' shell \
+  --offline --option substitute false --max-jobs 0 --builders '' \
+  --no-use-registries --no-update-lock-file --no-write-lock-file "path:$nixpkgs#python3" \
+  --command python3 tests/ssh/add-key.py

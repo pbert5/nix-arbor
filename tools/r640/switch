@@ -3,15 +3,28 @@ set -euo pipefail
 
 usage() {
   cat <<'USAGE'
-Usage: ./tools/r640/switch [--check | --dry-run]
+Usage: ./tools/r640/switch [--expected-head COMMIT] [--check | --dry-run]
 
+  --expected-head COMMIT
+              Require this full Git HEAD and use it as the flake revision.
   --check     Validate checkout, host, flake output, and mounted storage only.
   --dry-run   Run the same checks and build the exact r640-0 system closure.
   no option   Prompt for sudo, preserve rollback details, and activate r640-0.
 
-Run from the clean primary Nix Arbor main checkout on host r640-0.
+Run from the primary Nix Arbor main checkout on host r640-0.
+A dirty checkout triggers a warning.
 USAGE
 }
+
+expected_head=
+if [[ ${1-} == --expected-head ]]; then
+  if [[ ! ${2-} =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]]; then
+    printf 'r640 switch: --expected-head requires a full Git commit ID\n' >&2
+    exit 2
+  fi
+  expected_head=$2
+  shift 2
+fi
 
 mode=activate
 case "${1:-}" in
@@ -25,8 +38,8 @@ esac
 
 fail() { printf 'r640 switch: %s\n' "$*" >&2; exit 1; }
 
-script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
-repo_root=$(CDPATH= cd -- "$script_dir/../.." && pwd -P)
+script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)
+repo_root=$(CDPATH='' cd -- "$script_dir/../.." && pwd -P)
 expected_root=/home/ash/documents/nix-arbor
 [[ $repo_root == "$expected_root" ]] || fail "expected primary checkout at $expected_root, found $repo_root"
 [[ $(git -C "$repo_root" rev-parse --show-toplevel) == "$repo_root" ]] || fail 'script is not inside the expected Git checkout'
@@ -34,11 +47,25 @@ branch=$(git -C "$repo_root" branch --show-current)
 [[ $branch == main ]] || fail "expected branch main, found ${branch:-detached}; switch to the reviewed main checkout"
 host=$(hostname -s)
 [[ $host == r640-0 ]] || fail "host must be r640-0; found $host"
-[[ -z $(git -C "$repo_root" status --porcelain) ]] || fail 'checkout is dirty; commit or preserve the changes before activation'
-flake_ref="$repo_root#r640-0"
-configured_host=$(nix eval --raw "$repo_root#nixosConfigurations.r640-0.config.networking.hostName")
+checkout_status=$(git -C "$repo_root" status --porcelain)
+head=$(git -C "$repo_root" rev-parse --verify HEAD)
+flake_source=$repo_root
+if [[ -n $expected_head ]]; then
+  [[ $head == "$expected_head" ]] || fail "expected remote HEAD $expected_head, found $head"
+  flake_source="git+file://$repo_root?rev=$expected_head"
+fi
+if [[ -n $checkout_status ]]; then
+  if [[ -n $expected_head ]]; then
+    printf 'r640 switch: warning: checkout is dirty. Using committed revision %s.\n' "$expected_head" >&2
+  else
+    printf 'r640 switch: warning: checkout is dirty. Using the working tree, including local changes to tracked files.\n' >&2
+  fi
+fi
+flake_ref="$flake_source#r640-0"
+config_ref="$flake_source#nixosConfigurations.r640-0.config"
+configured_host=$(nix eval --raw "$config_ref.networking.hostName")
 [[ $configured_host == r640-0 ]] || fail "flake output r640-0 declares hostname '$configured_host'"
-codex_packages=$(nix eval --json "$repo_root#nixosConfigurations.r640-0.config.environment.systemPackages" \
+codex_packages=$(nix eval --json "$config_ref.environment.systemPackages" \
   --apply 'ps: builtins.filter (p: builtins.match "codex-.*" p.name != null) (builtins.map (p: { inherit (p) name; path = p.outPath; version = p.version or ""; }) ps)')
 expected_codex_version=$(jq -er '[.[] | select(.name | test("^codex-[0-9]"))] | if length == 1 then .[0].version else error("expected one NixOS codex package") end' <<<"$codex_packages")
 expected_codex_switch_version=$(jq -er '[.[] | select(.name | test("^codex-switch-[0-9]"))] | if length == 1 then .[0].version else error("expected one NixOS codex-switch package") end' <<<"$codex_packages")
@@ -52,7 +79,7 @@ zpool list -H mypool >/dev/null 2>&1 || fail 'ZFS pool mypool is unavailable; re
 [[ -d /mypool/docker_data && -d /mypool/nix-build ]] || fail 'expected /mypool/docker_data and /mypool/nix-build are not present'
 
 printf 'Preflight PASS: host=%s branch=%s head=%s\n' \
-  "$host" "$branch" "$(git -C "$repo_root" rev-parse --short HEAD)"
+  "$host" "$branch" "${head:0:7}"
 printf 'Flake target: %s\n' "$flake_ref"
 printf 'NixOS Codex package: %s\n' "$expected_codex_version"
 printf 'NixOS codex-switch package: %s\n' "$expected_codex_switch_version"
@@ -64,7 +91,7 @@ fi
 
 if [[ $mode == dry-run ]]; then
   printf 'Building r640-0 system closure without activation...\n'
-  nix build --no-link "$repo_root#nixosConfigurations.r640-0.config.system.build.toplevel"
+  nix build --no-link "$config_ref.system.build.toplevel"
   printf 'Dry-run complete; no sudo or host activation was used.\n'
   exit 0
 fi
@@ -84,7 +111,7 @@ current_system=$(readlink -f /run/current-system 2>/dev/null || printf 'unavaila
 profile_system=$(readlink -f /nix/var/nix/profiles/system 2>/dev/null || printf 'unavailable')
 booted_system=$(readlink -f /run/booted-system 2>/dev/null || printf 'unavailable')
 generations=$(nix-env --profile /nix/var/nix/profiles/system --list-generations 2>/dev/null || printf 'unavailable')
-recovery_command="sudo nixos-rebuild switch --rollback --flake $flake_ref"
+recovery_command="sudo nixos-rebuild switch --rollback --flake $repo_root#r640-0"
 timestamp=$(date -u +%Y%m%dT%H%M%SZ)
 rollback_file="/var/lib/nix-arbor-r640-switch/$timestamp.txt"
 
@@ -97,9 +124,12 @@ printf 'System generations before switch:\n%s\n' "$generations"
 printf 'Sudo may prompt for your password before activation.\n'
 sudo -v
 sudo install -d -m 0700 /var/lib/nix-arbor-r640-switch
+if [[ -z $expected_head ]]; then
+  head=$(git -C "$repo_root" rev-parse --verify HEAD)
+fi
 {
   printf 'timestamp_utc=%s\n' "$timestamp"
-  printf 'checkout=%s\nbranch=%s\nhead=%s\n' "$repo_root" "$branch" "$(git -C "$repo_root" rev-parse HEAD)"
+  printf 'checkout=%s\nbranch=%s\nhead=%s\nflake=%s\n' "$repo_root" "$branch" "$head" "$flake_ref"
   printf 'current_system=%s\nbooted_system=%s\nsystem_profile=%s\n' "$current_system" "$booted_system" "$profile_system"
   printf 'codex_before=%s\n' "$before_codex"
   printf 'codex_switch_before=%s\n' "$before_codex_switch"

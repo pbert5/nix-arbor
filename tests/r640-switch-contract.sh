@@ -7,10 +7,7 @@ switch="$root/tools/r640/switch"
   echo 'run this contract test from main' >&2
   exit 2
 }
-[[ -z $(git -C "$root" status --porcelain) ]] || {
-  echo 'run this contract test from a clean checkout' >&2
-  exit 2
-}
+checkout_status=$(git -C "$root" status --porcelain)
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
@@ -66,7 +63,14 @@ if ! grep -q 'host must be r640-0' "$tmp/wrong.out"; then
   exit 1
 fi
 
-"$switch" --check
+"$switch" --check 2>"$tmp/check.err"
+if [[ -n $checkout_status ]]; then
+  grep -Fq 'warning: checkout is dirty. Using the working tree' "$tmp/check.err"
+  head=$(git -C "$root" rev-parse --verify HEAD)
+  "$switch" --expected-head "$head" --check >"$tmp/pinned.out" 2>"$tmp/pinned.err"
+  grep -Fq "warning: checkout is dirty. Using committed revision $head." "$tmp/pinned.err"
+  grep -Fxq "Flake target: git+file://$root?rev=$head#r640-0" "$tmp/pinned.out"
+fi
 [[ ! -e "$tmp/marker/sudo" && ! -e "$tmp/marker/activation" ]] || {
   echo '--check invoked sudo or activation' >&2
   exit 1

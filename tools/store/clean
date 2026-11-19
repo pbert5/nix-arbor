@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export LC_ALL=C
+
+usage() {
+  cat <<'USAGE'
+Usage: tools/store/clean [--list]
+       tools/store/clean --apply /nix/store/HASH-NAME [...]
+       tools/store/clean --help
+
+List registered store paths with likely smoke, test, and VM names first.
+Liveness is unknown in the list. To delete, pass exact paths to --apply.
+The local Nix daemon checks liveness and referrers at deletion time.
+A multi-path deletion can partially succeed. Daemon housekeeping can
+release reserved GC space and prune stale root records and unused store links.
+USAGE
+}
+
+usage_error() {
+  usage >&2
+  exit 2
+}
+
+store_path='^/nix/store/[0123456789abcdfghijklmnpqrsvwxyz]{32}-[a-zA-Z0-9+._?=-]+$'
+if (($# == 0)); then
+  set -- --list
+fi
+case $1 in
+  --list) (($# == 1)) || usage_error ;;
+  --help|-h)
+    (($# == 1)) || usage_error
+    usage
+    exit 0
+    ;;
+  --apply)
+    shift
+    (($#)) || usage_error
+    for path in "$@"; do
+      if [[ ! $path =~ $store_path ]]; then
+        printf 'store clean: expected a full store path, got %q\n' "$path" >&2
+        exit 2
+      fi
+    done
+    command -v nix-store >/dev/null || {
+      printf '%s\n' 'store clean: nix-store is unavailable' >&2
+      exit 1
+    }
+    nix-store --store daemon --check-validity "$@"
+    exec nix-store --store daemon --delete "$@"
+    ;;
+  *) usage_error ;;
+esac
+
+command -v nix >/dev/null || {
+  printf '%s\n' 'store clean: nix is unavailable' >&2
+  exit 1
+}
+registered=$(nix --extra-experimental-features nix-command path-info --store daemon --all) || exit "$?"
+
+priority_name='(^|[-+._])(smoke([-._]?tests?)?|tests?|vm)([-+._]|$)'
+priority=()
+other=()
+if [[ -n $registered ]]; then
+  while IFS= read -r path; do
+    if [[ ! $path =~ $store_path ]]; then
+      printf 'store clean: unexpected output from nix path-info: %q\n' "$path" >&2
+      exit 1
+    fi
+    name=${path#*-}
+    if [[ ${name,,} =~ $priority_name ]]; then
+      priority+=("$path")
+    else
+      other+=("$path")
+    fi
+  done <<< "$registered"
+fi
+
+printf '%s\n' 'store clean: registered store paths (liveness is unknown)' >&2
+if ((${#priority[@]} + ${#other[@]})); then
+  printf '%s\n' "${priority[@]}" "${other[@]}"
+fi

@@ -19,25 +19,25 @@ description = "Read-only workflow and validation agent covering success and safe
 config_file = "./agents/integration-test.toml"
 
 # Opt-in only: select these variants when the current session explicitly requests high-burn.
-[agents.architect-researcher-terra-high]
+[agents.architect-researcher-sol-high]
 description = "High-burn opt-in architect-researcher; self-contained role for explicit sessions."
-config_file = "./agents/architect-researcher-terra-high.toml"
+config_file = "./agents/architect-researcher-sol-high.toml"
 
-[agents.implementer-terra-high]
+[agents.implementer-sol-high]
 description = "High-burn opt-in implementer; self-contained role for explicit sessions."
-config_file = "./agents/implementer-terra-high.toml"
+config_file = "./agents/implementer-sol-high.toml"
 
-[agents.reviewer-terra-high]
+[agents.reviewer-sol-high]
 description = "High-burn opt-in reviewer; self-contained role for explicit sessions."
-config_file = "./agents/reviewer-terra-high.toml"
+config_file = "./agents/reviewer-sol-high.toml"
 
-[agents.integration-test-terra-high]
+[agents.integration-test-sol-high]
 description = "High-burn opt-in integration-test; self-contained role for explicit sessions."
-config_file = "./agents/integration-test-terra-high.toml"
+config_file = "./agents/integration-test-sol-high.toml"
 
-[agents.nix-specialist-terra-high]
+[agents.nix-specialist-sol-high]
 description = "High-burn opt-in nix-specialist; self-contained role for explicit sessions."
-config_file = "./agents/nix-specialist-terra-high.toml"
+config_file = "./agents/nix-specialist-sol-high.toml"
 
 # Repository-local MCP defaults. Keep credentials in the user's environment or
 # Codex's OAuth store; never commit tokens here.

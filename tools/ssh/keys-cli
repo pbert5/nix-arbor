@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+command_name=${0##*/}
+tool_dir=$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")
+if command -v python3 >/dev/null; then
+    exec python3 "$tool_dir/keys_cli.py" "$command_name" "$@"
+fi
+
+root=$(cd -- "$tool_dir/../.." && pwd -P)
+exec nix --extra-experimental-features 'nix-command flakes' shell \
+    --no-write-lock-file --inputs-from "$root" nixpkgs#python3 \
+    --command python3 "$tool_dir/keys_cli.py" "$command_name" "$@"

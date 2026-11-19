@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage: tools/env/shell [--check | -- COMMAND [ARG ...] | --help]
+
+With no arguments, enter the checkout's dev shell.
+--check validates the dev shell without running its shell hook.
+-- COMMAND runs a command inside the dev shell with the supplied arguments.
+USAGE
+}
+
+if [[ ${1-} == -h || ${1-} == --help ]]; then
+  usage
+  exit 0
+fi
+
+# shellcheck source=tools/env/checkout.bash
+source "$(dirname -- "${BASH_SOURCE[0]}")/checkout.bash"
+require_flake
+
+if (($# == 0)); then
+  exec nix develop --no-update-lock-file .
+fi
+case "$1" in
+  --check)
+    if (($# == 1)); then
+      exec nix print-dev-env --no-update-lock-file --json . > /dev/null
+    fi
+    ;;
+  --)
+    shift
+    if (($#)); then
+      exec nix develop --no-update-lock-file . --command "$@"
+    fi
+    ;;
+esac
+
+usage >&2
+exit 2

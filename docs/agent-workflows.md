@@ -129,29 +129,29 @@ relationship audit.
 ### High-burn session option
 
 High-burn is an explicit, session-scoped opt-in, never a quota-driven or automatic
-default. It replaces otherwise-Luna subagents with `gpt-6.1-terra` / `high`
-throughout the existing task topology, including owners, workers, prompt loaders,
-reviewers, verifiers, scouts and nested helpers. It does not require a benchmark,
-pilot, extra team layers or a new planning framework. Ordinary product tests and
-independent review remain required by the task contract.
+default. Use `gpt-6.2-sol` / `high` for owners, workers, prompt loaders,
+reviewers, verifiers, scouts, and other high-burn subagent roles. Use
+`gpt-6.1-terra` / `high` for focused nested helpers. Nested reviewers and
+workers use Sol/high. High-burn requires the ordinary product tests and
+independent review specified by the task contract. Benchmarks and pilots are optional.
 
-Select from the five self-contained `*-terra-high` compatibility variants:
+Select from the five self-contained `*-sol-high` compatibility variants:
 `architect-researcher`, `implementer`, `reviewer`, `nix-specialist` and
-`integration-test`. Their TOML layers set the model and effort and
-the same defaults for descendants. Normal Nix specialist and integration-test
+`integration-test`. Their TOML layers set Sol/high for the role and Terra/high
+as the fallback for focused helpers. Normal Nix specialist and integration-test
 roles remain registered; generic normal roles belong in personal configuration.
 
-For generic/personal roles, explicitly pass `model="gpt-6.1-terra"` and high
-reasoning effort on every spawn, including nested spawns, using the host's
-supported effort parameter. Explicit spawn choices override defaults. Do not
-select a Luna-pinned personal role and assume inheritance changes it. If the
-runtime cannot apply the requested override, report that limitation rather than
-silently substituting a model.
+For generic and personal roles, explicitly pass `model="gpt-6.2-sol"` and high
+reasoning effort for each non-helper spawn. Pass `model="gpt-6.1-terra"` and
+high reasoning effort for focused nested helpers. Use the host's supported
+effort parameter and apply the same mapping on nested spawns. Check whether
+the runtime can override any model pinned by a personal role, and report any
+limitation applying the requested model or effort.
 
 A CLI session can supply fallback defaults without editing user configuration:
 
 ```sh
-codex -c 'agents.default_subagent_model="gpt-6.1-terra"' \
+codex -c 'agents.default_subagent_model="gpt-6.2-sol"' \
   -c 'agents.default_subagent_reasoning_effort="high"'
 ```
 
@@ -186,7 +186,7 @@ before using this session-only override alongside the model defaults:
 
 ```sh
 codex -c "agents.max_concurrent_threads_per_session=${HIGH_BURN_THREADS:?set to the verified supported spawned-thread cap}" \
-  -c 'agents.default_subagent_model="gpt-6.1-terra"' \
+  -c 'agents.default_subagent_model="gpt-6.2-sol"' \
   -c 'agents.default_subagent_reasoning_effort="high"'
 ```
 

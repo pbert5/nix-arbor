@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage: ./tools/machines/r640-0/remote-switch [--check | --dry-run]
+
+Run the legacy switch through SSH alias r640-0. The remote primary main
+checkout must match this checkout's committed HEAD. Local changes on the
+remote checkout trigger a warning and the build uses the committed revision.
+
+  --check     Run the remote host and storage checks.
+  --dry-run   Run those checks and build the r640-0 closure on the remote host.
+  no option   Activate on r640-0 and save its rollback details.
+USAGE
+}
+
+tty_options=()
+case "$#:${1-}" in
+  0:) tty_options=(-t) ;;
+  1:--check|1:--dry-run) ;;
+  1:-h|1:--help) usage; exit 0 ;;
+  *) usage >&2; exit 2 ;;
+esac
+
+repo_root=$(CDPATH='' cd -- "$(dirname -- "$0")/../../.." && pwd -P)
+if [[ $(git -C "$repo_root" rev-parse --show-toplevel) != "$repo_root" ]]; then
+  printf 'r640 remote-switch: expected a Git checkout at %s\n' "$repo_root" >&2
+  exit 1
+fi
+head=$(git -C "$repo_root" rev-parse --verify HEAD)
+if [[ ! $head =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]]; then
+  printf 'r640 remote-switch: invalid Git HEAD %s\n' "$head" >&2
+  exit 1
+fi
+
+remote_root=/home/ash/documents/nix-arbor
+printf 'Remote checkout: r640-0:%s (required HEAD %s)\n' "$remote_root" "$head"
+# The validated hash and the parsed option are safe to embed in the SSH command.
+exec ssh "${tty_options[@]}" r640-0 \
+  "cd $remote_root && exec ./tools/r640/switch --expected-head '$head' ${1-}"

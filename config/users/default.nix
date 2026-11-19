@@ -76,7 +76,10 @@ in
     hashedPasswordFile = lib.mkIf config.arbor.environment.secrets.enable config.sops.secrets.madeline-password.path;
   };
   home-manager.users.ash = {
-    imports = [ inputs.ashzsh.homeModules.default ];
+    imports = [
+      inputs.ashzsh.homeModules.default
+      ../../modules/fastfetch-arbor.nix
+    ];
     home.username = "ash";
     home.homeDirectory = "/home/ash";
     home.stateVersion = "26.05";

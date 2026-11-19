@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+case $#:${1-} in
+  1:-h|1:--help)
+    cat <<'USAGE'
+Usage: tools/test/flake [Nix options]
+
+Evaluate this checkout's flake and build its checks with nix flake check.
+The checkout lock file is preserved. Relative option paths start at the checkout root.
+USAGE
+    exit 0
+    ;;
+esac
+
+root=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd -P)
+cd -- "$root"
+exec nix flake check --no-write-lock-file . "$@"
