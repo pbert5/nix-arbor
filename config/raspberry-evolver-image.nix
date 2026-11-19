@@ -1,6 +1,35 @@
 { pi, pkgs }:
 let
-  sd = pi.config.sdImage;
+  releaseDirectory = builtins.getEnv "RASPBERRY_EVOLVER_THIN_RELEASE";
+  releaseInstall = pkgs.lib.optionalString (releaseDirectory != "") (
+    let
+      files = [
+        "SHA256SUMS"
+        "evolver.bundle"
+        "images.tar.gz"
+        "thin-images"
+      ];
+      installFile =
+        name:
+        "install -m 0644 ${
+          builtins.path {
+            path = /. + "${releaseDirectory}/${name}";
+            inherit name;
+          }
+        } $release/${name}";
+    in
+    ''
+      release=files/var/lib/raspberry-evolver/thin-release
+      mkdir -p "$release"
+      ${pkgs.lib.concatMapStringsSep "\n" installFile files}
+    ''
+  );
+  imagePi = pi.extendModules {
+    modules = [
+      { sdImage.populateRootCommands = pkgs.lib.mkAfter releaseInstall; }
+    ];
+  };
+  sd = imagePi.config.sdImage;
   # Upstream boot helpers run ARM executables. Prepare their files on the
   # ARM builder; tar preserves boot file modes across the Nix store boundary.
   bootFiles = pi.pkgs.runCommand "raspberry-evolver-boot-files" { } ''
@@ -22,7 +51,7 @@ let
       ;
     populateImageCommands = "tar -xf ${bootFiles}/root.tar -C files";
   };
-  packed = pi.extendModules {
+  packed = imagePi.extendModules {
     modules = [
       {
         sdImage.rootFilesystemImage = nativeRoot;
@@ -32,7 +61,7 @@ let
   };
 in
 if pkgs.stdenv.buildPlatform.system == pi.pkgs.stdenv.hostPlatform.system then
-  pi.config.system.build.sdImage
+  imagePi.config.system.build.sdImage
 else
   packed.config.system.build.sdImage.override {
     inherit (pkgs)

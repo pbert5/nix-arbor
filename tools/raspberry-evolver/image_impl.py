@@ -378,15 +378,22 @@ def private_directory():
     return Path(tempfile.mkdtemp(prefix='image-', dir=base))
 
 
-def build_clean():
+def build_clean(thin_release=None):
     repo = Path(__file__).resolve().parents[2]
     if subprocess.run(['git', '-C', str(repo), 'status', '--porcelain', '--untracked-files=no'],
                       capture_output=True, check=True).stdout:
         raise OSError('Commit tracked changes before building so provenance is reproducible')
     revision = subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD'], text=True).strip()
     lock_hash = digest(repo / 'flake.lock')
-    result = subprocess.check_output(['nix', 'build', '--no-link', '--print-out-paths',
-                                      str(repo) + '#raspberry-evolver-image'], text=True)
+    environment = os.environ.copy()
+    command = ['nix', 'build', '--no-link', '--print-out-paths']
+    if thin_release is not None:
+        release = thin_release.resolve(strict=True)
+        subprocess.run(['sha256sum', '--check', '--status', 'SHA256SUMS'], cwd=release, check=True)
+        environment['RASPBERRY_EVOLVER_THIN_RELEASE'] = str(release)
+        command.append('--impure')
+    result = subprocess.check_output(command + [str(repo) + '#raspberry-evolver-image'],
+                                     text=True, env=environment)
     outputs = result.strip().splitlines()
     if len(outputs) != 1:
         raise OSError('Expected one Nix image output')
@@ -443,12 +450,16 @@ def _main():
     group.add_argument('--build-only', action='store_true', help='build a clean image without credentials')
     group.add_argument('--from', dest='source', metavar='CLEAN_IMAGE', help='personalize a verified clean image')
     parser.add_argument('--wifi-file', metavar='PROFILE', help='import one owner-only WPA-PSK NetworkManager profile')
+    parser.add_argument('--thin-release', type=Path, metavar='DIRECTORY',
+                        help='embed prepared Simple Evolver release in a clean image')
     args = parser.parse_args()
+    if args.thin_release and not args.build_only:
+        parser.error('--thin-release requires --build-only')
     if args.build_only and args.wifi_file:
         parser.error('--wifi-file cannot be used with --build-only')
     try:
         if args.build_only:
-            build_clean()
+            build_clean(args.thin_release)
             return 0
         source = Path(args.source) if args.source else build_clean()
         verify_clean_artifact(source)

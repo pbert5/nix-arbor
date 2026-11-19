@@ -1,6 +1,10 @@
 { pkgs, ... }:
 {
-  imports = [ ./kernel-cache.nix ];
+  imports = [
+    ./kernel-cache.nix
+    ./operator.nix
+    ./thin.nix
+  ];
 
   # The Pi bootloader installs firmware DTBs; the upstream kernel package lacks
   # the buildDTBs attribute expected by the root nixpkgs device-tree default.
@@ -13,12 +17,29 @@
   ];
   networking.networkmanager.enable = true;
   services.tailscale.enable = true;
-  # agetty expands these escapes again when network addresses change.
-  services.getty.helpLine = ''
-    IPv4: \4
-    IPv6: \6
-    SSH user: ash
-  '';
+  systemd.services.raspberry-evolver-console-ips = {
+    description = "Update the console login addresses";
+    wantedBy = [ "multi-user.target" ];
+    path = with pkgs; [
+      coreutils
+      diffutils
+      iproute2
+      jq
+      util-linux
+    ];
+    serviceConfig = {
+      Type = "oneshot";
+      ExecStart = "${pkgs.bash}/bin/bash ${./console-ips.sh}";
+    };
+  };
+  systemd.timers.raspberry-evolver-console-ips = {
+    wantedBy = [ "timers.target" ];
+    timerConfig = {
+      OnBootSec = "5s";
+      OnUnitInactiveSec = "10s";
+      AccuracySec = "2s";
+    };
+  };
   services.openssh = {
     enable = true;
     settings = {
@@ -62,9 +83,14 @@
     path = with pkgs; [
       coreutils
       jq
+      python3
       tailscale
       util-linux
     ];
+    environment = {
+      FIRMWARE_MOUNT = "/boot/firmware";
+      FIRMWARE_KEY_HELPER = "${./firmware-key.py}";
+    };
     serviceConfig = {
       Type = "oneshot";
       ExecStart = "${pkgs.bash}/bin/bash ${./bootstrap.sh}";

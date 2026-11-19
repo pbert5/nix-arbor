@@ -64,7 +64,7 @@ printf '%s\n' 'network temporarily unavailable' > "$tmp/up-error"
 run; test "$(cat "$status")" = indeterminate; test -s "$key"
 printf '%s\n' 'backend error: invalid authkey' > "$tmp/up-error"; : > "$tmp/argv"
 run; test "$(cat "$status")" = needs-new-key; test -s "$key"; test "$(rg -c '^up ' "$tmp/argv")" -eq 1
-test "$(stat -c %a "$tmp/run/rejected.sha256")" = 600
+test "$(stat -c %a "$tmp/bootstrap/rejected.sha256")" = 600
 : > "$tmp/argv"; run; test "$(cat "$status")" = needs-new-key; ! rg -q '^up ' "$tmp/argv"
 printf '%s' 'tskey-auth-REPLACEMENT' > "$key"; rm "$tmp/up-error"
 printf '%s' "$enrolled" > "$tmp/after-up"; : > "$tmp/argv"

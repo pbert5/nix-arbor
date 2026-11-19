@@ -150,3 +150,48 @@ dependencies; they are not part of the sandboxed flake check:
 bash tests/raspberry-evolver-host/bootstrap.sh
 bash tests/raspberry-evolver-host/maintenance.sh
 ```
+
+## Thin MVP image
+
+A clean image built with `image --build-only --thin-release RELEASE-DIRECTORY`
+includes a Git bundle, Docker image archive and revision/image-ID manifest.
+The first boot imports that release locally as `ash` and starts thin after
+PostgreSQL is ready, roles exist and migrations pass. The imported archive is
+removed after verification. The editable checkout is `/home/ash/evolver`.
+An ordinary boot uses the prepared images with pulls and builds disabled.
+
+1. Flash the clean image to a fresh SD card using the drive-selection safeguards
+   above. Keep the old card available for rollback.
+2. On Windows, open the visible `FIRMWARE` partition. Save one raw auth key as
+   `tailscale-authkey.txt` at its root and eject the card. Verify Windows did not
+   append a second `.txt`. Use a short-lived, one-use, non-ephemeral key.
+3. Connect Ethernet and boot. The Pi mounts the partition at `/boot/firmware`.
+   The HDMI login prompt shows LAN and Tailscale addresses as they become
+   available. Use the existing SSH key with `ssh ash@ADDRESS`.
+4. If enrollment needs attention, check
+   `cat /run/raspberry-evolver/bootstrap.status` over LAN SSH. With no key file,
+   use `sudo tailscale up --accept-dns=false`. For an expired or rejected key,
+   shut down and replace the file. A retained key on FAT is plaintext. Deleting
+   it after enrollment does not securely erase it.
+5. Review the startup log with
+   `journalctl -u raspberry-evolver-install-thin -u raspberry-evolver-thin -b`.
+   Run `cd ~/evolver && ./tools/thin/status`. Forward the UI through SSH with
+   `ssh -L 18086:127.0.0.1:18086 ash@ADDRESS` and browse to
+   `http://localhost:18086`. In VS Code use Remote-SSH with the same host and
+   open `/home/ash/evolver`.
+
+Fresh releases disable automatic instrument discovery. Existing thin data
+volumes can retain operating settings across starts. Review them before
+connecting instruments. `./tools/thin/down` records a stop across reboots and
+`./tools/thin/up` resumes operation. `./tools/dev-env up` and
+`./tools/dev-env shell` are explicit development operations. ARM64 omits the
+pinned firmware build/upload toolchain.
+
+For an update, back up the database and runtime volumes, record the previous
+checkout and matching image IDs, commit changes and prepare the replacement
+images off the Pi. Load them on the Pi and install the matching
+`var/state/thin-images` manifest before running `./tools/thin/up`. Keep the
+previous release artifacts. Roll back with the previous checkout, images and
+manifest, and restore the matching database backup if migrations changed it.
+For a failed first boot, preserve the new card for logs and reinsert the
+previous card with the Pi powered off.
