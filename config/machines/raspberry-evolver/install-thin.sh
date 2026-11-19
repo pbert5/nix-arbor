@@ -39,13 +39,15 @@ if [[ ! -e .env && ! -L .env ]]; then
     for role in POSTGRES GRAFANA_DB GRAFANA_ADMIN POSTGRES_METRICS MIGRATOR COMMAND_SUBMITTER \
       CONTROL_EXECUTOR SENSOR_ACQUIRER DATA_READER OBSERVER COORDINATION INVENTORY LIFECYCLE \
       CATALOG SCIENCE TELEMETRY ANALYTICS; do
-      printf 'SIMPLE_EVOLVER_%s_PASSWORD=%s\n' "$role" "$(openssl rand -hex 32)"
+      password=$(openssl rand -hex 32)
+      printf 'SIMPLE_EVOLVER_%s_PASSWORD=%s\n' "$role" "$password"
     done
   } >"$temporary"
   mv -nT "$temporary" .env
   rm -f -- "$temporary"
 fi
 ./tools/env secrets
+./tools/env check --quiet
 
 gzip -dc "$release/images.tar.gz" | docker load
 verify_images
