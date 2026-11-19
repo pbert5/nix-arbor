@@ -92,6 +92,19 @@ bash tests/raspberry-evolver-host/maintenance.sh
 
 ## Thin MVP image
 
+On the off-Pi ARM build host, use the release checkout and an isolated Docker
+daemon. Run `./tools/thin/prepare`, then package its exact revision and images.
+
+```bash
+release=$(mktemp -d)
+git bundle create "$release/evolver.bundle" HEAD
+cp var/state/thin-images "$release/thin-images"
+mapfile -t images < <(awk 'NR > 1 {print $1}' "$release/thin-images")
+docker save "${images[@]}" | gzip -1 > "$release/images.tar.gz"
+(cd "$release" && sha256sum evolver.bundle images.tar.gz thin-images > SHA256SUMS)
+printf 'Release directory: %s\n' "$release"
+```
+
 A clean image built with `image --build-only --thin-release RELEASE-DIRECTORY`
 includes a Git bundle, Docker image archive and revision/image-ID manifest.
 The first boot imports that release locally as `ash` and starts thin after
