@@ -151,8 +151,9 @@ let
     inputs.arbor-registry.nixosModules.default
     inputs.arbor-registry.nixosModules.service-contract
     (
-      { lib, ... }:
+      { config, lib, ... }:
       {
+        environment.systemPackages = [ config.cluster.registry.runtime.runtimePackage ];
         cluster.registry.enable = true;
         cluster.registry.runtime = {
           enable = true;

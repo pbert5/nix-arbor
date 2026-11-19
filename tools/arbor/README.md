@@ -69,6 +69,7 @@ Record the public fingerprint from each result and verify the two differ.
 Expect generation 1, local genesis, self-rooted, zero parents and zero peers.
 The two identities have independent authority. Peering, enrollment and private
 Ygg activation are outside this workflow.
+For two initialized roots, follow the [existing-root pairing procedure](../../docs/registry-root-pair.md).
 
 To test persistence during a maintenance window, restart one host at a time.
 The command requires an initialized identity and restarts transport and Registry

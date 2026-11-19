@@ -9,14 +9,16 @@ registry=arbor-registry.service
 transport=arbor-registry-transport.service
 
 check_units() {
-  local unit state enabled active start pattern env setting dir
+  local unit state enabled active start pattern env setting dir expected_user
   for unit in "$registry" "$transport"; do
     state=${unit%.service}-canary-v1
     enabled=$(property "$unit" UnitFileState)
     active=$(property "$unit" ActiveState)
     echo "$host $unit: $enabled, $active" >&2
     [[ $enabled == enabled && $active == active ]] || die "$unit must be enabled and active"
-    [[ $(property "$unit" User) == arbor-registry && $(property "$unit" StateDirectory) == "$state" ]] ||
+    expected_user=arbor-registry
+    [[ $unit == "$transport" ]] && expected_user=arbor-registry-transport
+    [[ $(property "$unit" User) == "$expected_user" && $(property "$unit" StateDirectory) == "$state" ]] ||
       die "unexpected owner or StateDirectory for $unit"
     dir=/var/lib/$state
     [[ $(realpath -e -- "$dir") == "$dir" ]] && test -d "$dir" || die "unexpected state path for $unit"
@@ -69,7 +71,8 @@ validate() {
       .nodeId == null and .initialized == false and .localGenesis == false;
     def snapshot: keys == ["format","generation","initialized","localGenesis","nodeId","operation",
       "parents","peers","projection","publicFingerprint","records","selfRooted","status","version"] and
-      .nodeId == $host and .parents == 0 and .peers == 0 and
+      .nodeId == $host and .peers == 0 and
+      (.parents == 0 or (.initialized == true and $host == "eVolver" and .parents == 1)) and
       (.records | keys == ["accepted","quarantined","total"] and all(.[]; nonneg)
         and .quarantined == 0 and .total == .accepted) and
       (.projection | keys == ["total"] and (.total | nonneg)) and

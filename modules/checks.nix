@@ -29,6 +29,46 @@ in
     in
     {
       checks = {
+        existing-root-pair =
+          let
+            registry = inputs.arbor-registry;
+            runtime = pkgs.callPackage (registry + "/runtime/package.nix") { };
+            transport = pkgs.callPackage (registry + "/transport/package.nix") { };
+            hosts = map (name: config.flake.nixosConfigurations.${name}.config) [
+              "r640-0"
+              "eVolver"
+            ];
+            matches =
+              host:
+              host.cluster.registry.runtime.enable
+              && host.cluster.registry.runtime.runtimePackage.drvPath == runtime.drvPath
+              && host.cluster.registry.runtime.transportPackage.drvPath == transport.drvPath
+              && lib.any (package: package.drvPath == runtime.drvPath) host.environment.systemPackages;
+          in
+          assert system != "x86_64-linux" || lib.all matches hosts;
+          import (registry + "/tests/existing-root-pair.nix") { inherit pkgs runtime transport; };
+        registry-lifecycle =
+          pkgs.runCommand "nix-arbor-registry-lifecycle"
+            {
+              nativeBuildInputs = [
+                pkgs.bash
+                pkgs.coreutils
+                pkgs.gnugrep
+                pkgs.gnused
+                pkgs.jq
+              ];
+            }
+            (
+              builtins.concatStringsSep "\n" [
+                "mkdir -p work/tests/arbor-registry work/tools/arbor"
+                "cp ${src}/tests/arbor-registry/lifecycle.sh work/tests/arbor-registry/"
+                "cp ${src}/tools/arbor/registry ${src}/tools/arbor/registry-host.sh work/tools/arbor/"
+                "chmod u+w work/tools/arbor/registry"
+                "sed -i '1c#!${pkgs.bash}/bin/bash' work/tools/arbor/registry"
+                "bash work/tests/arbor-registry/lifecycle.sh"
+                "touch $out"
+              ]
+            );
         fastfetch-status =
           pkgs.runCommand "nix-arbor-fastfetch-status"
             {
