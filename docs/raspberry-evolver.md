@@ -6,6 +6,10 @@ enrolls in Tailscale on first boot and accepts SSH for the shared operator
 public keys as `ash`. The Pioreactor HAT and Evolver application stack are
 separate future work.
 
+The local login screen shows IPv4 and IPv6 addresses before anyone signs in.
+Connect Ethernet and wait for DHCP. The prompt refreshes when the address
+changes. From another machine on the same network, use `ssh ash@<IP>`.
+
 ## Build and personalize
 
 From a committed Nix Arbor checkout on a machine with a working aarch64 Nix

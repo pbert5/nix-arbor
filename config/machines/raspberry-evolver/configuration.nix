@@ -13,6 +13,12 @@
   ];
   networking.networkmanager.enable = true;
   services.tailscale.enable = true;
+  # agetty expands these escapes again when network addresses change.
+  services.getty.helpLine = ''
+    IPv4: \4
+    IPv6: \6
+    SSH user: ash
+  '';
   services.openssh = {
     enable = true;
     settings = {
