@@ -1,68 +1,9 @@
 # raspberry-evolver
 
-This is a headless Raspberry Pi 4 Model B configuration. Ethernet uses DHCP;
-an optional selected NetworkManager Wi-Fi profile provides a backup. The Pi
-enrolls in Tailscale on first boot and accepts SSH for the shared operator
-public keys as `ash`. The Pioreactor HAT and Evolver application stack are
-separate future work.
-
-The local login screen shows IPv4 and IPv6 addresses before anyone signs in.
-Connect Ethernet and wait for DHCP. The prompt refreshes when the address
-changes. From another machine on the same network, use `ssh ash@<IP>`.
-
-## Build and personalize
-
-From a committed Nix Arbor checkout on a machine with a working aarch64 Nix
-builder and enough free disk space:
-
-```sh
-./tools/raspberry-evolver/doctor
-./tools/raspberry-evolver/image
-```
-
-Once the build finishes, paste the Tailscale Linux install command or just its
-auth key at the hidden prompt. The tool extracts the key as data; it never
-executes the pasted command. Prefer a fresh single-use, non-ephemeral key for
-each image. Account approval, key expiry and Tailnet Lock can still require
-operator action. Do not paste a real key into chat, Git or a shell command.
-
-For Wi-Fi, select one simple WPA-PSK NetworkManager profile from the source
-machine. Put a private, owner-only copy somewhere outside the checkout and
-pass it with `--wifi-file /path/to/profile.nmconnection`. The profile must
-contain its saved PSK and be readable by the operator; the tool removes
-source interface and connection identities and configures DHCP. It does not
-support enterprise Wi-Fi or external certificates. Delete the private copy
-when finished. Ethernet does not require this profile.
-
-On the machine that has the saved Wi-Fi connection, use the filename of the
-selected profile. With the clean image and manifest present on that machine:
-
-```sh
-nmcli -f NAME,TYPE,FILENAME connection show
-private=$(mktemp -d)
-sudo install -m 0600 -o "$(id -u)" -g "$(id -g)" -- /path/to/selected.nmconnection "$private/backup.nmconnection"
-./tools/raspberry-evolver/image --from /path/to/clean.img --wifi-file "$private/backup.nmconnection"
-rm -- "$private/backup.nmconnection"
-rmdir -- "$private"
-```
-
-To build and personalize on different machines, run `image --build-only` on
-the builder, securely copy the printed clean image **and its adjacent `.json`
-manifest** to the operator machine, and run:
-
-```sh
-./tools/raspberry-evolver/image --from /path/to/clean.img --wifi-file /path/to/profile.nmconnection
-```
-
-Omit `--wifi-file` when no Wi-Fi backup is needed. Build outputs and private
-copies live outside the repository under `${XDG_STATE_HOME:-$HOME/.local/state}/raspberry-evolver`.
-The personalized image and any copies contain credentials, even after a Pi
-boots; protect and dispose of them accordingly. Deleting a file does not
-guarantee secure erasure.
-
-Keep the clean image and manifest together. For each additional card, run
-`image --from` on that pair with a fresh Tailscale key. This skips both Nix
-evaluation and image assembly.
+This Raspberry Pi 4 Model B profile uses Ethernet DHCP and accepts SSH for
+the shared operator public keys as `ash`. HDMI login shows LAN and Tailscale
+addresses as they become available. The thin release boots into the application
+without a development session. Pioreactor HAT support is tracked separately.
 
 ### Building on r640-0
 
@@ -70,9 +11,8 @@ r640-0 already has working AArch64 emulation. Run the build from the committed
 Pi checkout. This command limits parallelism on the shared host:
 
 ```sh
-cd /home/ash/documents/nix-arbor/.worktrees/raspberry-evolver-takeover
 NIX_CONFIG='cores = 8
-max-jobs = 4' ./tools/raspberry-evolver/image --build-only
+max-jobs = 4' ./tools/raspberry-evolver/image --build-only --thin-release /absolute/path/to/release
 ```
 
 The normal Nix cache lacks this BCM2711 kernel. Compiling it under QEMU ran
@@ -119,8 +59,8 @@ The physical card is erased by a confirmed write. Inventory and inspect first:
 
 ```sh
 ./tools/raspberry-evolver/flash
-./tools/raspberry-evolver/flash /path/to/personalized.img /dev/mmcblkX
-./tools/raspberry-evolver/flash /path/to/personalized.img /dev/mmcblkX --write
+./tools/raspberry-evolver/flash /path/to/clean.img /dev/mmcblkX
+./tools/raspberry-evolver/flash /path/to/clean.img /dev/mmcblkX --write
 ```
 
 Replace the device with the independently identified whole SD card. The last
@@ -142,9 +82,8 @@ the default route again. Reconnect Ethernet and confirm the preferred route
 returns. For approval or key replacement, see the
 [host recovery notes](../config/machines/raspberry-evolver/README.md).
 
-The flake check runs the image and flash tooling tests. The host bootstrap and
-Nix retention fixtures run separately and require their local command
-dependencies; they are not part of the sandboxed flake check:
+The flake check runs image, flash and firmware-key parser tests. Run the
+bootstrap behavior and Nix retention fixtures separately:
 
 ```sh
 bash tests/raspberry-evolver-host/bootstrap.sh
@@ -185,7 +124,10 @@ volumes can retain operating settings across starts. Review them before
 connecting instruments. `./tools/thin/down` records a stop across reboots and
 `./tools/thin/up` resumes operation. `./tools/dev-env up` and
 `./tools/dev-env shell` are explicit development operations. ARM64 omits the
-pinned firmware build/upload toolchain.
+pinned firmware build/upload toolchain. PostgreSQL and the data API are
+bound to Pi loopback. Use the host shell for these endpoints or use
+`docker compose --profile local exec postgres psql -U simple_evolver -d simple_evolver`
+for direct database inspection from a shell with Docker access.
 
 For an update, back up the database and runtime volumes, record the previous
 checkout and matching image IDs, commit changes and prepare the replacement
