@@ -4,6 +4,7 @@ umask 077
 release=/var/lib/raspberry-evolver/thin-release
 checkout=$HOME/evolver
 cd "$release"
+[[ ! -e .installed ]] || exit 0
 sha256sum -c SHA256SUMS
 
 [[ $(uname -m) == aarch64 ]]

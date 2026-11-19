@@ -4,6 +4,13 @@ let
   installThin = pkgs.writeShellScript "install-raspberry-evolver-thin" (
     builtins.readFile ./install-thin.sh
   );
+  cleanRelease = pkgs.writeShellScript "clean-raspberry-evolver-thin-release" ''
+    set -eu
+    cd ${release}
+    ${pkgs.coreutils}/bin/touch .installed
+    ${pkgs.coreutils}/bin/sync -f .
+    ${pkgs.coreutils}/bin/rm -f -- images.tar.gz evolver.bundle thin-images SHA256SUMS
+  '';
   path = with pkgs; [
     bash
     coreutils
@@ -23,7 +30,7 @@ in
     description = "Import the bundled Simple Evolver release";
     requires = [ "docker.service" ];
     after = [ "docker.service" ];
-    unitConfig.ConditionPathExists = "${release}/SHA256SUMS";
+    unitConfig.ConditionPathIsDirectory = release;
     inherit path;
     serviceConfig = {
       Type = "oneshot";
@@ -31,7 +38,7 @@ in
       UMask = "0077";
       TimeoutStartSec = "15min";
       ExecStart = installThin;
-      ExecStartPost = "+${pkgs.coreutils}/bin/rm -- ${release}/SHA256SUMS ${release}/images.tar.gz ${release}/evolver.bundle ${release}/thin-images";
+      ExecStartPost = "+${cleanRelease}";
     };
   };
 
