@@ -53,6 +53,11 @@ The root takeover worktree `.worktrees/raspberry-evolver-takeover`, branch `agen
 
 A local unpersonalized image and manifest exist outside the repository. The recorded native assembly completed in 347.98 seconds after a quota interruption; this timing is reported rather than independently reproduced. The image size is **4,588,568,576 bytes** and its SHA-256 is `aa4b1dc7783e2d8c4455a750b18313bfee1fa06904099be4173d24c6633d6cbc`; both were checked against the local file and manifest. No image was executed, mounted or rebuilt for this inventory. Recorded offline inspection metadata for this exact image reports boot files, identity locations and simulated partition checks. Those records do not establish final review or physical boot. Next, independently review the artifact inspection and exact head, reconcile the guide, and plan a separately authorized physical boot test.
 
+## GitHub readback, 2026-11-19 UTC
+
+- Source staging: [Nix Arbor #79](https://github.com/pbert5/nix-arbor/pull/79) merged as `1f8cc6b1e2db8ce761be365ab26153cfae999639`. [#80](https://github.com/pbert5/nix-arbor/pull/80) merged as `05108a929462313dfa4090ca366626cc16901cf6` with isolated canaries and an eVolver rollback runbook. These merges do not establish live private-Ygg activation. [Live bootstrap #12](https://github.com/pbert5/nix-arbor/issues/12) remains open. Verify the runbook baseline against current eVolver state before relying on it.
+- Signed identity pairing: [Registry #11](https://github.com/pbert5/arbor-registry/pull/11) at `9a0cbda8` and [Nix Arbor #82](https://github.com/pbert5/nix-arbor/pull/82) at `78cebc11` are now published as open drafts, separate from the Ygg staging. PR publication is not evidence of live pairing.
+
 ## Evidence limits
 
 The six named transcript files, local worktree states, pairing handoffs, TUI log and Pi artifact metadata were inspected. Private transcript text and credentials are intentionally omitted. The source chats include progress reports and do not all end in a terminal handoff; later local evidence takes precedence where identified. Test suites were not rerun for this documentation inventory. Paths under `/tmp` and local worktrees are ephemeral, while commit IDs and issue/PR links identify durable source where published.
