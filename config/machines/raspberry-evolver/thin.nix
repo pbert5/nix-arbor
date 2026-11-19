@@ -7,6 +7,7 @@ let
   path = with pkgs; [
     bash
     coreutils
+    diffutils
     docker
     gnugrep
     gnused

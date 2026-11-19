@@ -8,19 +8,28 @@ sha256sum -c SHA256SUMS
 
 [[ $(uname -m) == aarch64 ]]
 revision=$(head -n 1 thin-images)
-if [[ ! -e $checkout && ! -L $checkout ]]; then
-  candidate=$(mktemp -d "$HOME/.evolver.XXXXXX")
-  trap 'rm -rf -- "$candidate"' EXIT
-  git -C "$candidate" init --quiet
-  git -C "$candidate" fetch "$release/evolver.bundle" HEAD
-  git -C "$candidate" checkout -b pi-thin "$revision"
-  git -C "$candidate" remote add origin https://github.com/pbert5/simple-evolver.git
-  mv -nT "$candidate" "$checkout"
-fi
-[[ -d $checkout && ! -L $checkout ]]
-[[ $(git -C "$checkout" rev-parse HEAD) == "$revision" ]]
+verify_images() {
+  while read -r image digest; do
+    [[ $(docker image inspect --format '{{.Id}}' "$image") == "$digest" ]] || return 1
+  done < <(tail -n +2 "$release/thin-images")
+}
 
-cd "$checkout"
+# Publish the operator checkout only once it can start from verified images.
+# If interrupted after publication, verify and clean up without modifying it.
+if [[ -e $checkout || -L $checkout ]]; then
+  [[ -d $checkout && ! -L $checkout ]]
+  cmp "$release/thin-images" "$checkout/var/state/thin-images"
+  verify_images
+  exit
+fi
+
+candidate=$(mktemp -d "$HOME/.evolver.XXXXXX")
+trap 'rm -rf -- "$candidate"' EXIT
+git -C "$candidate" init --quiet
+git -C "$candidate" fetch "$release/evolver.bundle" HEAD
+git -C "$candidate" checkout -b pi-thin "$revision"
+git -C "$candidate" remote add origin https://github.com/pbert5/simple-evolver.git
+cd "$candidate"
 if [[ ! -e .env && ! -L .env ]]; then
   temporary=$(mktemp .env.XXXXXX)
   {
@@ -38,7 +47,7 @@ fi
 ./tools/env secrets
 
 gzip -dc "$release/images.tar.gz" | docker load
-while read -r image digest; do
-  [[ $(docker image inspect --format '{{.Id}}' "$image") == "$digest" ]]
-done < <(tail -n +2 "$release/thin-images")
+verify_images
 install -D -m 0600 "$release/thin-images" var/state/thin-images
+mv -nT "$candidate" "$checkout"
+[[ ! -e $candidate ]]
